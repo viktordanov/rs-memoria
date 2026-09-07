@@ -1,0 +1,18 @@
+version = 1
+ignore = [
+    "**/generated/**",
+    "**/fixtures/**",
+]
+
+[documentation]
+instructions = [
+    "Use short sentences.",
+]
+instruction_files = [
+    ".agents/writing.md",
+]
+
+[fingerprints]
+default = "raw"
+
+[fingerprints.languages]

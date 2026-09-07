@@ -133,15 +133,15 @@ fn instruction_only_sidecars_are_context_not_policy() {
     project.baseline();
     let before = project.state();
     project.write(
-        "src/execution/README.memoria.yml",
-        "documentation:\n  instructions:\n    - Use clear short sentences.\n",
+        "src/execution/README.memoria.toml",
+        "[documentation]\ninstructions = [\n    \"Use clear short sentences.\",\n]\n",
     );
     assert_eq!(
         project.json(&["check"]).0,
         0,
         "adding an instruction-only sidecar changes no fingerprint"
     );
-    project.write("src/execution/README.memoria.yml", "documentation:\n  instructions:\n    - Use even shorter sentences.\n  instruction_files: []\n");
+    project.write("src/execution/README.memoria.toml", "[documentation]\ninstructions = [\n    \"Use even shorter sentences.\",\n]\ninstruction_files = []\n");
     assert_eq!(project.json(&["check"]).0, 0);
     // Packets still inherit the local instruction.
     project.append("src/execution/runner.rs", "// edit\n");
@@ -154,10 +154,10 @@ fn instruction_only_sidecars_are_context_not_policy() {
         instructions
             .iter()
             .any(|i| get_str(i, &["text"]) == "Use even shorter sentences."
-                && get_str(i, &["source"]) == "src/execution/README.memoria.yml")
+                && get_str(i, &["source"]) == "src/execution/README.memoria.toml")
     );
     project.ack_ok("src/execution/README.md");
-    fs::remove_file(project.root.join("src/execution/README.memoria.yml")).unwrap();
+    fs::remove_file(project.root.join("src/execution/README.memoria.toml")).unwrap();
     assert_eq!(
         project.json(&["check"]).0,
         0,
@@ -165,8 +165,8 @@ fn instruction_only_sidecars_are_context_not_policy() {
     );
     // A real local rule is policy, as before.
     project.write(
-        "src/execution/README.memoria.yml",
-        "ignore:\n  - \"*.tmp\"\ndocumentation:\n  instructions:\n    - Keep it short.\n",
+        "src/execution/README.memoria.toml",
+        "ignore = [\n    \"*.tmp\",\n]\n\n[documentation]\ninstructions = [\n    \"Keep it short.\",\n]\n",
     );
     assert_eq!(
         project.cause_codes("src/execution/README.md"),
@@ -183,8 +183,8 @@ fn instruction_only_sidecars_are_context_not_policy() {
     );
     // The fixture's existing rule-bearing sidecar keeps its policy meaning (baseline already covers it).
     project.write(
-        "src/retrieval/README.memoria.yml",
-        "include:\n  - \"fixtures/**\"\n  - \"nothing/**\"\n",
+        "src/retrieval/README.memoria.toml",
+        "include = [\n    \"fixtures/**\",\n    \"nothing/**\",\n]\n",
     );
     assert_eq!(
         project.cause_codes("src/retrieval/README.md"),

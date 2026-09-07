@@ -215,8 +215,8 @@ fn ignore_files_inside_excluded_directories_are_inactive_policy() {
 #[test]
 fn quoted_instructions_with_escaped_quotes_and_hashes_are_accepted() {
     let project = Project::seed();
-    project.write("memoria.yml", "version: 1\n\nignore:\n  - \"**/generated/**\"\n  - \"**/fixtures/**\"\n\ndocumentation:\n  instructions:\n    - \"Use \\\" # \\\" for headings.\"  # trailing comment\n    - 'Prefer ''plain'' words # not a comment'\n  instruction_files: [\".agents/writing.md\"] # files\n");
-    project.write("src/retrieval/README.memoria.yml", "include:\n  - \"fixtures/**\"\ndocumentation:\n  instructions: [\"Rank \\\"# first\\\"\", 'quote ''ok''']\n");
+    project.write("memoria.toml", "version = 1\nignore = [\n    \"**/generated/**\",\n    \"**/fixtures/**\",\n]\n\n[documentation]\ninstructions = [\n    \"Use \\\" # \\\" for headings.\", # trailing comment\n    '''Prefer 'plain' words # not a comment''',\n]\ninstruction_files = [\n    \".agents/writing.md\",\n]\n");
+    project.write("src/retrieval/README.memoria.toml", "include = [\n    \"fixtures/**\",\n]\n\n[documentation]\ninstructions = [\n    \"Rank \\\"# first\\\"\",\n    \"quote 'ok'\",\n]\n");
     project.baseline();
     project.append("src/retrieval/engine.rs", "// edit\n");
     let (packet, _) = project.review_packet("src/retrieval/README.md");
@@ -242,8 +242,8 @@ fn quoted_instructions_with_escaped_quotes_and_hashes_are_accepted() {
     );
     // Unsupported forms are still rejected.
     project.write(
-        "memoria.yml",
-        "version: 1\ndocumentation:\n  instructions:\n    - \"unterminated\n",
+        "memoria.toml",
+        "version = 1\n[documentation]\ninstructions = [\"unterminated\n",
     );
     let (code, lint) = project.json(&["lint"]);
     assert_eq!(code, 1);

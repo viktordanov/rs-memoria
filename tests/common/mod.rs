@@ -29,7 +29,7 @@ pub struct Project {
 fn fixture_name(name: &str) -> String {
     match name {
         "README.fixture.md" => "README.md".to_string(),
-        "README.memoria.fixture.yml" => "README.memoria.yml".to_string(),
+        "README.memoria.fixture.toml" => "README.memoria.toml".to_string(),
         other => other.to_string(),
     }
 }

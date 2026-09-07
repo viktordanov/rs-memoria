@@ -522,7 +522,7 @@ fn init_rejects_an_invalid_existing_readme_before_writing() {
                 .all(|c| c == "marker_unclosed" || c == "markdown_invalid"),
             "{name}: {codes:?}"
         );
-        assert!(!project.exists("memoria.yml"), "{name}");
+        assert!(!project.exists("memoria.toml"), "{name}");
         assert!(!project.exists(".memoria"), "{name}");
         assert_eq!(project.tree_snapshot(), before, "{name}: nothing written");
     }
@@ -536,7 +536,7 @@ fn init_rejects_an_invalid_existing_readme_before_writing() {
     let (code, init) = project.json(&["init"]);
     assert_eq!(code, 1);
     assert_eq!(diagnostic_codes(&init), vec!["import_invalid"]);
-    assert!(!project.exists("memoria.yml"));
+    assert!(!project.exists("memoria.toml"));
     project.write(
         "README.md",
         "# Root\n\n<!-- memoria:export id=\"summary\" -->\nFine.\n<!-- /memoria:export -->\n",
@@ -547,6 +547,6 @@ fn init_rejects_an_invalid_existing_readme_before_writing() {
         strings(get(&init, &["data", "existing"])),
         vec!["README.md"]
     );
-    assert!(project.exists("memoria.yml"));
+    assert!(project.exists("memoria.toml"));
     assert_eq!(project.json(&["lint"]).0, 0);
 }

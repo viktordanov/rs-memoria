@@ -6,7 +6,7 @@
 //! canonical byte encoding, review state transitions, and the scheduling
 //! rules that decide why a document needs review and whether it is ready.
 //!
-//! Nothing in this crate opens files, runs Git, parses YAML or Markdown,
+//! Nothing in this crate opens files, runs Git, parses TOML or Markdown,
 //! hashes bytes, reads the clock, or serializes JSON. Those concerns belong
 //! to the application ports and infrastructure adapters.
 

@@ -1,21 +1,28 @@
 # memoria-domain
 
-The domain crate defines the rules that determine documentation ownership and review state.
+The domain crate decides which READMEs require review and which review comes first.
 
 The domain receives values and returns values.
 It uses only the Rust standard library at runtime.
-Application use cases supply repository facts through adapters.
+The application supplies repository facts.
+
+Read [ownership.rs](src/ownership.rs#L18) to start with the rule that assigns files to READMEs.
 
 ## Role in the project
 
 <!-- memoria:export id="summary" -->
 The domain crate assigns selected files to their nearest README.
-It separates ownership, imports, and navigation.
-Its manifests describe review inputs, and its review rules determine pending work.
-It orders providers before consumers without file access or Git processes.
+It compares recorded review inputs with current inputs.
+Its rules determine which READMEs require review and their order.
 <!-- /memoria:export -->
 
-## The model has three relationships
+## Files and shared text have different relationships
+
+A document boundary groups the selected files that one README explains.
+That README is their owner.
+An export is a marked section that another README can copy.
+The README that supplies the section is the provider.
+The README that copies it is the consumer.
 
 | Relationship | Meaning | Effect on review |
 | --- | --- | --- |
@@ -23,6 +30,7 @@ It orders providers before consumers without file access or Git processes.
 | Import | A consumer names an export in a provider README. | An export change affects its consumers. |
 | Navigation | A normal Markdown link connects readers to another README. | The link creates no review dependency. |
 
+A pending README requires a review.
 `crates/memoria-domain/README.md` owns `crates/memoria-domain/src/review.rs`.
 The root README imports the domain summary.
 A change to `review.rs` makes this README pending.
@@ -33,6 +41,7 @@ Source evidence: [ownership.rs:18](src/ownership.rs#L18), [graph.rs:102](src/gra
 
 ## Manifests make changes visible
 
+A manifest lists the identities, sizes, and hashes that define one review.
 `InputManifest` contains the document identity, document hash, policy hash, selected files, and imported exports.
 Each file entry contains its path, byte count, and hash.
 Each import entry also names the provider and export identifier.
@@ -41,17 +50,26 @@ The constructor sorts these entries and rejects duplicate identities.
 The manifest comparison separates document changes from changes to files, imports, or policy.
 The canonical encoder gives these values a stable byte representation.
 The application requests hashes from its hasher port.
-The domain itself does not calculate xxHash64 hashes.
+The domain itself does not calculate XXH3-64 hashes.
 
 Source evidence: [manifest.rs:73](src/manifest.rs#L73) and [canonical.rs:110](src/canonical.rs#L110).
 
 ## Pending and waiting describe different states
 
-A document is pending after a first review becomes necessary, an input changes, or an explicit invalidation applies.
+An invalidation is an explicit request for a review with a recorded reason.
+A document is pending after a first review becomes necessary, an input changes, or an invalidation applies.
 An edit to the document itself also makes it pending.
+
+A current document has no remaining review cause.
 A document waits while a provider is pending or waits for another provider.
 Thus, a current document can still wait.
 A ready document is pending and has no provider that prevents its review.
+
+## An acknowledgement advances one review
+
+A review packet captures the README and its input bytes for one review.
+An acknowledgement records the reviewer, result, and reason that the explanation is correct.
+A revision is the counter that increases after each acknowledgement for that README.
 
 `ReviewState::acknowledge` compares the manifests, document revision, and covered invalidations before it changes the state value.
 It increments the document revision and records the reviewer, result, and note.

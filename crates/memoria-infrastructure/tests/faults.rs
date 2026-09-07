@@ -9,7 +9,7 @@ use std::process::Command;
 use memoria_application::error::AppError;
 use memoria_application::ports::{AdapterError, GitRepository, Progress, Services, StateStore};
 use memoria_application::usecases;
-use memoria_infrastructure::config::YamlConfigurationReader;
+use memoria_infrastructure::config::TomlConfigurationReader;
 use memoria_infrastructure::fs::{
     AtomicFileWriter, FsProjectFiles, LockFileCoordinator, SystemClock,
 };
@@ -42,7 +42,7 @@ fn git(root: &Path, args: &[&str]) {
 fn seed() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
-    fs::write(root.join("memoria.yml"), "version: 1\n").unwrap();
+    fs::write(root.join("memoria.toml"), "version = 1\n").unwrap();
     fs::write(
         root.join("README.md"),
         "# Root\n\n<!-- memoria:import src=\"a/README.md#s\" -->\n<!-- /memoria:import -->\n<!-- memoria:import src=\"b/README.md#s\" -->\n<!-- /memoria:import -->\n",
@@ -115,7 +115,7 @@ struct Harness<'a> {
     root: PathBuf,
     files: FsProjectFiles,
     git: MutatingGit<'a>,
-    config: YamlConfigurationReader,
+    config: TomlConfigurationReader,
     markdown: PulldownMarkdownCodec,
     hasher: Xxh3Hasher,
     state: JsonStateStore<'static>,
@@ -140,7 +140,7 @@ fn harness<'a>(
             calls: Cell::new(0),
             mutate_on,
         },
-        config: YamlConfigurationReader,
+        config: TomlConfigurationReader,
         markdown: PulldownMarkdownCodec,
         hasher: Xxh3Hasher,
         state: JsonStateStore::new(root.to_path_buf()),

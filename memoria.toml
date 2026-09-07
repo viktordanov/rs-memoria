@@ -1,0 +1,23 @@
+version = 1
+
+# The integration tests use the sample repositories in tests/fixtures.
+# These repositories are outside the documentation inputs for this project.
+ignore = ["tests/fixtures/**"]
+include = []
+
+[documentation]
+instructions = [
+    "Before you write documentation, locate the simple-english and i-have-adhd skills in your agent environment. Load each full SKILL.md. Read their required references. Apply their actual instructions to the documentation. If either skill is unavailable, stop before documentation edits. Report the missing skill by name. Do not substitute remembered rules for either skill. Use skill names without machine-specific paths.",
+    "Before you write each passage, classify it as procedural or descriptive. Apply strict Simplified Technical English. Limit procedural sentences to 20 words. Limit descriptive sentences to 25 words. Put one instruction in each procedural sentence. Put each condition before its command. Use active voice, simple tenses, and full grammar. Use one stable term for each concept. Preserve code, commands, paths, identifiers, product names, and quoted errors exactly. Use make sure that for a required state. Use examine for faults. Use measure for a value. Use invoke for a CLI command. Do not claim certified ASD-STE100 compliance without the official dictionary.",
+    "Give each major document a clear takeaway and short mental model. Put a small reader action near the start. Explain each term before you rely on it. State the owner, current state, and boundaries. Describe the data flow and error flow. Explain the state change after each command. Number procedures. Keep sections short. Limit each list to five items. Give detail progressively. End with one concrete next action.",
+    "Write the root README for a new consumer. Explain the product and problem first. Then give use cases, a small command example, and a workflow preview. Put links to deeper guides after that explanation. Keep the self-demo as evidence after the product explanation. Put repository structure near the end. Keep nested READMEs within their ownership boundaries. Give each nested README enough local context for a direct reader. Support claims with repository evidence. Import short summaries without whole-section duplication.",
+    "Use GitHub-compatible Mermaid inside Markdown as the repository standard for explanatory diagrams. Use neutral wording and default transparent rendering. Do not add theme, background, or color overrides. Give each diagram one clear claim. Add a short accessible explanation and source references. Examine Mermaid syntax before acknowledgement. Update managed import bodies through memoria render. Obtain a fresh packet after edits. Examine changed prose for sentence limits, vocabulary, grammar, conditions, and list structure before acknowledgement.",
+]
+instruction_files = []
+
+[fingerprints]
+default = "raw"
+languages = {}
+
+[lint]
+missing_import_hint = true

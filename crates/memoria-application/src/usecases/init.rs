@@ -27,7 +27,7 @@ impl InitReport {
 }
 
 pub const CHECKLIST: &[&str] = &[
-    "Review committed generated output and snapshots; exclude them in memoria.yml `ignore` when they should not drive reviews.",
+    "Review committed generated output and snapshots; exclude them in memoria.toml `ignore` when they should not drive reviews.",
     "Decide whether tests and fixtures are documentation inputs; they stay selected until a project rule excludes them.",
     "Add a README.md to every directory that deserves its own explanation; the nearest README owns each file.",
     "Declare imports with <!-- memoria:import src=\"child/README.md#summary\" --> and run `memoria render`.",

@@ -1,11 +1,34 @@
 # Memoria command reference
 
-The Memoria CLI identifies pending documentation reviews and records acknowledgements against exact packet inputs.
+This reference describes Memoria commands, their arguments, and their effects on documentation state.
 
-Inspection commands read repository state.
-Mutation commands update declared import bodies, review state, or managed agent packages.
+Each command either reports project information or changes a specific part of the project.
 A human or agent remains responsible for the prose.
-The [workflow](workflow.md) connects these commands into one review procedure.
+
+Read the [workflow](workflow.md) for a first review with commands in task order.
+
+## Terms used in this reference
+
+A document boundary groups the selected files that one README explains.
+That README is their owner.
+An export is a marked section that another README can copy.
+An import declares the managed copy of that section.
+The supplier is the provider, and the recipient is the consumer.
+
+A review packet contains one README and the exact inputs for its review.
+An acknowledgement records the reviewer, result, and reason that the explanation is correct.
+A revision counts successful acknowledgements for one README.
+An invalidation is an explicit review request with a recorded reason.
+The token identifies the document, revision, inputs, and invalidations that the acknowledgement must match.
+
+Pending means that a README requires review.
+Current means that it has no remaining review cause.
+A consumer waits until its providers finish review.
+The `render` command updates imported text without recording a review result.
+
+The `lint` command examines documentation structure.
+The `check` command also requires current reviews and current imported text.
+Neither command changes files.
 
 ## Invocation and paths
 
@@ -25,9 +48,9 @@ The [CLI grammar](../src/presentation/cli.rs#L13) defines the command arguments.
 
 | File | Purpose |
 | --- | --- |
-| `memoria.yml` | The root configuration defines project rules. |
+| `memoria.toml` | The root configuration defines project rules. |
 | `README.md` | Each README defines a documentation boundary. |
-| `README.memoria.yml` | An optional sidecar defines local rules beside a README. |
+| `README.memoria.toml` | An optional sidecar defines local rules beside a README. |
 | `.memoria/state.json` | The state contains the latest review for each README and active invalidations. |
 | `.memoria/write.lock` | This file supports the advisory lock for project mutations. |
 
@@ -38,18 +61,21 @@ Declared imports carry the relevant export content into consumer inputs.
 
 The root configuration supports these defaults:
 
-```yaml
-version: 1
-ignore: []
-include: []
-documentation:
-  instructions: []
-  instruction_files: []
-fingerprints:
-  default: raw
-  languages: {}
-lint:
-  missing_import_hint: true
+```toml
+version = 1
+ignore = []
+include = []
+
+[documentation]
+instructions = []
+instruction_files = []
+
+[fingerprints]
+default = "raw"
+languages = {}
+
+[lint]
+missing_import_hint = true
 ```
 
 The supported sidecar fields are `ignore`, `include`, and `documentation`.
@@ -63,15 +89,12 @@ Source evidence: [configuration reader](../crates/memoria-infrastructure/src/con
 <details>
 <summary>Configuration syntax and glob rules</summary>
 
-The YAML reader rejects unknown fields, duplicate keys, anchors, aliases, tags, and block scalars.
-It also rejects unsupported versions and mappings inside list items.
-Block lists and flow lists accept scalar values.
-Quoted scalars can contain colons and `#` characters.
-Double-quoted strings support backslash escapes.
-Single-quoted strings support the `''` escape.
-
-A quote within a plain scalar remains literal text.
-A ` #` comment does not change a rule.
+The TOML reader rejects unknown fields, duplicate keys, invalid value types, and unsupported versions.
+Root configuration sections must be TOML tables.
+Arrays accept string values.
+Basic strings support backslash escapes.
+Literal strings preserve backslashes and `#` characters.
+TOML comments do not change a rule.
 The configuration requires an empty `fingerprints.languages` map in this release.
 Only raw byte hashing exists.
 
@@ -81,7 +104,7 @@ Glob patterns match whole paths relative to their configuration directory.
 The pattern `directory/**` selects contents within that directory.
 The parser rejects negation of a whole pattern, absolute patterns, and `..`.
 
-Source evidence: [YAML parser](../crates/memoria-infrastructure/src/yaml.rs#L135) and [glob parser](../crates/memoria-domain/src/glob.rs#L78).
+Source evidence: [TOML parser](../crates/memoria-infrastructure/src/config.rs#L104) and [glob parser](../crates/memoria-domain/src/glob.rs#L78).
 
 </details>
 
@@ -212,7 +235,7 @@ Text content uses UTF-8, and other content uses base64.
 The token contains 21 bytes with the form `mrv1.<16 hex>`.
 A JSON packet supports acknowledgement from a file or stdin.
 Human output supports reading only.
-The [workflow](workflow.md#capture-the-packet) stores the packet outside the project.
+The [workflow](workflow.md#2-capture-the-packet) stores the packet outside the project.
 
 | Limit | Value |
 | --- | --- |
@@ -248,6 +271,8 @@ Source evidence: [packet construction](../crates/memoria-application/src/usecase
 </details>
 
 ## Review mutations
+
+A mutation changes stored files or saved review state.
 
 ### `memoria init`
 
@@ -417,7 +442,7 @@ target_ambiguous skill_conflict skill_not_installed
 
 ## Fingerprints and limits of the result
 
-Hashes use xxHash64 with seed zero and 16 lowercase hexadecimal digits.
+Hashes use XXH3-64 with the default secret, seed zero, and 16 lowercase hexadecimal digits.
 Canonical byte encodings use fixed schemas and big-endian lengths.
 The token covers the document path, document revision, manifest, and covered invalidations.
 Timestamps, commits, worktree locations, writing instructions, and unrelated reviews do not affect the token.

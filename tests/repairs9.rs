@@ -14,33 +14,36 @@ fn init_rejects_invalid_existing_configuration_before_writing() {
     let cases: Vec<(&str, String, &str)> = vec![
         (
             "parent glob",
-            "version: 1\nignore: [\"../outside/**\"]\n".to_string(),
+            "version = 1\nignore = [\n    \"../outside/**\",\n]\n".to_string(),
             "configuration_invalid",
         ),
         (
             "negation glob",
-            "version: 1\ninclude: [\"!keep\"]\n".to_string(),
+            "version = 1\ninclude = [\n    \"!keep\",\n]\n".to_string(),
             "configuration_invalid",
         ),
         (
             "missing instruction",
-            "version: 1\ndocumentation:\n  instruction_files: [missing.md]\n".to_string(),
+            "version = 1\n\n[documentation]\ninstruction_files = [\n    \"missing.md\",\n]\n"
+                .to_string(),
             "instruction_file_missing",
         ),
         (
             "escaping instruction",
-            "version: 1\ndocumentation:\n  instruction_files: [\"../outside.md\"]\n".to_string(),
+            "version = 1\n\n[documentation]\ninstruction_files = [\n    \"../outside.md\",\n]\n"
+                .to_string(),
             "instruction_file_invalid",
         ),
         (
             "symlinked instruction",
-            "version: 1\ndocumentation:\n  instruction_files: [\"rules.md\"]\n".to_string(),
+            "version = 1\n\n[documentation]\ninstruction_files = [\n    \"rules.md\",\n]\n"
+                .to_string(),
             "instruction_file_invalid",
         ),
     ];
     for (name, config, code) in cases {
         let project = Project::empty_repo();
-        project.write("memoria.yml", &config);
+        project.write("memoria.toml", &config);
         if name == "symlinked instruction" {
             let outside = tempfile::tempdir().unwrap();
             fs::write(outside.path().join("rules.md"), "# rules\n").unwrap();
@@ -69,7 +72,7 @@ fn init_rejects_invalid_existing_configuration_before_writing() {
     }
     // A valid existing configuration still initializes the missing files, and unresolved imports are not init's concern.
     let project = Project::empty_repo();
-    project.write("memoria.yml", "version: 1\nignore: [\"**/generated/**\"]\ndocumentation:\n  instruction_files: [\"rules.md\"]\n");
+    project.write("memoria.toml", "version = 1\nignore = [\n    \"**/generated/**\",\n]\n\n[documentation]\ninstruction_files = [\n    \"rules.md\",\n]\n");
     project.write("rules.md", "# rules\n");
     project.write("README.md", "# Root\n\n<!-- memoria:import src=\"missing/README.md#summary\" -->\n<!-- /memoria:import -->\n");
     project.commit_all("seed");
@@ -91,11 +94,12 @@ fn init_rejects_invalid_existing_configuration_before_writing() {
 fn human_review_refuses_packets_above_the_record_cap_like_json() {
     let make = |instructions: usize| -> Project {
         let project = Project::empty_repo();
-        let mut config = String::from("version: 1\ndocumentation:\n  instructions:\n");
+        let mut config = String::from("version = 1\n[documentation]\ninstructions = [\n");
         for _ in 0..instructions {
-            config.push_str("    - x\n");
+            config.push_str("    \"x\",\n");
         }
-        project.write("memoria.yml", &config);
+        config.push_str("]\n");
+        project.write("memoria.toml", &config);
         project.write("README.md", "# Root\n");
         project.write("child/README.md", "# Child\n");
         project.commit_all("seed");

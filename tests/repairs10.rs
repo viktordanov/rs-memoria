@@ -103,22 +103,22 @@ fn whitespace_bearing_global_excludes_paths_keep_their_policy() {
 
 // MEM-043
 #[test]
-fn literal_quotes_in_plain_policy_scalars_keep_comments_out_of_rules() {
+fn quoted_policy_values_keep_comments_out_of_rules() {
     // Root ignore rules: every spelling excludes the generated file and
     // yields one effective policy.
     let variants = [
-        ("uncommented", "version: 1\nignore:\n  - build's/**\n"),
+        ("uncommented", "version = 1\nignore = [\"build's/**\"]\n"),
         (
             "commented",
-            "version: 1\nignore:\n  - build's/** # generated output\n",
+            "version = 1\nignore = [\"build's/**\"] # generated output\n",
         ),
         (
-            "quoted",
-            "version: 1\nignore:\n  - \"build's/**\" # generated output\n",
+            "literal",
+            "version = 1\nignore = ['''build's/**'''] # generated output\n",
         ),
         (
-            "flow",
-            "version: 1\nignore: [build's/**] # generated output\n",
+            "multiline",
+            "version = 1\nignore = [\n \"build's/**\", # generated output\n]\n",
         ),
     ];
     let mut hashes = BTreeSet::new();
@@ -126,7 +126,7 @@ fn literal_quotes_in_plain_policy_scalars_keep_comments_out_of_rules() {
     for (label, config) in variants {
         let project = Project::seed();
         project.write("build's/output.rs", "generated\n");
-        project.write("memoria.yml", config);
+        project.write("memoria.toml", config);
         assert_eq!(project.run(&["init"]).status.code(), Some(0), "{label}");
         assert_eq!(project.run(&["render"]).status.code(), Some(0), "{label}");
         let (code, explain) = project.json(&["status", "--explain", "build's/output.rs"]);
@@ -152,12 +152,12 @@ fn literal_quotes_in_plain_policy_scalars_keep_comments_out_of_rules() {
         project.write("src/retrieval/fixture's/sample.txt", "sample\n");
         project.write("src/retrieval/say \"hi\"/noise.rs", "noise\n");
         project.write(
-            "memoria.yml",
-            format!("version: 1\nignore:\n  - \"**/generated/**\"{comment}\n  - \"**/fixture's/**\"{comment}\n"),
+            "memoria.toml",
+            format!("version = 1\nignore = [\n \"**/generated/**\",{comment}\n \"**/fixture's/**\",{comment}\n]\n"),
         );
         project.write(
-            "src/retrieval/README.memoria.yml",
-            format!("include:\n  - fixture's/**{comment}\nignore:\n  - say \"hi\"/**{comment}\n"),
+            "src/retrieval/README.memoria.toml",
+            format!("include = [\"fixture's/**\"]{comment}\nignore = ['say \"hi\"/**']{comment}\n"),
         );
         assert_eq!(project.run(&["init"]).status.code(), Some(0), "{comment:?}");
         assert_eq!(
