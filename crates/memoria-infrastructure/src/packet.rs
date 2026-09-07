@@ -680,7 +680,7 @@ fn file_content(value: Json, ctx: &str, budget: &mut u64) -> Result<FileContent,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hash::Xxh64Hasher;
+    use crate::hash::Xxh3Hasher;
     use memoria_application::error::{Detail, DetailMap};
     use memoria_domain::{DocumentId, GitContext, InputManifest};
 
@@ -747,7 +747,7 @@ mod tests {
         assert!(size.serialized_bytes > MAX_SERIALIZED_BYTES);
         assert!(!size.within_hard_limits());
         // The port method reports the same measurement.
-        let hasher = Xxh64Hasher;
+        let hasher = Xxh3Hasher;
         let codec = JsonPacketCodec::new(&hasher);
         assert_eq!(
             codec.envelope_size("review", false, &data, std::slice::from_ref(&diagnostic)),
@@ -808,7 +808,7 @@ mod tests {
 
     #[test]
     fn record_count_is_the_complete_envelope_array_count() {
-        let hasher = Xxh64Hasher;
+        let hasher = Xxh3Hasher;
         let codec = JsonPacketCodec::new(&hasher);
         let bytes = codec.encode(&minimal_packet(), &[]).unwrap();
         let envelope = json::parse(&bytes, Limits::PACKET).unwrap();
@@ -869,7 +869,7 @@ mod tests {
 
     #[test]
     fn j_encoding_is_order_independent_and_tagged() {
-        let hasher = Xxh64Hasher;
+        let hasher = Xxh3Hasher;
         let a = json::parse(b"{\"b\":1,\"a\":[true,null,\"x\"]}", Limits::PACKET).unwrap();
         let b = json::parse(
             b"{ \"a\" : [ true , null , \"x\" ] , \"b\" : 1 }",

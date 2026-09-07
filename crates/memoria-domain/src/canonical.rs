@@ -18,7 +18,7 @@ pub const PACKET_DOMAIN: &str = "memoria.packet.v1";
 pub const SELECTION_ALGORITHM: &str = "git-worktree-v1";
 pub const OWNERSHIP_ALGORITHM: &str = "nearest-readme-v1";
 pub const FINGERPRINT_ALGORITHM: &str = "raw-v1";
-pub const HASH_ALGORITHM: &str = "xxh64-seed0";
+pub const HASH_ALGORITHM: &str = "xxh3-64-seed0";
 pub const NEWLINE_POLICY: &str = "exact-newlines";
 
 /// Incremental canonical encoder.

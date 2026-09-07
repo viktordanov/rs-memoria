@@ -16,7 +16,7 @@ pub mod yaml;
 
 pub use fs::{AtomicFileWriter, FsProjectFiles, LockFileCoordinator, SystemClock};
 pub use git::GitCli;
-pub use hash::Xxh64Hasher;
+pub use hash::Xxh3Hasher;
 pub use markdown::PulldownMarkdownCodec;
 pub use packet::{FsPacketInput, JsonPacketCodec};
 pub use skill::FsSkillStore;

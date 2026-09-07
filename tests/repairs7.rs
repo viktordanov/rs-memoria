@@ -261,7 +261,7 @@ fn packet_record_counts_match_the_complete_envelope() {
         data.remove("packet_digest");
     }
     let digest = memoria_infrastructure::packet::packet_digest(
-        &memoria_infrastructure::Xxh64Hasher,
+        &memoria_infrastructure::Xxh3Hasher,
         &tampered,
     );
     set_path(
