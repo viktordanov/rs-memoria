@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 600" role="img" aria-label="Workspace dependencies point toward the domain rules.">
+<title>Workspace dependencies point toward the domain rules.</title>
+<desc>The binary depends on application and infrastructure. Infrastructure depends on application contracts and domain values. Application depends on domain. Domain declares no runtime dependencies.</desc>
+<style>
+  :root {
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+
+    --surface: #FFFCF7;
+    --ink: #241E18;
+    --ink-2: #4B4035;
+    --muted: #716253;
+    --hairline: #E6DACB;
+    --hairline-strong: #B7A58F;
+
+    --a: #A8511B;
+    --b: #16736A;
+    --c: #8C5A34;
+    --danger: #A03830;
+
+    --tint-a: #F6EBE1;
+    --tint-b: #E4F0EE;
+    --tint-c: #F2E8DA;
+    --tint-d: #F7E7E4;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --surface: #111111;
+      --ink: #F3EADF;
+      --ink-2: #D2C5B6;
+      --muted: #B3A391;
+      --hairline: #342D26;
+      --hairline-strong: #655545;
+
+      --a: #E28D4F;
+      --b: #4FBEAB;
+      --c: #D3A37F;
+      --danger: #EE8B81;
+
+      --tint-a: #2A1D14;
+      --tint-b: #12292A;
+      --tint-c: #2B2119;
+      --tint-d: #2C1917;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --surface: #111111;
+    --ink: #F3EADF;
+    --ink-2: #D2C5B6;
+    --muted: #B3A391;
+    --hairline: #342D26;
+    --hairline-strong: #655545;
+
+    --a: #E28D4F;
+    --b: #4FBEAB;
+    --c: #D3A37F;
+    --danger: #EE8B81;
+
+    --tint-a: #2A1D14;
+    --tint-b: #12292A;
+    --tint-c: #2B2119;
+    --tint-d: #2C1917;
+  }
+
+  /* Scroll container — wide diagrams scroll instead of crushing. */
+  .canvas {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    padding: 20px;
+    overflow-x: auto;
+  }
+
+  .canvas svg { display: block; width: 100%; min-width: 720px; height: auto; }
+
+  /* Shapes */
+  .diagram-bg { fill: #FFFCF7; fill: var(--surface); }
+  .sBox { fill: #FFFCF7; fill: var(--surface); stroke-width: 1.5; }
+  .sA { stroke: #A8511B; stroke: var(--a); }
+  .sB { stroke: #16736A; stroke: var(--b); }
+  .sC { stroke: #8C5A34; stroke: var(--c); }
+  .sD { stroke: #A03830; stroke: var(--danger); }
+  .sN { stroke: #B7A58F; stroke: var(--hairline-strong); }
+  .fA { fill: #A8511B; fill: var(--a); }
+  .fB { fill: #16736A; fill: var(--b); }
+  .fC { fill: #8C5A34; fill: var(--c); }
+  .fD { fill: #A03830; fill: var(--danger); }
+  .fN { fill: #B7A58F; fill: var(--hairline-strong); }
+
+  /* Fills for grouping blocks — draw BEFORE the marks they sit behind. */
+  .tintA { fill: #F6EBE1; fill: var(--tint-a); stroke: none; }
+  .tintB { fill: #E4F0EE; fill: var(--tint-b); stroke: none; }
+  .tintC { fill: #F2E8DA; fill: var(--tint-c); stroke: none; }
+  .tintD { fill: #F7E7E4; fill: var(--tint-d); stroke: none; }
+
+  /* Lines */
+  .msg  { fill: none; stroke-width: 1.5; }        /* messages and connectors */
+  .dash { stroke-dasharray: 5 4; }                /* returns, "implements" */
+  .ll   { stroke: #B7A58F; stroke: var(--hairline-strong); stroke-dasharray: 3 5; stroke-width: 1; }  /* lifelines */
+  .band { fill: none; stroke: #E6DACB; stroke: var(--hairline); stroke-dasharray: 3 5; stroke-width: 1; }
+
+  /* Text */
+  .tT    { font: 600 13px sans-serif; font: 600 13px var(--sans); fill: #241E18; fill: var(--ink); }      /* box title */
+  .tHead { font: 600 12px sans-serif; font: 600 12px var(--sans); fill: #241E18; fill: var(--ink); }      /* participant header */
+  .tS    { font: 400 10.5px monospace; font: 400 10.5px var(--mono); fill: #716253; fill: var(--muted); }  /* box subline */
+  .tL    { font: 500 10.5px monospace; font: 500 10.5px var(--mono); fill: #4B4035; fill: var(--ink-2); }  /* arrow label */
+  .tLm   { font: 400 10px monospace; font: 400 10px var(--mono); fill: #716253; fill: var(--muted); }    /* caveat, condition */
+  .tBand { font: 700 10.5px sans-serif; font: 700 10.5px var(--sans); letter-spacing: .12em; } /* + fA/fB/fC */
+.tintN { fill: #FFFCF7; fill: var(--surface); stroke: #B7A58F; stroke: var(--hairline-strong); }
+</style>
+  <defs>
+    <marker id="ar-n" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto">
+      <polygon points="0,0 10,4 0,8" class="fN" />
+    </marker>
+    <marker id="ar-a" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto">
+      <polygon points="0,0 10,4 0,8" class="fA" />
+    </marker>
+    <marker id="ar-b" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto">
+      <polygon points="0,0 10,4 0,8" class="fB" />
+    </marker>
+    <marker id="ar-c" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto">
+      <polygon points="0,0 10,4 0,8" class="fC" />
+    </marker>
+    <marker id="ar-d" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="7" orient="auto">
+      <polygon points="0,0 10,4 0,8" class="fD" />
+    </marker>
+  </defs>
+<rect class="diagram-bg" x="0" y="0" width="1100" height="600" />
+<text class="tT" x="28" y="30">Workspace dependencies point toward the domain rules.</text>
+
+<rect class="band" x="20" y="52" width="1060" height="135" />
+<text class="tBand fN" x="36" y="74">COMPOSITION AND ADAPTERS</text>
+<rect class="sBox sN" x="60" y="88" width="270" height="58" />
+<text class="tT" x="74" y="112">rs-memoria</text>
+<text class="tS" x="74" y="130">Binary assembly and presentation</text>
+<rect class="sBox sC" x="710" y="88" width="320" height="58" />
+<text class="tT" x="724" y="112">memoria-infrastructure</text>
+<text class="tS" x="724" y="130">Git, files, formats, and state storage</text>
+
+<rect class="band" x="20" y="239" width="1060" height="141" />
+<text class="tBand fA" x="36" y="261">APPLICATION CONTRACTS</text>
+<rect class="sBox sA" x="345" y="286" width="370" height="66" />
+<text class="tT" x="359" y="310">memoria-application</text>
+<text class="tS" x="359" y="328">Use cases, ports, and snapshot coordination</text>
+
+<rect class="band" x="20" y="438" width="1060" height="141" />
+<text class="tBand fB" x="36" y="460">DOMAIN RULES</text>
+<rect class="sBox sB" x="360" y="487" width="340" height="66" />
+<text class="tT" x="374" y="511">memoria-domain</text>
+<text class="tS" x="374" y="529">Ownership, manifests, and review transitions</text>
+
+<line class="msg sN" x1="330" y1="115" x2="704" y2="115" marker-end="url(#ar-n)" />
+<text class="tL" x="438" y="107">memoria-infrastructure</text>
+<path class="msg sN" d="M175,146 V222 H455 V280" marker-end="url(#ar-n)" />
+<text class="tL" x="185" y="207">memoria-application</text>
+<path class="msg sC" d="M825,146 V205 H625 V280" marker-end="url(#ar-c)" />
+<text class="tL" x="647" y="197">memoria-application</text>
+<path class="msg sC" d="M980,146 V521 H706" marker-end="url(#ar-c)" />
+<text class="tL" x="970" y="415" text-anchor="end">memoria-domain</text>
+<line class="msg sA" x1="530" y1="352" x2="530" y2="481" marker-end="url(#ar-a)" />
+<text class="tL" x="545" y="417">memoria-domain</text>
+</svg>
