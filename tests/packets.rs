@@ -378,7 +378,7 @@ fn tampered_packets_are_rejected_and_canonical_reformatting_is_accepted() {
         assert_eq!(project.state(), state_before);
     }
     // Recomputing the digest does not rescue inconsistent snapshot fields.
-    let hasher = memoria_infrastructure::Xxh64Hasher;
+    let hasher = memoria_infrastructure::Xxh3Hasher;
     let redigest = |mut value: Json| {
         if let Json::Object(map) = &mut value
             && let Some(Json::Object(data)) = map.get_mut("data")

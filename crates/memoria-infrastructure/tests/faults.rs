@@ -15,7 +15,7 @@ use memoria_infrastructure::fs::{
 };
 use memoria_infrastructure::{
     FsPacketInput, FsSkillStore, GitCli, JsonPacketCodec, JsonStateStore, PulldownMarkdownCodec,
-    Xxh64Hasher,
+    Xxh3Hasher,
 };
 
 struct Quiet;
@@ -117,7 +117,7 @@ struct Harness<'a> {
     git: MutatingGit<'a>,
     config: YamlConfigurationReader,
     markdown: PulldownMarkdownCodec,
-    hasher: Xxh64Hasher,
+    hasher: Xxh3Hasher,
     state: JsonStateStore<'static>,
     clock: SystemClock,
     locks: LockFileCoordinator,
@@ -142,7 +142,7 @@ fn harness<'a>(
         },
         config: YamlConfigurationReader,
         markdown: PulldownMarkdownCodec,
-        hasher: Xxh64Hasher,
+        hasher: Xxh3Hasher,
         state: JsonStateStore::new(root.to_path_buf()),
         clock: SystemClock,
         locks: LockFileCoordinator::new(root.to_path_buf()),

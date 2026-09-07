@@ -126,7 +126,7 @@ pub trait HashStream {
     fn finish(self: Box<Self>) -> Hash64;
 }
 
-/// xxHash64 with seed zero.
+/// XXH3-64 with the default secret and seed zero.
 pub trait FingerprintHasher {
     fn hash(&self, bytes: &[u8]) -> Hash64;
     fn stream(&self) -> Box<dyn HashStream>;

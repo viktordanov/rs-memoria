@@ -10,7 +10,7 @@ description = "Filesystem, Git, Markdown, hashing, JSON, YAML, and installer ada
 memoria-domain = { path = "../memoria-domain" }
 memoria-application = { path = "../memoria-application" }
 pulldown-cmark = { version = "0.13", default-features = false }
-xxhash-rust = { version = "0.8", features = ["xxh64"] }
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 base64 = "0.22"
 rustix = { version = "1", features = ["fs"] }
 

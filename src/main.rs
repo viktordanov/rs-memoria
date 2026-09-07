@@ -13,7 +13,7 @@ use memoria_application::usecases;
 use memoria_infrastructure::config::YamlConfigurationReader;
 use memoria_infrastructure::{
     AtomicFileWriter, FsPacketInput, FsProjectFiles, FsSkillStore, GitCli, JsonPacketCodec,
-    JsonStateStore, LockFileCoordinator, PulldownMarkdownCodec, SystemClock, Xxh64Hasher,
+    JsonStateStore, LockFileCoordinator, PulldownMarkdownCodec, SystemClock, Xxh3Hasher,
 };
 use presentation::cli::{AgentCommand, Cli, Command, Format, Target};
 use presentation::{json, text};
@@ -85,7 +85,7 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
     let files = FsProjectFiles::new(root.clone());
     let config = YamlConfigurationReader;
     let markdown = PulldownMarkdownCodec;
-    let hasher = Xxh64Hasher;
+    let hasher = Xxh3Hasher;
     let state = JsonStateStore::new(root.clone());
     let clock = SystemClock;
     let locks = LockFileCoordinator::new(root.clone());

@@ -58,7 +58,9 @@ fn conflict(message: impl Into<String>, paths: Vec<PathBuf>) -> SkillFailure {
 }
 
 fn hash_hex(bytes: &[u8]) -> String {
-    format!("{:016x}", xxhash_rust::xxh64::xxh64(bytes, 0))
+    use memoria_application::ports::FingerprintHasher;
+
+    crate::hash::Xxh3Hasher.hash(bytes).to_hex()
 }
 
 #[derive(Debug, Clone)]

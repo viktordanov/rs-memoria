@@ -1,6 +1,6 @@
-//! Golden canonical bytes and digests computed by an independent pure-Python
-//! xxHash64 reference implementation (see the implementation ledger). None of
-//! these expected values were produced by the production encoder.
+//! Golden digests from the independent xxHash C library 0.8.3, XXH3_64bits,
+//! over manually encoded canonical bytes. Expected values are not produced
+//! by the production Rust encoder or hasher.
 
 use memoria_application::packet::compute_token;
 use memoria_application::ports::FingerprintHasher;
@@ -9,7 +9,7 @@ use memoria_domain::{
     DirPath, DocumentId, EffectivePolicy, ExportId, FileInput, GitRuleScope, Hash64, ImportInput,
     InputManifest, PolicyRuleScope, ProjectPath,
 };
-use memoria_infrastructure::Xxh64Hasher;
+use memoria_infrastructure::Xxh3Hasher;
 use memoria_infrastructure::json::{Limits, parse};
 use memoria_infrastructure::packet::packet_digest;
 
@@ -41,12 +41,12 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 #[test]
-fn published_xxh64_vectors() {
-    let hasher = Xxh64Hasher;
-    assert_eq!(hasher.hash(b"").to_hex(), "ef46db3751d8e999");
-    assert_eq!(hasher.hash(b"a").to_hex(), "d24ec4f1a98c6e5b");
-    assert_eq!(hasher.hash(b"abc").to_hex(), "44bc2cf5ad770999");
-    assert_eq!(hasher.hash(&[b'x'; 100]).to_hex(), "92f0de5a88a3c094");
+fn xxh3_64_reference_vectors() {
+    let hasher = Xxh3Hasher;
+    assert_eq!(hasher.hash(b"").to_hex(), "2d06800538d394c2");
+    assert_eq!(hasher.hash(b"a").to_hex(), "e6c632b61e964e1f");
+    assert_eq!(hasher.hash(b"abc").to_hex(), "78af5f94892f3950");
+    assert_eq!(hasher.hash(&[b'x'; 100]).to_hex(), "c90984ffdf50ce42");
 }
 
 #[test]
@@ -54,7 +54,7 @@ fn canonical_inputs_bytes_and_digest_match_the_reference() {
     let bytes = encode_inputs(&fixed_manifest());
     assert_eq!(bytes.len(), 160);
     assert_eq!(hex(&bytes), INPUTS_HEX);
-    assert_eq!(Xxh64Hasher.hash(&bytes).to_hex(), "ce65094913480e2e");
+    assert_eq!(Xxh3Hasher.hash(&bytes).to_hex(), "4186e94d17acc21f");
 }
 
 #[test]
@@ -66,13 +66,13 @@ fn review_token_matches_the_reference() {
         (1, "Use Simplified English everywhere.".to_string()),
     ];
     let bytes = encode_review_token(&doc, 2, &manifest, &covered);
-    assert_eq!(Xxh64Hasher.hash(&bytes).to_hex(), "f44c810a61601b86");
-    let token = compute_token(&Xxh64Hasher, &doc, 2, &manifest, &covered);
-    assert_eq!(token, "mrv1.f44c810a61601b86");
+    assert_eq!(Xxh3Hasher.hash(&bytes).to_hex(), "a5553af69e6fde75");
+    let token = compute_token(&Xxh3Hasher, &doc, 2, &manifest, &covered);
+    assert_eq!(token, "mrv1.a5553af69e6fde75");
     assert_eq!(token.len(), 21);
     // Small and maximal manifests both produce 21-byte tokens.
     let empty = InputManifest::new(doc.clone(), Hash64(0), 0, Hash64(0), vec![], vec![]).unwrap();
-    assert_eq!(compute_token(&Xxh64Hasher, &doc, 0, &empty, &[]).len(), 21);
+    assert_eq!(compute_token(&Xxh3Hasher, &doc, 0, &empty, &[]).len(), 21);
     let files: Vec<FileInput> = (0..5000)
         .map(|i| FileInput {
             path: ProjectPath::parse(&format!("f{i}.rs")).unwrap(),
@@ -90,7 +90,7 @@ fn review_token_matches_the_reference() {
     )
     .unwrap();
     assert_eq!(
-        compute_token(&Xxh64Hasher, &doc, u64::MAX, &large, &[]).len(),
+        compute_token(&Xxh3Hasher, &doc, u64::MAX, &large, &[]).len(),
         21
     );
     // The largest manifest the packet record cap permits (100,000 records) still yields 21 bytes.
@@ -110,7 +110,7 @@ fn review_token_matches_the_reference() {
     let maximal = InputManifest::new(doc.clone(), Hash64(0), 0, Hash64(0), files, imports).unwrap();
     assert_eq!(maximal.record_count(), 100_000);
     let maximal_token = compute_token(
-        &Xxh64Hasher,
+        &Xxh3Hasher,
         &doc,
         u64::MAX - 1,
         &maximal,
@@ -120,11 +120,11 @@ fn review_token_matches_the_reference() {
     assert!(maximal_token.is_ascii() && maximal_token.starts_with("mrv1."));
     // Different revisions and covered sets change the digest.
     assert_ne!(
-        compute_token(&Xxh64Hasher, &doc, 3, &manifest, &covered),
+        compute_token(&Xxh3Hasher, &doc, 3, &manifest, &covered),
         token
     );
     assert_ne!(
-        compute_token(&Xxh64Hasher, &doc, 2, &manifest, &covered[..1]),
+        compute_token(&Xxh3Hasher, &doc, 2, &manifest, &covered[..1]),
         token
     );
 }
@@ -153,13 +153,13 @@ fn policy_digest_matches_the_reference() {
         ],
     );
     assert_eq!(
-        Xxh64Hasher.hash(&encode_policy(&policy)).to_hex(),
-        "e229c70cda829f1b"
+        Xxh3Hasher.hash(&encode_policy(&policy)).to_hex(),
+        "979842422fc80b8b"
     );
 }
 
 #[test]
 fn packet_digest_matches_the_reference() {
     let value = parse(br#"{"b":"x","a":[true,null,7]}"#, Limits::PACKET).unwrap();
-    assert_eq!(packet_digest(&Xxh64Hasher, &value), "a984d359db157f42");
+    assert_eq!(packet_digest(&Xxh3Hasher, &value), "463e3c32ba062a9d");
 }
