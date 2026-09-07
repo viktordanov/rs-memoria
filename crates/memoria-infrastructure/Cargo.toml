@@ -1,0 +1,18 @@
+[package]
+name = "memoria-infrastructure"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Filesystem, Git, Markdown, hashing, JSON, YAML, and installer adapters for Memoria."
+
+[dependencies]
+memoria-domain = { path = "../memoria-domain" }
+memoria-application = { path = "../memoria-application" }
+pulldown-cmark = { version = "0.13", default-features = false }
+xxhash-rust = { version = "0.8", features = ["xxh64"] }
+base64 = "0.22"
+rustix = { version = "1", features = ["fs"] }
+
+[dev-dependencies]
+tempfile = "3"

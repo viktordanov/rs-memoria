@@ -1,0 +1,39 @@
+[workspace]
+members = [
+    "crates/memoria-domain",
+    "crates/memoria-application",
+    "crates/memoria-infrastructure",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.96"
+
+[package]
+name = "rs-memoria"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Memoria keeps a project's documented mental model connected to its code."
+default-run = "memoria"
+
+[[bin]]
+name = "memoria"
+path = "src/main.rs"
+
+[dependencies]
+memoria-application = { path = "crates/memoria-application" }
+memoria-infrastructure = { path = "crates/memoria-infrastructure" }
+clap = { version = "4.5", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

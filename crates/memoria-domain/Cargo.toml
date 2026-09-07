@@ -1,0 +1,12 @@
+[package]
+name = "memoria-domain"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Pure domain model for Memoria: paths, ownership, imports, manifests, and review state."
+
+[dependencies]
+
+[dev-dependencies]
+proptest = "1.11"
