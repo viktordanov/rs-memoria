@@ -1,18 +1,20 @@
 # memoria-infrastructure
 
-The infrastructure crate connects application ports to Git, files, parsers, and durable storage.
+The infrastructure crate reads and writes external data for Memoria commands.
 
-An adapter converts external bytes or operations into the values that the application expects.
+A port is an application contract for an external operation.
+An adapter implements that contract with Git, file access, or a data format library.
 This crate depends on the application and domain crates.
 It keeps library types inside the adapters.
+
+Read [fs.rs](src/fs.rs#L110) to start with file classification and reads.
 
 ## Role in the project
 
 <!-- memoria:export id="summary" -->
-The infrastructure crate supplies Git, filesystem, parser, hashing, and storage adapters.
-It converts external inputs into application values.
+The infrastructure crate implements Git, file, parser, and storage operations.
+It supplies these operations through application ports.
 Its writers compare expected content before replacement.
-The application uses these adapters to save review state and update import bodies.
 <!-- /memoria:export -->
 
 ## Repository facts enter through adapters
@@ -30,6 +32,9 @@ The adapters do not determine which README needs review.
 Source evidence: [git.rs:16](src/git.rs#L16), [git.rs:260](src/git.rs#L260), and [fs.rs:110](src/fs.rs#L110).
 
 ## State writes preserve a clear error boundary
+
+An acknowledgement records who reviewed one README and why its explanation is correct.
+Saved review state contains the latest acknowledgement and input identities for each README.
 
 `JsonStateStore::save` validates the state value and compares the stored bytes with the expected bytes.
 A mismatch returns `StateFailure::Conflict`.
@@ -50,13 +55,17 @@ Source evidence: [state.rs:326](src/state.rs#L326), [fs.rs:202](src/fs.rs#L202),
 
 ## Formats and packet limits
 
+A review packet contains one README and the exact input bytes for its review.
+A codec converts between application values and a transport format, such as JSON.
+An export is a marked README section that another README can copy.
+
 | Adapter | Contract |
 | --- | --- |
 | `PulldownMarkdownCodec` | It identifies marker ranges and validates export text. |
-| `YamlConfigurationReader` | It accepts the supported configuration subset. |
+| `TomlConfigurationReader` | It accepts the supported TOML configuration. |
 | `JsonPacketCodec` | It encodes and decodes packets under hard limits. |
 | `JsonStateStore` | It converts versioned JSON to review state. |
-| `Xxh64Hasher` | It calculates xxHash64 hashes with seed zero. |
+| `Xxh3Hasher` | It calculates XXH3-64 hashes with the default secret and seed zero. |
 
 The packet codec measures every part of the JSON envelope.
 This measurement includes diagnostics.
@@ -67,6 +76,9 @@ The binary obtains the encoded packet before it selects the output format.
 Source evidence: [packet.rs:268](src/packet.rs#L268) and [main.rs:145](../../src/main.rs#L145).
 
 ## Skill installation has its own transaction
+
+An agent skill is a file of instructions for an agent.
+The installer stores the Memoria skill and its management record in one package directory.
 
 `FsSkillStore` uses a lock in the package parent directory.
 It records installation progress and preserves a backup during package replacement.

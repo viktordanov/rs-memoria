@@ -12,7 +12,6 @@ pub mod markdown;
 pub mod packet;
 pub mod skill;
 pub mod state;
-pub mod yaml;
 
 pub use fs::{AtomicFileWriter, FsProjectFiles, LockFileCoordinator, SystemClock};
 pub use git::GitCli;

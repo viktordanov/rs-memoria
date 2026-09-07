@@ -73,7 +73,7 @@ fn no_git_missing_config_and_unborn_head() {
     assert_eq!(code, 0);
     assert_eq!(
         strings(get(&init, &["data", "created"])),
-        vec!["memoria.yml", "README.md", ".memoria/state.json"]
+        vec!["memoria.toml", "README.md", ".memoria/state.json"]
     );
     let (code, _) = project.json(&["lint"]);
     assert_eq!(code, 0);
@@ -88,7 +88,7 @@ fn no_git_missing_config_and_unborn_head() {
     let (code, again) = project.json(&["init"]);
     assert_eq!(code, 0);
     assert!(strings(get(&again, &["data", "created"])).is_empty());
-    project.write("memoria.yml", "version: 3\n");
+    project.write("memoria.toml", "version = 3\n");
     let (code, bad) = project.json(&["init"]);
     assert_eq!(code, 1);
     assert_eq!(diagnostic_codes(&bad), vec!["configuration_invalid"]);
@@ -152,12 +152,17 @@ fn tracked_ignored_files_stay_eligible_and_untracked_ignored_do_not() {
     );
     assert!(get_str(&explain, &["data", "explanation", "reason"]).contains(".gitignore"));
     // A Memoria ignore excludes the tracked file again.
-    project.append("memoria.yml", "include: []\n");
     project.write(
-        "memoria.yml",
+        "memoria.toml",
         project
-            .read_string("memoria.yml")
-            .replace("ignore:\n", "ignore:\n  - \"ignored-output/**\"\n"),
+            .read_string("memoria.toml")
+            .replace("version = 1\n", "version = 1\ninclude = []\n"),
+    );
+    project.write(
+        "memoria.toml",
+        project
+            .read_string("memoria.toml")
+            .replace("ignore = [\n", "ignore = [\n    \"ignored-output/**\",\n"),
     );
     let (_, explain) = project.json(&["status", "--explain", "ignored-output/report.txt"]);
     assert_eq!(
@@ -195,8 +200,8 @@ fn unusual_paths_and_symlinks() {
         .unwrap();
     assert_eq!(get_str(bad, &["path"]), "src/corpus/link.rs");
     project.write(
-        "src/corpus/README.memoria.yml",
-        "ignore:\n  - \"link.rs\"\n",
+        "src/corpus/README.memoria.toml",
+        "ignore = [\n    \"link.rs\",\n]\n",
     );
     let (code, _) = project.json(&["lint"]);
     assert_eq!(code, 0);
@@ -249,7 +254,7 @@ fn markdown_edge_cases() {
         "src/corpus/README.md",
         "# Corpus\n\n<!-- memoria:export id=\"summary\" -->\nA corpus.\n<!-- /memoria:export -->\n",
     );
-    project.write("src/orphan/README.memoria.yml", "ignore: []\n");
+    project.write("src/orphan/README.memoria.toml", "ignore = []\n");
     let (code, lint) = project.json(&["lint"]);
     assert_eq!(code, 1);
     assert!(diagnostic_codes(&lint).contains(&"sidecar_orphan".to_string()));

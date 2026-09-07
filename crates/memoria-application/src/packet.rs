@@ -95,7 +95,7 @@ pub struct PacketContent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstructionEntry {
-    /// `memoria.yml`, a sidecar path, or an instruction file path.
+    /// `memoria.toml`, a sidecar path, or an instruction file path.
     pub source: String,
     pub kind: String,
     pub text: String,

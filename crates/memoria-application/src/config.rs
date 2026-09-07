@@ -1,6 +1,6 @@
 //! Configuration values produced by the configuration reader port.
 
-/// Root `memoria.yml` after strict parsing and defaulting.
+/// Root `memoria.toml` after strict parsing and defaulting.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RootConfig {
     pub ignore: Vec<String>,
@@ -22,7 +22,7 @@ impl Default for RootConfig {
     }
 }
 
-/// Local `README.memoria.yml` after strict parsing and defaulting.
+/// Local `README.memoria.toml` after strict parsing and defaulting.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SidecarConfig {
     pub ignore: Vec<String>,
@@ -32,7 +32,32 @@ pub struct SidecarConfig {
 }
 
 /// The template written by `memoria init`.
-pub const ROOT_CONFIG_TEMPLATE: &str = "# Memoria root configuration. See docs/cli.md in the Memoria project.\nversion: 1\n\n# Memoria-specific exclusions. Patterns are relative to the project root.\n# Tracked generated output, snapshots, and fixtures stay selected until you\n# exclude them here. Local README.memoria.yml files can restore them.\nignore: []\n\n# Root includes restore files that a root ignore pattern excluded.\ninclude: []\n\ndocumentation:\n  # Short writing rules shown in every focused review packet.\n  instructions: []\n  # Instruction files, relative to this file. Missing files are errors.\n  instruction_files: []\n\nfingerprints:\n  # Only raw byte hashing is supported in this release.\n  default: raw\n  languages: {}\n\nlint:\n  # Report local README links that have no matching import as hints.\n  missing_import_hint: true\n";
+pub const ROOT_CONFIG_TEMPLATE: &str = r#"# Memoria root configuration. See docs/cli.md in the Memoria project.
+version = 1
+
+# Memoria-specific exclusions. Patterns are relative to the project root.
+# Tracked generated output, snapshots, and fixtures stay selected until you
+# exclude them here. Local README.memoria.toml files can restore them.
+ignore = []
+
+# Root includes restore files that a root ignore pattern excluded.
+include = []
+
+[documentation]
+# Short writing rules shown in every focused review packet.
+instructions = []
+# Instruction files, relative to this file. Missing files are errors.
+instruction_files = []
+
+[fingerprints]
+# Only raw byte hashing is supported in this release.
+default = "raw"
+languages = {}
+
+[lint]
+# Report local README links that have no matching import as hints.
+missing_import_hint = true
+"#;
 
 /// The minimal root README written by `memoria init` when none exists.
 pub const ROOT_README_TEMPLATE: &str = "# Project\n\nThis README owns every selected file that no nearer README explains.\n\n<!-- memoria:export id=\"summary\" -->\n## Summary\n\nDescribe what this project does in a few sentences.\n<!-- /memoria:export -->\n";

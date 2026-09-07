@@ -77,10 +77,11 @@ fn symlink_ancestors_cannot_read_or_write_outside_the_project() {
     assert!(!stdout(&output).contains("OUTSIDE CONTENT"));
     // Excluding the symlink and its tree keeps them harmless.
     project.write(
-        "memoria.yml",
-        project
-            .read_string("memoria.yml")
-            .replace("ignore:\n", "ignore:\n  - \"lib\"\n  - \"lib/**\"\n"),
+        "memoria.toml",
+        project.read_string("memoria.toml").replace(
+            "ignore = [\n",
+            "ignore = [\n    \"lib\",\n    \"lib/**\",\n",
+        ),
     );
     assert_eq!(project.json(&["lint"]).0, 0);
     assert_eq!(
@@ -437,7 +438,7 @@ fn deleted_tracked_readmes_and_sidecars_recalculate_ownership() {
     // A deleted sidecar drops its rules; the fixture becomes excluded again.
     let project = Project::seed();
     project.baseline();
-    project.remove("src/retrieval/README.memoria.yml");
+    project.remove("src/retrieval/README.memoria.toml");
     let (code, _) = project.json(&["status"]);
     assert_eq!(code, 0);
     let (_, explain) = project.json(&["status", "--explain", "src/retrieval/fixtures/sample.txt"]);
@@ -450,7 +451,7 @@ fn deleted_tracked_readmes_and_sidecars_recalculate_ownership() {
         vec!["input_changed"]
     );
     // Real orphan sidecars are still errors.
-    project.write("src/orphan/README.memoria.yml", "ignore: []\n");
+    project.write("src/orphan/README.memoria.toml", "ignore = []\n");
     let (code, lint) = project.json(&["lint"]);
     assert_eq!(code, 1);
     assert!(diagnostic_codes(&lint).contains(&"sidecar_orphan".to_string()));
@@ -1063,7 +1064,13 @@ fn stale_policy_and_file_set_snapshots_are_rejected_with_exact_entries() {
     let (packet, token) = project.review_packet("src/execution/README.md");
     let before = project.state();
     // Policy change with an unchanged file set.
-    project.append("memoria.yml", "include:\n  - \"nothing/**\"\n");
+    project.write(
+        "memoria.toml",
+        project.read_string("memoria.toml").replace(
+            "version = 1\n",
+            "version = 1\ninclude = [\n    \"nothing/**\",\n]\n",
+        ),
+    );
     let output = ack_json(&project, "src/execution/README.md", &packet, &token);
     assert_eq!(output.status.code(), Some(3));
     let value = parse_json(&output.stdout);
@@ -1080,10 +1087,10 @@ fn stale_policy_and_file_set_snapshots_are_rejected_with_exact_entries() {
     );
     assert_eq!(project.state(), before);
     project.write(
-        "memoria.yml",
+        "memoria.toml",
         project
-            .read_string("memoria.yml")
-            .replace("include:\n  - \"nothing/**\"\n", ""),
+            .read_string("memoria.toml")
+            .replace("include = [\n    \"nothing/**\",\n]\n", ""),
     );
     // File added and removed.
     project.write("src/execution/extra.rs", "x\n");

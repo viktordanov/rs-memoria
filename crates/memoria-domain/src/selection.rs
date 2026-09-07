@@ -181,7 +181,7 @@ mod tests {
     fn reserved_cannot_be_restored() {
         let scopes = vec![scope("", &[], &["**"])];
         let decision = decide(
-            &ProjectPath::parse("memoria.yml").unwrap(),
+            &ProjectPath::parse("memoria.toml").unwrap(),
             Some("configuration".to_string()),
             &scopes,
         );

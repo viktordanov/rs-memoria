@@ -176,8 +176,8 @@ fn root_instruction_only_sidecar_is_context_not_policy() {
     project.baseline();
     let before = project.state();
     project.write(
-        "README.memoria.yml",
-        "documentation:\n  instructions:\n    - Use clear short sentences.\n",
+        "README.memoria.toml",
+        "[documentation]\ninstructions = [\n    \"Use clear short sentences.\",\n]\n",
     );
     assert_eq!(
         project.json(&["check"]).0,
@@ -185,8 +185,8 @@ fn root_instruction_only_sidecar_is_context_not_policy() {
         "adding a root instruction-only sidecar changes no fingerprint"
     );
     project.write(
-        "README.memoria.yml",
-        "documentation:\n  instructions:\n    - Use even shorter sentences.\n",
+        "README.memoria.toml",
+        "[documentation]\ninstructions = [\n    \"Use even shorter sentences.\",\n]\n",
     );
     assert_eq!(project.json(&["check"]).0, 0);
     // Every descendant inherits the root sidecar's instruction in its packet.
@@ -200,14 +200,14 @@ fn root_instruction_only_sidecar_is_context_not_policy() {
         instructions
             .iter()
             .any(|i| get_str(i, &["text"]) == "Use even shorter sentences."
-                && get_str(i, &["source"]) == "README.memoria.yml")
+                && get_str(i, &["source"]) == "README.memoria.toml")
     );
     project.ack_ok("src/retrieval/naive/README.md");
-    fs::remove_file(project.root.join("README.memoria.yml")).unwrap();
+    fs::remove_file(project.root.join("README.memoria.toml")).unwrap();
     assert_eq!(project.json(&["check"]).0, 0, "removing it changes nothing");
     assert_ne!(project.state(), before);
-    // A root sidecar with a real rule is policy for every owner; memoria.yml edits remain policy too.
-    project.write("README.memoria.yml", "ignore:\n  - \"*.tmp\"\n");
+    // A root sidecar with a real rule is policy for every owner; memoria.toml edits remain policy too.
+    project.write("README.memoria.toml", "ignore = [\n    \"*.tmp\",\n]\n");
     for doc in [
         "README.md",
         "src/corpus/README.md",
@@ -215,9 +215,15 @@ fn root_instruction_only_sidecar_is_context_not_policy() {
     ] {
         assert_eq!(project.cause_codes(doc), vec!["input_changed"], "{doc}");
     }
-    fs::remove_file(project.root.join("README.memoria.yml")).unwrap();
+    fs::remove_file(project.root.join("README.memoria.toml")).unwrap();
     assert_eq!(project.json(&["check"]).0, 0);
-    project.append("memoria.yml", "include:\n  - \"nothing/**\"\n");
+    project.write(
+        "memoria.toml",
+        project.read_string("memoria.toml").replace(
+            "version = 1\n",
+            "version = 1\ninclude = [\n    \"nothing/**\",\n]\n",
+        ),
+    );
     assert_eq!(project.cause_codes("README.md"), vec!["input_changed"]);
 }
 
@@ -263,10 +269,10 @@ fn human_and_json_record_counts_are_the_same_complete_count() {
     let project = Project::seed();
     project.baseline();
     project.write(
-        "memoria.yml",
-        project.read_string("memoria.yml").replace(
-            "version: 1\n",
-            "version: 1\nlint:\n  missing_import_hint: false\n",
+        "memoria.toml",
+        project.read_string("memoria.toml").replace(
+            "version = 1\n",
+            "version = 1\nlint.missing_import_hint = false\n",
         ),
     );
     project.append("README.md", "\nSee [disconnected](src/disconnected/).\n");

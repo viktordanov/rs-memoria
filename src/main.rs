@@ -10,7 +10,7 @@ use clap::Parser as _;
 use memoria_application::error::{AppError, Detail, Diagnostic, Outcome};
 use memoria_application::ports::{AgentTarget, PacketSource, Progress, Services, SkillOperation};
 use memoria_application::usecases;
-use memoria_infrastructure::config::YamlConfigurationReader;
+use memoria_infrastructure::config::TomlConfigurationReader;
 use memoria_infrastructure::{
     AtomicFileWriter, FsPacketInput, FsProjectFiles, FsSkillStore, GitCli, JsonPacketCodec,
     JsonStateStore, LockFileCoordinator, PulldownMarkdownCodec, SystemClock, Xxh3Hasher,
@@ -83,7 +83,7 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
     let git = discover_root(cli.root.as_deref())?;
     let root = git.root().to_path_buf();
     let files = FsProjectFiles::new(root.clone());
-    let config = YamlConfigurationReader;
+    let config = TomlConfigurationReader;
     let markdown = PulldownMarkdownCodec;
     let hasher = Xxh3Hasher;
     let state = JsonStateStore::new(root.clone());

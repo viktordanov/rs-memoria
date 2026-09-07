@@ -1,17 +1,19 @@
-# Memoria binary
+# Command entry point
 
-The binary connects command arguments to application use cases and delivers their outcomes.
+The `memoria` executable connects command-line arguments to application calls and results for the user.
 
-This directory is the composition root and presentation boundary.
-It creates adapters once for each command invocation.
+This directory owns argument parsing, adapter assembly, and output delivery.
+An adapter supplies an external operation, such as file access, through an application contract.
+The composition root constructs these adapters and connects them to application functions.
 The application and domain determine review state.
+
+Read [main.rs](main.rs#L82) to start with the command dispatch.
 
 ## Role in the project
 
 <!-- memoria:export id="summary" -->
-The binary builds the adapters and passes them to an application use case.
-It converts the outcome to human text or a JSON envelope.
-It also maps application errors and output errors to process exit statuses.
+The executable parses arguments, constructs adapters, and calls the application.
+It writes human text or JSON and returns a process exit status.
 <!-- /memoria:export -->
 
 ## Arguments become an outcome
@@ -19,10 +21,12 @@ It also maps application errors and output errors to process exit statuses.
 `Cli` parses the command, document path, and flags.
 `discover_root` identifies the Git worktree root.
 `run` creates `Services` from the concrete adapters and dispatches the command.
-The use case returns structured data and diagnostics.
+The application function returns structured data and diagnostics.
 The presentation code describes those values without recalculating review decisions.
 
-For a focused review, the binary obtains an encoded packet before it selects the output format.
+A review packet contains one README and its input bytes for one review.
+An acknowledgement is the saved result of that review.
+For a focused review, the executable obtains an encoded packet before it selects the output format.
 Thus, packet limits apply equally to human text and JSON.
 Only the JSON packet supports acknowledgement.
 Human packet text supports reading.
@@ -45,6 +49,8 @@ Source evidence: [json.rs:7](presentation/json.rs#L7) and [main.rs:312](main.rs#
 
 ## Exit statuses
 
+An exit status is the number that the process returns to its caller.
+
 | Exit | Meaning |
 | --- | --- |
 | 0 | The command succeeded. |
@@ -54,7 +60,7 @@ Source evidence: [json.rs:7](presentation/json.rs#L7) and [main.rs:312](main.rs#
 | 4 | An I/O error, unsupported Git state, or corrupt review state prevents success. |
 
 Application exit classes come from [error.rs:185](../crates/memoria-application/src/error.rs#L185).
-The binary also owns usage errors and errors during output delivery.
+The executable also owns usage errors and errors during output delivery.
 
 ## File map
 
@@ -65,6 +71,7 @@ The binary also owns usage errors and errors during output delivery.
 | [presentation/text.rs](presentation/text.rs#L319) | Human output |
 | [presentation/json.rs](presentation/json.rs#L7) | JSON envelope |
 
+An agent skill is a file of instructions for an agent.
 `main.rs` embeds `skills/memoria/SKILL.md` at build time.
 The installer receives that embedded text through `FsSkillStore`.
 A later edit to the source skill requires a new binary build to change the installed text.

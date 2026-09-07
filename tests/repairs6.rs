@@ -51,10 +51,10 @@ fn raw_dirtiness_fallback_never_follows_links_or_opens_special_files() {
     );
     std::os::unix::fs::symlink(&fifo, project.root.join("link")).unwrap();
     project.write(
-        "memoria.yml",
+        "memoria.toml",
         project
-            .read_string("memoria.yml")
-            .replace("ignore:\n", "ignore:\n  - \"link\"\n"),
+            .read_string("memoria.toml")
+            .replace("ignore = [\n", "ignore = [\n    \"link\",\n"),
     );
     project.commit_all("excluded link to an external fifo");
     // Enable the raw fallback: info/attributes declares a filter that --attr-source cannot override.
@@ -97,10 +97,10 @@ fn raw_dirtiness_fallback_never_follows_links_or_opens_special_files() {
     let project = Project::seed();
     project.write("pipe.txt", "regular\n");
     project.write(
-        "memoria.yml",
+        "memoria.toml",
         project
-            .read_string("memoria.yml")
-            .replace("ignore:\n", "ignore:\n  - \"pipe.txt\"\n"),
+            .read_string("memoria.toml")
+            .replace("ignore = [\n", "ignore = [\n    \"pipe.txt\",\n"),
     );
     project.commit_all("regular file");
     project.write(".git/info/attributes", "unused filter=anything\n");
@@ -134,10 +134,11 @@ fn raw_dirtiness_fallback_never_follows_links_or_opens_special_files() {
     let project = Project::seed();
     project.write("lib/util.rs", "pub fn util() {}\n");
     project.write(
-        "memoria.yml",
-        project
-            .read_string("memoria.yml")
-            .replace("ignore:\n", "ignore:\n  - \"lib\"\n  - \"lib/**\"\n"),
+        "memoria.toml",
+        project.read_string("memoria.toml").replace(
+            "ignore = [\n",
+            "ignore = [\n    \"lib\",\n    \"lib/**\",\n",
+        ),
     );
     project.commit_all("lib");
     project.write(".git/info/attributes", "unused filter=anything\n");

@@ -1,616 +1,598 @@
 {
   "invalidations": [],
-  "next_invalidation_id": 2,
+  "next_invalidation_id": 1,
   "reviews": {
     "README.md": {
       "acknowledged_invalidations": [],
       "git": {
-        "base_commit": "1eaf8a66f7962905aa153bc9b5511d9172049167",
+        "base_commit": "1eaf9a03e6058f594a862c7b14275bce581d0678",
         "worktree_dirty": true
       },
-      "input_fingerprint": "6fdfedafed620902",
+      "input_fingerprint": "cd2f8dea028932f1",
       "input_manifest": {
         "document": "README.md",
-        "document_bytes": 7111,
-        "document_hash": "953feb219eecf6e8",
+        "document_bytes": 9111,
+        "document_hash": "eca7c3ef55361f68",
         "files": [
           {
-            "bytes": 14012,
-            "hash": "cacd02bd66a6f085",
+            "bytes": 16821,
+            "hash": "fa7fb4c1877781aa",
             "path": "Cargo.lock"
           },
           {
             "bytes": 823,
-            "hash": "5f89fff2a7b34e6e",
+            "hash": "90b181c4f0ad5235",
             "path": "Cargo.toml"
           },
           {
             "bytes": 1069,
-            "hash": "7f47b23eb1da62db",
+            "hash": "55391cec1059c42b",
             "path": "LICENSE"
           },
           {
-            "bytes": 21628,
-            "hash": "be3dbd81b68f6a20",
+            "bytes": 22630,
+            "hash": "9270831bf3bc1b02",
             "path": "docs/cli.md"
           },
           {
-            "bytes": 7123,
-            "hash": "13e2ea52c5a92fd7",
-            "path": "docs/diagrams/dependencies.svg"
-          },
-          {
-            "bytes": 9183,
-            "hash": "a86f3638a8fcd2a4",
-            "path": "docs/diagrams/packet-lifecycle.svg"
-          },
-          {
-            "bytes": 27834,
-            "hash": "0f7fed174630609b",
+            "bytes": 27870,
+            "hash": "f1c44f05f88c99f3",
             "path": "docs/specification.md"
           },
           {
-            "bytes": 9414,
-            "hash": "22753b19a5b322f3",
+            "bytes": 13587,
+            "hash": "81b0202697c63747",
             "path": "docs/workflow.md"
           },
           {
             "bytes": 66,
-            "hash": "ff3046a707599d18",
+            "hash": "9b32565162622c92",
             "path": "rust-toolchain.toml"
           },
           {
             "bytes": 3919,
-            "hash": "f3996fe035054f6f",
+            "hash": "e5a205ec9345c58b",
             "path": "skills/memoria/SKILL.md"
           }
         ],
         "imports": [
           {
-            "bytes": 258,
+            "bytes": 211,
             "document": "crates/memoria-application/README.md",
             "export_id": "summary",
-            "hash": "c5f2adbc4b04863a"
+            "hash": "8de467143fc4dce0"
           },
           {
-            "bytes": 272,
+            "bytes": 187,
             "document": "crates/memoria-domain/README.md",
             "export_id": "summary",
-            "hash": "430fe42935044e1f"
+            "hash": "e5921be8a6e99fa8"
           },
           {
-            "bytes": 283,
+            "bytes": 192,
             "document": "crates/memoria-infrastructure/README.md",
             "export_id": "summary",
-            "hash": "d8c7395c210f28c0"
+            "hash": "d03d8bc5727b81e3"
           },
           {
-            "bytes": 209,
+            "bytes": 145,
             "document": "src/README.md",
             "export_id": "summary",
-            "hash": "f16141dc21b563ea"
+            "hash": "955dc868414c973a"
           },
           {
-            "bytes": 295,
+            "bytes": 199,
             "document": "tests/README.md",
             "export_id": "summary",
-            "hash": "96f22ea49a9d8630"
+            "hash": "50af5854f5ff72fe"
           }
         ],
-        "policy_hash": "a5bc2824920e75ab",
+        "policy_hash": "336c150896928f05",
         "version": 1
       },
-      "note": "Removed trailing whitespace only; the diagram and README meaning are unchanged.",
-      "result": "no-update",
-      "reviewed_at": "2026-09-07T22:19:50Z",
+      "note": "The consumer-first README and owned guides explain the TOML workflow, XXH3-64 fingerprints, self-demo, and nested boundaries.",
+      "result": "updated",
+      "reviewed_at": "2026-09-07T23:30:37Z",
       "reviewer": "Codex",
-      "revision": 4,
-      "token_digest": "85851ea56fa231f2"
+      "revision": 1,
+      "token_digest": "88bfe8ebe8e8a074"
     },
     "crates/memoria-application/README.md": {
-      "acknowledged_invalidations": [
-        1
-      ],
+      "acknowledged_invalidations": [],
       "git": {
-        "base_commit": null,
+        "base_commit": "1eaf9a03e6058f594a862c7b14275bce581d0678",
         "worktree_dirty": true
       },
-      "input_fingerprint": "c02c5f4401614377",
+      "input_fingerprint": "84f97ba01beeabf7",
       "input_manifest": {
         "document": "crates/memoria-application/README.md",
-        "document_bytes": 4037,
-        "document_hash": "08e70cadf48a1c18",
+        "document_bytes": 5158,
+        "document_hash": "2cf2403ded565032",
         "files": [
           {
             "bytes": 264,
-            "hash": "73d7833821d5d465",
+            "hash": "c199ab327976d2fd",
             "path": "crates/memoria-application/Cargo.toml"
           },
           {
-            "bytes": 2154,
-            "hash": "f10f906fa93c4c3c",
+            "bytes": 2130,
+            "hash": "0fbc9f4c26e30aef",
             "path": "crates/memoria-application/src/config.rs"
           },
           {
             "bytes": 7434,
-            "hash": "f2ce9df1489d757c",
+            "hash": "1eddeee10a04998f",
             "path": "crates/memoria-application/src/diff.rs"
           },
           {
             "bytes": 7720,
-            "hash": "1870244fedadb9fb",
+            "hash": "01a39d9e13a0a8cb",
             "path": "crates/memoria-application/src/error.rs"
           },
           {
             "bytes": 3489,
-            "hash": "4eac10c233f7afd7",
+            "hash": "6c5b4c973d0bd115",
             "path": "crates/memoria-application/src/gitignore.rs"
           },
           {
             "bytes": 555,
-            "hash": "50de1b8509983d82",
+            "hash": "b9ccdf787d9052b9",
             "path": "crates/memoria-application/src/lib.rs"
           },
           {
-            "bytes": 17501,
-            "hash": "7ac682d9ea6e9215",
+            "bytes": 17502,
+            "hash": "5e4664f20d2e72ed",
             "path": "crates/memoria-application/src/packet.rs"
           },
           {
-            "bytes": 11725,
-            "hash": "fa34f2db59f6a54e",
+            "bytes": 11747,
+            "hash": "24adfb64fd5b55a4",
             "path": "crates/memoria-application/src/ports.rs"
           },
           {
-            "bytes": 49321,
-            "hash": "c5300bb3c5106fbd",
+            "bytes": 49326,
+            "hash": "6f9f07005e99a5c3",
             "path": "crates/memoria-application/src/snapshot.rs"
           },
           {
             "bytes": 18337,
-            "hash": "0109e3e022920064",
+            "hash": "5266283558e3f2ce",
             "path": "crates/memoria-application/src/usecases/ack.rs"
           },
           {
             "bytes": 4995,
-            "hash": "b583057e1f86f45b",
+            "hash": "2587fada65855b42",
             "path": "crates/memoria-application/src/usecases/agent.rs"
           },
           {
             "bytes": 3407,
-            "hash": "0ad6525dd223516a",
+            "hash": "f3e6a1f6bb01fc7f",
             "path": "crates/memoria-application/src/usecases/check.rs"
           },
           {
             "bytes": 4838,
-            "hash": "02e80856f97a3148",
+            "hash": "49c4a2e6cdf02c98",
             "path": "crates/memoria-application/src/usecases/graph.rs"
           },
           {
-            "bytes": 7487,
-            "hash": "ef14d1f8652cfad3",
+            "bytes": 7488,
+            "hash": "8e035047697c4fcd",
             "path": "crates/memoria-application/src/usecases/init.rs"
           },
           {
             "bytes": 4020,
-            "hash": "72f377c0f05ab3ee",
+            "hash": "13e205ce715e333f",
             "path": "crates/memoria-application/src/usecases/invalidate.rs"
           },
           {
             "bytes": 1428,
-            "hash": "b885bc903d5ef234",
+            "hash": "85c580bf45264dda",
             "path": "crates/memoria-application/src/usecases/lint.rs"
           },
           {
             "bytes": 7117,
-            "hash": "c978b875a61b4fe1",
+            "hash": "e63c4867f13746dc",
             "path": "crates/memoria-application/src/usecases/mod.rs"
           },
           {
             "bytes": 3932,
-            "hash": "b27a251e64400130",
+            "hash": "f455480416a4fccd",
             "path": "crates/memoria-application/src/usecases/plan.rs"
           },
           {
             "bytes": 17419,
-            "hash": "9063f8f8d505c70e",
+            "hash": "43dcdd576e6d099e",
             "path": "crates/memoria-application/src/usecases/prepare_review.rs"
           },
           {
             "bytes": 6473,
-            "hash": "dcf6cb80be1d3af2",
+            "hash": "293daab824ece115",
             "path": "crates/memoria-application/src/usecases/render.rs"
           },
           {
             "bytes": 12239,
-            "hash": "d77baeec970ec94e",
+            "hash": "ba29edfffa41382d",
             "path": "crates/memoria-application/src/usecases/status.rs"
           }
         ],
         "imports": [],
-        "policy_hash": "157a223689c0a953",
+        "policy_hash": "673636e22f15edd7",
         "version": 1
       },
-      "note": "The README explains ports, snapshot collection, acknowledgement conflicts, and atomic import writes for each document.",
+      "note": "The application boundary explains the integrated review flow and its state changes.",
       "result": "updated",
-      "reviewed_at": "2026-09-07T21:39:09Z",
-      "reviewer": "GPT-Astra 6",
-      "revision": 3,
-      "token_digest": "c87deda9111df4f6"
+      "reviewed_at": "2026-09-07T23:28:57Z",
+      "reviewer": "Codex",
+      "revision": 1,
+      "token_digest": "85c7d4f9d7559108"
     },
     "crates/memoria-domain/README.md": {
-      "acknowledged_invalidations": [
-        1
-      ],
+      "acknowledged_invalidations": [],
       "git": {
-        "base_commit": null,
+        "base_commit": "1eaf9a03e6058f594a862c7b14275bce581d0678",
         "worktree_dirty": true
       },
-      "input_fingerprint": "d333eea3b1172bfc",
+      "input_fingerprint": "20369001cfd928f5",
       "input_manifest": {
         "document": "crates/memoria-domain/README.md",
-        "document_bytes": 4088,
-        "document_hash": "225427eea5f58c8a",
+        "document_bytes": 4868,
+        "document_hash": "e9ccceb283e9f763",
         "files": [
           {
             "bytes": 296,
-            "hash": "322beff0feed4409",
+            "hash": "d6442406aabfb287",
             "path": "crates/memoria-domain/Cargo.toml"
           },
           {
-            "bytes": 8507,
-            "hash": "a359af10822c1372",
+            "bytes": 8509,
+            "hash": "1f0969b32cc07f0b",
             "path": "crates/memoria-domain/src/canonical.rs"
           },
           {
             "bytes": 4142,
-            "hash": "82baf241dbb067da",
+            "hash": "0effd60a76b109ea",
             "path": "crates/memoria-domain/src/document.rs"
           },
           {
             "bytes": 9415,
-            "hash": "4eda78064865337d",
+            "hash": "522b31fc3cae6d78",
             "path": "crates/memoria-domain/src/glob.rs"
           },
           {
             "bytes": 20385,
-            "hash": "4744d4859e0e4484",
+            "hash": "ef922130130cbdc7",
             "path": "crates/memoria-domain/src/graph.rs"
           },
           {
             "bytes": 1622,
-            "hash": "402f6fee3a42f3f5",
+            "hash": "f210bb13c83aaded",
             "path": "crates/memoria-domain/src/lib.rs"
           },
           {
             "bytes": 12275,
-            "hash": "ab79b478c223e053",
+            "hash": "215cd7dc4223b4a1",
             "path": "crates/memoria-domain/src/manifest.rs"
           },
           {
             "bytes": 5212,
-            "hash": "44985dd31c539590",
+            "hash": "9a432a87ac0e6a2c",
             "path": "crates/memoria-domain/src/ownership.rs"
           },
           {
             "bytes": 12237,
-            "hash": "b14e9006037be125",
+            "hash": "0f12ad7d0f525d01",
             "path": "crates/memoria-domain/src/path.rs"
           },
           {
             "bytes": 3390,
-            "hash": "5ff7312c8ba390cc",
+            "hash": "43ec26f3d64f6aac",
             "path": "crates/memoria-domain/src/policy.rs"
           },
           {
             "bytes": 37428,
-            "hash": "c12be81ba3b2780d",
+            "hash": "44c32ac9a1035af4",
             "path": "crates/memoria-domain/src/review.rs"
           },
           {
             "bytes": 11783,
-            "hash": "c3e1023589fe6f31",
+            "hash": "daa0053e6e6fd2a8",
             "path": "crates/memoria-domain/src/schedule.rs"
           },
           {
-            "bytes": 6129,
-            "hash": "bcec62f08695e2a8",
+            "bytes": 6130,
+            "hash": "aa5e7610402c2a98",
             "path": "crates/memoria-domain/src/selection.rs"
           },
           {
             "bytes": 794,
-            "hash": "60d58ebd37feb7a8",
+            "hash": "6072cab8df9c9f21",
             "path": "crates/memoria-domain/src/text.rs"
           },
           {
             "bytes": 7256,
-            "hash": "d674c8231f59cfd3",
+            "hash": "d118ac39e3b09ee1",
             "path": "crates/memoria-domain/tests/properties.rs"
           }
         ],
         "imports": [],
-        "policy_hash": "6b1991ee92826422",
+        "policy_hash": "635f5d502e43b288",
         "version": 1
       },
-      "note": "The README explains ownership, imports, manifests, pending state, and acknowledgement rules from the domain implementation.",
+      "note": "The domain boundary explains ownership, review ordering, revisions, and the XXH3-64 adapter boundary.",
       "result": "updated",
-      "reviewed_at": "2026-09-07T21:39:49Z",
-      "reviewer": "GPT-Astra 6",
-      "revision": 3,
-      "token_digest": "f269ee6385fa24be"
+      "reviewed_at": "2026-09-07T23:29:18Z",
+      "reviewer": "Codex",
+      "revision": 1,
+      "token_digest": "8d204a6583704cb0"
     },
     "crates/memoria-infrastructure/README.md": {
       "acknowledged_invalidations": [],
       "git": {
-        "base_commit": null,
+        "base_commit": "1eaf9a03e6058f594a862c7b14275bce581d0678",
         "worktree_dirty": true
       },
-      "input_fingerprint": "4612fdcdf5e21cac",
+      "input_fingerprint": "30f5255e1191a86b",
       "input_manifest": {
         "document": "crates/memoria-infrastructure/README.md",
-        "document_bytes": 3762,
-        "document_hash": "bfc57d07e319c045",
+        "document_bytes": 4353,
+        "document_hash": "784075a6b66fecde",
         "files": [
           {
-            "bytes": 586,
-            "hash": "7377b08d0e719b39",
+            "bytes": 725,
+            "hash": "892c3278afc94adf",
             "path": "crates/memoria-infrastructure/Cargo.toml"
           },
           {
-            "bytes": 7711,
-            "hash": "68c74c4f45db953a",
+            "bytes": 11049,
+            "hash": "2734d61b245c6d22",
             "path": "crates/memoria-infrastructure/src/config.rs"
           },
           {
             "bytes": 22562,
-            "hash": "fd75d2afea3b9fac",
+            "hash": "6f2e7dd470f53479",
             "path": "crates/memoria-infrastructure/src/fs.rs"
           },
           {
             "bytes": 18634,
-            "hash": "e8c6bba5c0717315",
+            "hash": "d7cd658e9cfe3a50",
             "path": "crates/memoria-infrastructure/src/git.rs"
           },
           {
-            "bytes": 1186,
-            "hash": "a544302b82a6e4db",
+            "bytes": 3721,
+            "hash": "9dc828f915bf1a4c",
             "path": "crates/memoria-infrastructure/src/hash.rs"
           },
           {
             "bytes": 23946,
-            "hash": "5b9d4d50f8e513cb",
+            "hash": "e99fd02e3a70c3d4",
             "path": "crates/memoria-infrastructure/src/json.rs"
           },
           {
-            "bytes": 626,
-            "hash": "4cad5f462328cbef",
+            "bytes": 611,
+            "hash": "b799069912c06a69",
             "path": "crates/memoria-infrastructure/src/lib.rs"
           },
           {
             "bytes": 28125,
-            "hash": "91f3de0e2d988578",
+            "hash": "ad7b379beb4735b0",
             "path": "crates/memoria-infrastructure/src/markdown.rs"
           },
           {
-            "bytes": 33370,
-            "hash": "ba8c61d683c132ed",
+            "bytes": 33366,
+            "hash": "bb89726d68fb8d63",
             "path": "crates/memoria-infrastructure/src/packet.rs"
           },
           {
-            "bytes": 66249,
-            "hash": "6de15aa6dceab507",
+            "bytes": 66294,
+            "hash": "45b3ed635020e166",
             "path": "crates/memoria-infrastructure/src/skill.rs"
           },
           {
             "bytes": 19610,
-            "hash": "24645df314d27fa5",
+            "hash": "98d9b676416159c8",
             "path": "crates/memoria-infrastructure/src/state.rs"
           },
           {
-            "bytes": 23338,
-            "hash": "1db808d840b92a8c",
-            "path": "crates/memoria-infrastructure/src/yaml.rs"
-          },
-          {
-            "bytes": 11389,
-            "hash": "07275ea7fc8ecd02",
+            "bytes": 11388,
+            "hash": "ad6a0be3c6ebcd4a",
             "path": "crates/memoria-infrastructure/tests/faults.rs"
           },
           {
-            "bytes": 6008,
-            "hash": "69644333fc59ffec",
+            "bytes": 5973,
+            "hash": "392fa0dd4c63496a",
             "path": "crates/memoria-infrastructure/tests/golden.rs"
           }
         ],
         "imports": [],
-        "policy_hash": "85510c774f5d3a9f",
+        "policy_hash": "4be6515cf13e5300",
         "version": 1
       },
-      "note": "Split the packet codec measurement description into short complete sentences. Verified the adapter boundaries and source evidence in the fresh packet.",
+      "note": "The infrastructure boundary explains the TOML and XXH3-64 adapters, packet limits, and durable writes.",
       "result": "updated",
-      "reviewed_at": "2026-09-07T21:55:39Z",
-      "reviewer": "GPT-Astra 6",
-      "revision": 4,
-      "token_digest": "981f694a00e7ed07"
+      "reviewed_at": "2026-09-07T23:29:37Z",
+      "reviewer": "Codex",
+      "revision": 1,
+      "token_digest": "5cc63613ebd879fc"
     },
     "src/README.md": {
-      "acknowledged_invalidations": [
-        1
-      ],
+      "acknowledged_invalidations": [],
       "git": {
-        "base_commit": null,
+        "base_commit": "1eaf9a03e6058f594a862c7b14275bce581d0678",
         "worktree_dirty": true
       },
-      "input_fingerprint": "42ca2a7ae09c7564",
+      "input_fingerprint": "c7e10a367aa64a2b",
       "input_manifest": {
         "document": "src/README.md",
-        "document_bytes": 2954,
-        "document_hash": "8fae24844db96161",
+        "document_bytes": 3389,
+        "document_hash": "9f62e9681275bba7",
         "files": [
           {
-            "bytes": 15796,
-            "hash": "07f6647cba4ae136",
+            "bytes": 15794,
+            "hash": "0e4f33fd9fff79f8",
             "path": "src/main.rs"
           },
           {
             "bytes": 4703,
-            "hash": "dfbc5dd73b1e8fba",
+            "hash": "5d629668d0291c0f",
             "path": "src/presentation/cli.rs"
           },
           {
             "bytes": 475,
-            "hash": "8a46d5a0e0cc67cf",
+            "hash": "e35b25ded694590d",
             "path": "src/presentation/json.rs"
           },
           {
             "bytes": 185,
-            "hash": "e9dc367a6aa37ff1",
+            "hash": "872f01d56baebc6a",
             "path": "src/presentation/mod.rs"
           },
           {
             "bytes": 22462,
-            "hash": "d0e33a3f87001e3a",
+            "hash": "2b3c04c7e3fe57d0",
             "path": "src/presentation/text.rs"
           }
         ],
         "imports": [],
-        "policy_hash": "0e099e42935ee330",
+        "policy_hash": "6c810e2c124e3b49",
         "version": 1
       },
-      "note": "The README explains adapter assembly, command dispatch, packet output limits, exit statuses, and errors after a saved mutation.",
+      "note": "The command entry-point boundary explains dispatch, output, packet handling, and exit statuses.",
       "result": "updated",
-      "reviewed_at": "2026-09-07T21:41:47Z",
-      "reviewer": "GPT-Astra 6",
-      "revision": 3,
-      "token_digest": "3ba0159349736234"
+      "reviewed_at": "2026-09-07T23:29:53Z",
+      "reviewer": "Codex",
+      "revision": 1,
+      "token_digest": "0443bb98108e586d"
     },
     "tests/README.md": {
-      "acknowledged_invalidations": [
-        1
-      ],
+      "acknowledged_invalidations": [],
       "git": {
-        "base_commit": null,
+        "base_commit": "1eaf9a03e6058f594a862c7b14275bce581d0678",
         "worktree_dirty": true
       },
-      "input_fingerprint": "a770c9c4a55a4090",
+      "input_fingerprint": "2bb9ff311f1ec19d",
       "input_manifest": {
         "document": "tests/README.md",
-        "document_bytes": 3145,
-        "document_hash": "6a6da22917f8c6e8",
+        "document_bytes": 3844,
+        "document_hash": "f4b497840addedd1",
         "files": [
           {
             "bytes": 5634,
-            "hash": "a4095f8025291859",
+            "hash": "d89c39f8d7457f32",
             "path": "tests/agent.rs"
           },
           {
-            "bytes": 15375,
-            "hash": "473b355c07434a42",
+            "bytes": 15377,
+            "hash": "0a1f5da6cb934c68",
             "path": "tests/common/mod.rs"
           },
           {
-            "bytes": 16734,
-            "hash": "83d37f209dbb40b5",
+            "bytes": 5531,
+            "hash": "a1d22d4ec0c1293b",
+            "path": "tests/configuration.rs"
+          },
+          {
+            "bytes": 16881,
+            "hash": "a85b242f934e4346",
             "path": "tests/edges.rs"
           },
           {
-            "bytes": 32706,
-            "hash": "eda30359da6f31ff",
+            "bytes": 32705,
+            "hash": "c8365c4edcf7ed4e",
             "path": "tests/packets.rs"
           },
           {
-            "bytes": 39056,
-            "hash": "dcf733cb1b46e4d4",
+            "bytes": 39227,
+            "hash": "73acd0de47d6e9bb",
             "path": "tests/repairs.rs"
           },
           {
-            "bytes": 8089,
-            "hash": "839201821b9e2063",
+            "bytes": 8104,
+            "hash": "087cec02a52b782f",
             "path": "tests/repairs10.rs"
           },
           {
             "bytes": 10560,
-            "hash": "cfdf2a16f925daca",
+            "hash": "e586d5e2b01f150c",
             "path": "tests/repairs11.rs"
           },
           {
             "bytes": 10695,
-            "hash": "e6ad29ead78e8776",
+            "hash": "91eb4d1e940a53ee",
             "path": "tests/repairs12.rs"
           },
           {
             "bytes": 6626,
-            "hash": "98f5665a20d201c1",
+            "hash": "2b75d9e7b1d11fa5",
             "path": "tests/repairs13.rs"
           },
           {
             "bytes": 8552,
-            "hash": "04cb8578fcecb65d",
+            "hash": "659454c5696b325c",
             "path": "tests/repairs14.rs"
           },
           {
             "bytes": 6954,
-            "hash": "e0b55aebbd588d40",
+            "hash": "4b8ce8669667a22c",
             "path": "tests/repairs15.rs"
           },
           {
-            "bytes": 19457,
-            "hash": "f9f379bf2eed3ca6",
+            "bytes": 19460,
+            "hash": "b5fc305a4ab6bf9b",
             "path": "tests/repairs2.rs"
           },
           {
             "bytes": 11807,
-            "hash": "4ae43319ce268163",
+            "hash": "5e8469a4aa9a7403",
             "path": "tests/repairs3.rs"
           },
           {
-            "bytes": 13960,
-            "hash": "62e3d336753f7d0d",
+            "bytes": 14177,
+            "hash": "ba4dee863553f748",
             "path": "tests/repairs4.rs"
           },
           {
-            "bytes": 10642,
-            "hash": "bd1f64e46d8edb06",
+            "bytes": 10674,
+            "hash": "724b1ffb099d9b3f",
             "path": "tests/repairs5.rs"
           },
           {
-            "bytes": 10550,
-            "hash": "169e0901f9811b0a",
+            "bytes": 10587,
+            "hash": "a7793f4903d6bf28",
             "path": "tests/repairs6.rs"
           },
           {
-            "bytes": 10881,
-            "hash": "2e49f6aa2eddcdb2",
+            "bytes": 10926,
+            "hash": "b076ca8bc5c49fd9",
             "path": "tests/repairs7.rs"
           },
           {
-            "bytes": 11256,
-            "hash": "511e4afa98097da5",
+            "bytes": 11427,
+            "hash": "bfa3095892c4a42b",
             "path": "tests/repairs8.rs"
           },
           {
-            "bytes": 6143,
-            "hash": "762b653b40862a1e",
+            "bytes": 6319,
+            "hash": "209bf56fa7e2911f",
             "path": "tests/repairs9.rs"
           },
           {
-            "bytes": 33905,
-            "hash": "96b271105c371b31",
+            "bytes": 34108,
+            "hash": "7409ccd6d1268184",
             "path": "tests/workflow.rs"
           }
         ],
         "imports": [],
-        "policy_hash": "60e50bc9aa35b2eb",
+        "policy_hash": "78e77cedbf3b98fa",
         "version": 1
       },
-      "note": "The README explains the fixture harness, observable review behavior, suite ownership, and limits of test evidence.",
+      "note": "The test boundary explains the TOML fixtures, harness, suites, and observable command behavior.",
       "result": "updated",
-      "reviewed_at": "2026-09-07T21:42:30Z",
-      "reviewer": "GPT-Astra 6",
-      "revision": 3,
-      "token_digest": "ec9fa6c5bdd686dc"
+      "reviewed_at": "2026-09-07T23:30:10Z",
+      "reviewer": "Codex",
+      "revision": 1,
+      "token_digest": "362604b5f69b5b2c"
     }
   },
-  "revision": 21,
+  "revision": 6,
   "schema_version": 1
 }

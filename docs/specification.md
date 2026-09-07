@@ -74,14 +74,14 @@ The graph shows the **documented project model**. It does not claim to discover 
 
 ```text
 project/
-├── memoria.yml               # Root configuration
+├── memoria.toml              # Root configuration
 ├── README.md                 # Project overview
 ├── .memoria/
 │   └── state.json            # Latest review records
 └── src/
     └── retrieval/
         ├── README.md         # Local explanation
-        ├── README.memoria.yml # Optional local settings
+        ├── README.memoria.toml # Optional local settings
         └── engine.py
 ```
 
@@ -167,25 +167,24 @@ Do not follow paths outside the project or enter nested repositories automatical
 
 **Proposed example:**
 
-```yaml
-version: 1
+```toml
+version = 1
+ignore = ["**/generated/**", "**/*.snap"]
 
-ignore:
-  - "**/generated/**"
-  - "**/*.snap"
+[documentation]
+instructions = [
+    "Use Simplified English.",
+    "Keep sections short.",
+    "Explain each part before its details.",
+]
+instruction_files = [
+    ".agents/simplified-english.md",
+    ".agents/adhd-writing.md",
+]
 
-documentation:
-  instructions:
-    - "Use Simplified English."
-    - "Keep sections short."
-    - "Explain each part before its details."
-  instruction_files:
-    - ".agents/simplified-english.md"
-    - ".agents/adhd-writing.md"
-
-fingerprints:
-  default: raw
-  languages: {}
+[fingerprints]
+default = "raw"
+languages = {}
 ```
 
 An empty `languages` map means that no language-specific filter is enabled.
@@ -193,10 +192,9 @@ Instruction paths above are examples. Each project supplies its own files.
 
 **Proposed local exception:**
 
-```yaml
-# compiler/README.memoria.yml
-include:
-  - "fixtures/**"
+```toml
+# compiler/README.memoria.toml
+include = ["fixtures/**"]
 ```
 
 This restores compiler fixtures only when an inherited Memoria rule excluded them.
@@ -302,7 +300,8 @@ Lint should identify their paths and owned file counts.
 ### 4.1 Use content fingerprints
 
 A **fingerprint** is a hash of the inputs used for a review.
-Use xxHash64. Cryptographic proof is outside the intended threat model.
+Use XXH3-64 with the default secret and seed zero.
+Cryptographic proof is outside the intended threat model.
 
 Include selected file paths and content hashes. This must detect additions, deletions, renames, and content changes.
 Use a stable order and an unambiguous record format.
@@ -608,7 +607,7 @@ A hook should use the deterministic check, not trigger an unexpected LLM review.
 
 Build the review loop before the convenience features.
 
-The pilot includes source selection, nearest-README ownership, raw xxHash64 fingerprints, explicit section imports, the state file, and explicit semantic invalidation.
+The pilot includes source selection, nearest-README ownership, raw XXH3-64 fingerprints, explicit section imports, the state file, and explicit semantic invalidation.
 It also includes review planning, focused packets, rendering, acknowledgement, and a deterministic final check.
 
 Use a three-level documentation example to test the full workflow.

@@ -156,8 +156,8 @@ fn reserved_trees_never_contain_documents() {
         );
         project.write(&format!("{parent}/memoria/SKILL.md"), "old guidance\n");
         project.write(
-            &format!("{parent}/memoria/README.memoria.yml"),
-            "ignore: []\n",
+            &format!("{parent}/memoria/README.memoria.toml"),
+            "ignore = []\n",
         );
         project.baseline();
         let (_, status) = project.json(&["status"]);
@@ -245,17 +245,22 @@ fn reserved_trees_never_contain_documents() {
     let project = Project::seed();
     project.baseline();
     project.write(".memoria/README.md", "# Internal notes\n");
-    project.write(".memoria/README.memoria.yml", "ignore: []\n");
+    project.write(".memoria/README.memoria.toml", "ignore = []\n");
     assert_eq!(project.json(&["check"]).0, 0);
     let (_, status) = project.json(&["status"]);
     assert_eq!(get_u64(&status, &["data", "readmes"]), 6);
     // Ordinary Memoria ignore rules still do not hide project README boundaries.
-    project.append("memoria.yml", "include: []\n");
     project.write(
-        "memoria.yml",
+        "memoria.toml",
         project
-            .read_string("memoria.yml")
-            .replace("ignore:\n", "ignore:\n  - \"src/corpus/**\"\n"),
+            .read_string("memoria.toml")
+            .replace("version = 1\n", "version = 1\ninclude = []\n"),
+    );
+    project.write(
+        "memoria.toml",
+        project
+            .read_string("memoria.toml")
+            .replace("ignore = [\n", "ignore = [\n    \"src/corpus/**\",\n"),
     );
     let (_, status) = project.json(&["status"]);
     assert_eq!(
@@ -324,8 +329,8 @@ fn non_utf8_arguments_are_usage_errors_not_panics() {
 #[test]
 fn quoted_instructions_with_colons_are_accepted_everywhere() {
     let project = Project::seed();
-    project.write("memoria.yml", "version: 1\n\nignore:\n  - \"**/generated/**\"\n  - \"**/fixtures/**\"\n\ndocumentation:\n  instructions:\n    - \"Style: use short sentences.\"\n    - 'Tone: plain words.'\n  instruction_files:\n    - \".agents/writing.md\"\n");
-    project.write("src/retrieval/README.memoria.yml", "include:\n  - \"fixtures/**\"\ndocumentation:\n  instructions:\n    - \"Retrieval: explain ranking first.\"\n");
+    project.write("memoria.toml", "version = 1\nignore = [\n    \"**/generated/**\",\n    \"**/fixtures/**\",\n]\n\n[documentation]\ninstructions = [\n    \"Style: use short sentences.\",\n    \"Tone: plain words.\",\n]\ninstruction_files = [\n    \".agents/writing.md\",\n]\n");
+    project.write("src/retrieval/README.memoria.toml", "include = [\n    \"fixtures/**\",\n]\n\n[documentation]\ninstructions = [\n    \"Retrieval: explain ranking first.\",\n]\n");
     project.baseline();
     project.append("src/retrieval/engine.rs", "// edit\n");
     let (packet, _) = project.review_packet("src/retrieval/README.md");
@@ -340,9 +345,9 @@ fn quoted_instructions_with_colons_are_accepted_everywhere() {
         texts.contains(&"Retrieval: explain ranking first."),
         "{texts:?}"
     );
-    // The flow form is equivalent and does not change staleness.
+    // The single-line array form is equivalent and does not change staleness.
     let state = project.state();
-    project.write("memoria.yml", "version: 1\n\nignore:\n  - \"**/generated/**\"\n  - \"**/fixtures/**\"\n\ndocumentation:\n  instructions: [\"Style: use short sentences.\", 'Tone: plain words.']\n  instruction_files:\n    - \".agents/writing.md\"\n");
+    project.write("memoria.toml", "version = 1\nignore = [\n    \"**/generated/**\",\n    \"**/fixtures/**\",\n]\n\n[documentation]\ninstructions = [\"Style: use short sentences.\", 'Tone: plain words.']\ninstruction_files = [\n    \".agents/writing.md\",\n]\n");
     let (packet, _) = project.review_packet("src/retrieval/README.md");
     let value = parse_json(&fs::read(packet).unwrap());
     let Json::Array(instructions) = get(&value, &["data", "context", "instructions"]) else {
@@ -354,10 +359,10 @@ fn quoted_instructions_with_colons_are_accepted_everywhere() {
             .any(|i| get_str(i, &["text"]) == "Style: use short sentences.")
     );
     assert_eq!(project.state(), state);
-    // Real sequence mappings are still rejected.
+    // Table values in a string array are still rejected.
     project.write(
-        "memoria.yml",
-        "version: 1\ndocumentation:\n  instructions:\n    - key: value\n",
+        "memoria.toml",
+        "version = 1\n\n[documentation]\ninstructions = [\n    { key = \"value\" },\n]\n",
     );
     let (code, lint) = project.json(&["lint"]);
     assert_eq!(code, 1);

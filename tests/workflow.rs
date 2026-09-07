@@ -14,7 +14,7 @@ fn baseline_workflow_reaches_a_passing_check() {
         strings(get(&init, &["data", "created"])),
         vec![".memoria/state.json"]
     );
-    assert!(project.exists("memoria.yml"));
+    assert!(project.exists("memoria.toml"));
 
     // Render first: every import block is empty in the seed.
     let (code, render) = project.json(&["render"]);
@@ -242,8 +242,8 @@ fn local_include_restores_a_memoria_excluded_fixture() {
     );
     let steps = strings(get(&explain, &["data", "explanation", "steps"]));
     assert_eq!(steps.len(), 2);
-    assert!(steps[0].contains("memoria.yml: ignore"));
-    assert!(steps[1].contains("src/retrieval/README.memoria.yml: include"));
+    assert!(steps[0].contains("memoria.toml: ignore"));
+    assert!(steps[1].contains("src/retrieval/README.memoria.toml: include"));
     project.append("src/retrieval/fixtures/sample.txt", "more\n");
     assert_eq!(
         project.cause_codes("src/retrieval/README.md"),
@@ -252,17 +252,17 @@ fn local_include_restores_a_memoria_excluded_fixture() {
 
     // A local include cannot restore a Git-excluded path.
     project.write(
-        "src/retrieval/README.memoria.yml",
-        "include:\n  - \"fixtures/**\"\n  - \"../../ignored-output/**\"\n",
+        "src/retrieval/README.memoria.toml",
+        "include = [\n    \"fixtures/**\",\n    \"../../ignored-output/**\",\n]\n",
     );
     let (code, lint) = project.json(&["lint"]);
     assert_eq!(code, 1);
     assert!(diagnostic_codes(&lint).contains(&"configuration_invalid".to_string()));
     project.write(
-        "src/retrieval/README.memoria.yml",
-        "include:\n  - \"fixtures/**\"\n",
+        "src/retrieval/README.memoria.toml",
+        "include = [\n    \"fixtures/**\",\n]\n",
     );
-    project.write("ignored-output/README.memoria.yml", "");
+    project.write("ignored-output/README.memoria.toml", "");
     let (_, explain) = project.json(&["status", "--explain", "ignored-output/cache.bin"]);
     assert_eq!(
         get_str(&explain, &["data", "explanation", "outcome"]),
@@ -285,8 +285,8 @@ fn language_filters_are_deferred_and_explicit() {
     );
     // A nonempty filter configuration fails explicitly instead of silently ignoring it.
     project.write(
-        "memoria.yml",
-        "version: 1\nfingerprints:\n  default: raw\n  languages:\n    python: strip-comments\n",
+        "memoria.toml",
+        "version = 1\n\n[fingerprints]\ndefault = \"raw\"\n\n[fingerprints.languages]\npython = \"strip-comments\"\n",
     );
     let (code, status) = project.json(&["status"]);
     assert_eq!(code, 1);
@@ -336,9 +336,9 @@ fn writing_instruction_changes_do_not_stale_documents() {
         "# Writing rules\n\nUse Simplified English everywhere.\n",
     );
     project.write(
-        "memoria.yml",
+        "memoria.toml",
         project
-            .read_string("memoria.yml")
+            .read_string("memoria.toml")
             .replace("Use short sentences.", "Use very short sentences."),
     );
     assert_eq!(project.json(&["check"]).0, 0);
@@ -760,7 +760,7 @@ fn normal_link_change_creates_no_dependency() {
     let (code, lint) = project.json(&["lint"]);
     assert_eq!(code, 0);
     assert!(diagnostic_codes(&lint).contains(&"missing_import_hint".to_string()));
-    project.append("memoria.yml", "lint:\n  missing_import_hint: false\n");
+    project.append("memoria.toml", "[lint]\nmissing_import_hint = false\n");
     let (code, lint) = project.json(&["lint"]);
     assert_eq!(code, 0);
     assert!(!diagnostic_codes(&lint).contains(&"missing_import_hint".to_string()));
@@ -925,7 +925,13 @@ fn policy_changes_invalidate_only_inheriting_scopes() {
     let project = Project::seed();
     project.baseline();
     // A root ignore that matches nothing still changes every owner's policy.
-    project.append("memoria.yml", "include:\n  - \"nothing/**\"\n");
+    project.write(
+        "memoria.toml",
+        project.read_string("memoria.toml").replace(
+            "version = 1\n",
+            "version = 1\ninclude = [\n    \"nothing/**\",\n]\n",
+        ),
+    );
     for doc in [
         "README.md",
         "src/corpus/README.md",
@@ -938,8 +944,8 @@ fn policy_changes_invalidate_only_inheriting_scopes() {
     }
     // A sidecar change affects only its scope.
     project.write(
-        "src/retrieval/README.memoria.yml",
-        "include:\n  - \"fixtures/**\"\nignore:\n  - \"nothing.txt\"\n",
+        "src/retrieval/README.memoria.toml",
+        "include = [\n    \"fixtures/**\",\n]\nignore = [\n    \"nothing.txt\",\n]\n",
     );
     assert_eq!(
         project.cause_codes("src/retrieval/README.md"),
@@ -959,7 +965,7 @@ fn policy_changes_invalidate_only_inheriting_scopes() {
     }
     // A comment-only configuration change means nothing.
     let before = project.state();
-    project.append("memoria.yml", "# trailing comment\n");
+    project.append("memoria.toml", "# trailing comment\n");
     assert_eq!(project.json(&["check"]).0, 0);
     // A nested .gitignore rule change is policy for its owner.
     project.write("src/execution/.gitignore", "*.tmp\n");

@@ -20,8 +20,8 @@ use crate::error::{AppError, Detail, DetailMap, Diagnostic, ExitClass, sort_diag
 use crate::gitignore;
 use crate::ports::{FileKind, LoadedState, Services, StateFailure};
 
-pub const ROOT_CONFIG_PATH: &str = "memoria.yml";
-pub const SIDECAR_FILE_NAME: &str = "README.memoria.yml";
+pub const ROOT_CONFIG_PATH: &str = "memoria.toml";
+pub const SIDECAR_FILE_NAME: &str = "README.memoria.toml";
 pub const STATE_PATH: &str = ".memoria/state.json";
 pub const STATE_DIR: &str = ".memoria";
 
@@ -29,7 +29,7 @@ pub const STATE_DIR: &str = ".memoria";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Instruction {
     pub scope: DirPath,
-    /// `memoria.yml`, a sidecar path, or an instruction file path.
+    /// `memoria.toml`, a sidecar path, or an instruction file path.
     pub source: String,
     /// `inline` or `file`.
     pub kind: &'static str,
@@ -459,7 +459,7 @@ fn collect(services: &Services<'_>) -> Result<Collected, AppError> {
             diagnostics.push(
                 Diagnostic::error(
                     "sidecar_orphan",
-                    "README.memoria.yml has no sibling README.md",
+                    "README.memoria.toml has no sibling README.md",
                 )
                 .at_path(sidecar.as_str()),
             );
@@ -1226,7 +1226,7 @@ fn effective_policy(
     }
     // Writing instructions are review context only: a sidecar that declares
     // no ignore or include rule is not a selection-policy scope at any depth,
-    // including a root-located sidecar. The `memoria.yml` configuration
+    // including a root-located sidecar. The `memoria.toml` configuration
     // scope always is, because it defines the effective policy.
     let memoria_scopes: Vec<PolicyRuleScope> = collected
         .scopes
