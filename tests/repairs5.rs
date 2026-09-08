@@ -130,7 +130,15 @@ fn reserved_guidance_rules_never_enter_project_policy() {
     project.write(".agents/skills/memoria/user.txt", "old user skill\n");
     project.baseline();
     assert_eq!(
-        project.json(&["agent", "install", "--target", "codex"]).0,
+        project
+            .json(&[
+                "agent",
+                "install",
+                "--target",
+                "codex",
+                "--replace-existing"
+            ])
+            .0,
         0
     );
     assert!(project.exists(".agents/skills/memoria.backup/user.txt"));
@@ -164,7 +172,8 @@ fn reserved_guidance_rules_never_enter_project_policy() {
                 "--target",
                 "codex",
                 "--path",
-                parent.to_str().unwrap()
+                parent.to_str().unwrap(),
+                "--replace-existing"
             ])
             .0,
         0
@@ -213,18 +222,18 @@ fn ignore_files_inside_excluded_directories_are_inactive_policy() {
 
 // MEM-034
 #[test]
-fn quoted_instructions_with_escaped_quotes_and_hashes_are_accepted() {
+fn quoted_guidance_with_escaped_quotes_and_hashes_are_accepted() {
     let project = Project::seed();
-    project.write("memoria.toml", "version = 1\nignore = [\n    \"**/generated/**\",\n    \"**/fixtures/**\",\n]\n\n[documentation]\ninstructions = [\n    \"Use \\\" # \\\" for headings.\", # trailing comment\n    '''Prefer 'plain' words # not a comment''',\n]\ninstruction_files = [\n    \".agents/writing.md\",\n]\n");
-    project.write("src/retrieval/README.memoria.toml", "include = [\n    \"fixtures/**\",\n]\n\n[documentation]\ninstructions = [\n    \"Rank \\\"# first\\\"\",\n    \"quote 'ok'\",\n]\n");
+    project.write("memoria.toml", "version = 2\nignore = [\n    \"**/generated/**\",\n    \"**/fixtures/**\",\n]\n\n[documentation]\nguidance = [\n    \"Use \\\" # \\\" for headings.\", # trailing comment\n    '''Prefer 'plain' words # not a comment''',\n]\nguidance_files = [\n    \".agents/writing.md\",\n]\n");
+    project.write("src/retrieval/README.memoria.toml", "include = [\n    \"fixtures/**\",\n]\n\n[documentation]\nguidance = [\n    \"Rank \\\"# first\\\"\",\n    \"quote 'ok'\",\n]\n");
     project.baseline();
     project.append("src/retrieval/engine.rs", "// edit\n");
     let (packet, _) = project.review_packet("src/retrieval/README.md");
     let value = parse_json(&fs::read(packet).unwrap());
-    let Json::Array(instructions) = get(&value, &["data", "context", "instructions"]) else {
+    let Json::Array(guidance) = get(&value, &["data", "context", "guidance", "entries"]) else {
         panic!()
     };
-    let texts: Vec<&str> = instructions.iter().map(|i| get_str(i, &["text"])).collect();
+    let texts: Vec<&str> = guidance.iter().map(|i| get_str(i, &["text"])).collect();
     for expected in [
         "Use \" # \" for headings.",
         "Prefer 'plain' words # not a comment",
@@ -238,12 +247,12 @@ fn quoted_instructions_with_escaped_quotes_and_hashes_are_accepted() {
     }
     assert!(
         texts.iter().any(|t| t.contains("Explain each part")),
-        "instruction file still loaded"
+        "guidance file still loaded"
     );
     // Unsupported forms are still rejected.
     project.write(
         "memoria.toml",
-        "version = 1\n[documentation]\ninstructions = [\"unterminated\n",
+        "version = 2\n[documentation]\nguidance = [\"unterminated\n",
     );
     let (code, lint) = project.json(&["lint"]);
     assert_eq!(code, 1);
@@ -267,7 +276,11 @@ fn ignore_files_without_effective_rules_do_not_change_policy() {
     assert_eq!(project.cause_codes("README.md"), vec!["input_changed"]);
     project.write("empty/.gitignore", "# rule removed\n");
     assert_eq!(project.json(&["check"]).0, 0);
+    // `.git/info/exclude` is a host source. Its rules still decide Git
+    // eligibility, but they never enter the repository policy inventory,
+    // so a rule that matches no project input changes nothing.
     project.write(".git/info/exclude", "*.tmp\n");
-    assert_eq!(project.cause_codes("README.md"), vec!["input_changed"]);
+    assert_eq!(project.json(&["check"]).0, 0);
+    assert_eq!(project.cause_codes("README.md"), Vec::<String>::new());
     assert_eq!(project.state(), before);
 }

@@ -5,24 +5,14 @@ mod common;
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
-use std::process::Command;
 
 use common::*;
 use memoria_infrastructure::json::{self, Json, Limits};
 
-fn git_in(dir: &std::path::Path, args: &[&str]) -> String {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(args)
-        .env("GIT_CONFIG_NOSYSTEM", "1")
-        .output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "git {args:?}: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+/// Run Git in `dir` with the fixture's isolated environment, so no host
+/// global or system configuration reaches this repository.
+fn git_in(project: &Project, dir: &std::path::Path, args: &[&str]) -> String {
+    let output = project.git_in(dir, args);
     String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
@@ -45,30 +35,20 @@ fn parent_inspection_never_executes_submodule_filters() {
         vec!["config", "user.name", "M"],
         vec!["config", "commit.gpgsign", "false"],
     ] {
-        git_in(module.path(), &args);
+        git_in(&project, module.path(), &args);
     }
     fs::write(module.path().join("a.txt"), "first\n").unwrap();
-    git_in(module.path(), &["add", "-A"]);
-    git_in(module.path(), &["commit", "-qm", "seed"]);
-    let added = Command::new("git")
-        .arg("-C")
-        .arg(&project.root)
-        .args([
-            "-c",
-            "protocol.file.allow=always",
-            "submodule",
-            "add",
-            "-q",
-            module.path().to_str().unwrap(),
-            "child",
-        ])
-        .output()
-        .unwrap();
-    assert!(
-        added.status.success(),
-        "{}",
-        String::from_utf8_lossy(&added.stderr)
-    );
+    git_in(&project, module.path(), &["add", "-A"]);
+    git_in(&project, module.path(), &["commit", "-qm", "seed"]);
+    project.git(&[
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        "-q",
+        module.path().to_str().unwrap(),
+        "child",
+    ]);
     project.commit_all("submodule");
     project.baseline();
     // The submodule configures a clean filter in its own Git directory's info/attributes.
@@ -86,10 +66,12 @@ fn parent_inspection_never_executes_submodule_filters() {
     fs::set_permissions(&helper, fs::Permissions::from_mode(0o755)).unwrap();
     let sub = project.root.join("child");
     git_in(
+        &project,
         &sub,
         &["config", "filter.probe.clean", helper.to_str().unwrap()],
     );
-    let git_dir = std::path::PathBuf::from(git_in(&sub, &["rev-parse", "--absolute-git-dir"]));
+    let git_dir =
+        std::path::PathBuf::from(git_in(&project, &sub, &["rev-parse", "--absolute-git-dir"]));
     fs::create_dir_all(git_dir.join("info")).unwrap();
     fs::write(git_dir.join("info/attributes"), "*.txt filter=probe\n").unwrap();
     let before = project.tree_snapshot();
@@ -153,11 +135,11 @@ fn parent_inspection_never_executes_submodule_filters() {
         "submodule worktree content is opaque to parent context"
     );
     assert!(!sentinel.exists());
-    git_in(&sub, &["add", "-A"]);
-    git_in(&sub, &["config", "user.email", "m@example.com"]);
-    git_in(&sub, &["config", "user.name", "M"]);
-    git_in(&sub, &["config", "commit.gpgsign", "false"]);
-    git_in(&sub, &["commit", "-qm", "advance"]);
+    git_in(&project, &sub, &["add", "-A"]);
+    git_in(&project, &sub, &["config", "user.email", "m@example.com"]);
+    git_in(&project, &sub, &["config", "user.name", "M"]);
+    git_in(&project, &sub, &["config", "commit.gpgsign", "false"]);
+    git_in(&project, &sub, &["commit", "-qm", "advance"]);
     project.git(&["add", "child"]);
     let _ = fs::remove_file(&sentinel);
     let (packet, _) = project.review_packet("src/execution/README.md");
@@ -171,13 +153,13 @@ fn parent_inspection_never_executes_submodule_filters() {
 
 // MEM-039 (partial): a root-located instruction-only sidecar is context, not policy.
 #[test]
-fn root_instruction_only_sidecar_is_context_not_policy() {
+fn root_guidance_only_sidecar_is_context_not_policy() {
     let project = Project::seed();
     project.baseline();
     let before = project.state();
     project.write(
         "README.memoria.toml",
-        "[documentation]\ninstructions = [\n    \"Use clear short sentences.\",\n]\n",
+        "[documentation]\nguidance = [\n    \"Use clear short sentences.\",\n]\n",
     );
     assert_eq!(
         project.json(&["check"]).0,
@@ -186,18 +168,18 @@ fn root_instruction_only_sidecar_is_context_not_policy() {
     );
     project.write(
         "README.memoria.toml",
-        "[documentation]\ninstructions = [\n    \"Use even shorter sentences.\",\n]\n",
+        "[documentation]\nguidance = [\n    \"Use even shorter sentences.\",\n]\n",
     );
     assert_eq!(project.json(&["check"]).0, 0);
     // Every descendant inherits the root sidecar's instruction in its packet.
     project.append("src/retrieval/naive/search.rs", "// edit\n");
     let (packet, _) = project.review_packet("src/retrieval/naive/README.md");
     let value = parse_json(&fs::read(packet).unwrap());
-    let Json::Array(instructions) = get(&value, &["data", "context", "instructions"]) else {
+    let Json::Array(guidance) = get(&value, &["data", "context", "guidance", "entries"]) else {
         panic!()
     };
     assert!(
-        instructions
+        guidance
             .iter()
             .any(|i| get_str(i, &["text"]) == "Use even shorter sentences."
                 && get_str(i, &["source"]) == "README.memoria.toml")
@@ -220,8 +202,8 @@ fn root_instruction_only_sidecar_is_context_not_policy() {
     project.write(
         "memoria.toml",
         project.read_string("memoria.toml").replace(
-            "version = 1\n",
-            "version = 1\ninclude = [\n    \"nothing/**\",\n]\n",
+            "version = 2\n",
+            "version = 2\ninclude = [\n    \"nothing/**\",\n]\n",
         ),
     );
     assert_eq!(project.cause_codes("README.md"), vec!["input_changed"]);
@@ -245,7 +227,7 @@ fn human_and_json_record_counts_are_the_same_complete_count() {
     project.write("README.md", "# Root\n");
     project.write("child/README.md", "# Child\n");
     project.commit_all("seed");
-    assert_eq!(project.run(&["init"]).status.code(), Some(0));
+    assert_eq!(project.run(&["init", "--apply"]).status.code(), Some(0));
     let json_output = project.run(&["review", "README.md", "--format", "json"]);
     assert_eq!(json_output.status.code(), Some(0));
     let envelope = json::parse(&json_output.stdout, Limits::PACKET).unwrap();
@@ -271,8 +253,8 @@ fn human_and_json_record_counts_are_the_same_complete_count() {
     project.write(
         "memoria.toml",
         project.read_string("memoria.toml").replace(
-            "version = 1\n",
-            "version = 1\nlint.missing_import_hint = false\n",
+            "version = 2\n",
+            "version = 2\nlint.missing_import_hint = false\n",
         ),
     );
     project.append("README.md", "\nSee [disconnected](src/disconnected/).\n");

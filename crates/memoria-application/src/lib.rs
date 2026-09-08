@@ -9,6 +9,7 @@ pub mod config;
 pub mod diff;
 pub mod error;
 pub mod gitignore;
+pub mod guidance;
 pub mod packet;
 pub mod ports;
 pub mod snapshot;

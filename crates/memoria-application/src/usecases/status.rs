@@ -31,6 +31,81 @@ pub struct Explanation {
     pub steps: Vec<String>,
 }
 
+/// Advisory guidance counters. Guidance never makes a document stale.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct GuidanceCounts {
+    /// Documents whose effective guidance has at least one entry.
+    pub documents_with_guidance: u64,
+    /// Reviewed documents whose guidance differs from the reviewed digest.
+    pub changed_documents: u64,
+    /// Documents that have no review to compare guidance against.
+    pub unreviewed_documents: u64,
+}
+
+impl GuidanceCounts {
+    pub fn to_detail(self) -> Detail {
+        DetailMap::default()
+            .number("documents_with_guidance", self.documents_with_guidance)
+            .number("changed_documents", self.changed_documents)
+            .number("unreviewed_documents", self.unreviewed_documents)
+            .build()
+    }
+}
+
+/// The bounded counters that `status --summary` publishes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatusSummary {
+    pub readmes: u64,
+    pub selected_files: u64,
+    pub selected_bytes: u64,
+    pub current: u64,
+    pub pending: u64,
+    pub never_reviewed: u64,
+    /// Waiting can overlap current, pending, or never-reviewed status.
+    pub waiting: u64,
+    pub guidance: GuidanceCounts,
+    pub unowned: u64,
+    pub disconnected: u64,
+    pub open_invalidations: u64,
+    pub missing_invalidation_targets: u64,
+    pub error_diagnostics: u64,
+    pub warning_diagnostics: u64,
+}
+
+impl StatusSummary {
+    pub fn to_detail(&self) -> Detail {
+        DetailMap::default()
+            .number("readmes", self.readmes)
+            .number("selected_files", self.selected_files)
+            .number("selected_bytes", self.selected_bytes)
+            .with(
+                "reviews",
+                DetailMap::default()
+                    .number("current", self.current)
+                    .number("pending", self.pending)
+                    .number("never_reviewed", self.never_reviewed)
+                    .number("waiting", self.waiting)
+                    .build(),
+            )
+            .with("guidance", self.guidance.to_detail())
+            .number("unowned", self.unowned)
+            .number("disconnected", self.disconnected)
+            .number("open_invalidations", self.open_invalidations)
+            .number(
+                "missing_invalidation_targets",
+                self.missing_invalidation_targets,
+            )
+            .with(
+                "diagnostics",
+                DetailMap::default()
+                    .number("errors", self.error_diagnostics)
+                    .number("warnings", self.warning_diagnostics)
+                    .build(),
+            )
+            .build()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StatusReport {
     pub root: String,
@@ -41,6 +116,7 @@ pub struct StatusReport {
     pub pending: u64,
     pub never_reviewed: u64,
     pub waiting: u64,
+    pub guidance: GuidanceCounts,
     pub invalidations: Vec<InvalidationSummary>,
     pub unowned: Vec<String>,
     pub disconnected: Vec<String>,
@@ -66,6 +142,7 @@ impl StatusReport {
                     .number("waiting", self.waiting)
                     .build(),
             )
+            .with("guidance", self.guidance.to_detail())
             .with(
                 "invalidations",
                 Detail::list(self.invalidations.iter().map(|i| {
@@ -113,6 +190,86 @@ impl StatusReport {
     }
 }
 
+/// Count the advisory guidance state of every discovered document.
+pub fn guidance_counts(snapshot: &Snapshot) -> GuidanceCounts {
+    let mut counts = GuidanceCounts::default();
+    for document in &snapshot.collected.documents {
+        if !snapshot.guidance_of(document).is_empty() {
+            counts.documents_with_guidance += 1;
+        }
+        match snapshot.guidance_changed(document) {
+            None => counts.unreviewed_documents += 1,
+            Some(true) => counts.changed_documents += 1,
+            Some(false) => {}
+        }
+    }
+    counts
+}
+
+/// The bounded summary. It uses the same snapshot and freshness logic as
+/// ordinary status and emits counts only: no per-document manifests, source
+/// contents, full guidance, or exclusion explanations.
+pub fn summary(snapshot: &Snapshot) -> StatusSummary {
+    let mut current = 0;
+    let mut pending = 0;
+    let mut never = 0;
+    let mut waiting = 0;
+    for status in &snapshot.statuses {
+        match status_label(status) {
+            "current" => current += 1,
+            "pending" => pending += 1,
+            _ => never += 1,
+        }
+        if status.waiting() {
+            waiting += 1;
+        }
+    }
+    let missing_targets: u64 = snapshot
+        .state
+        .invalidations
+        .iter()
+        .map(|inv| {
+            inv.pending
+                .iter()
+                .filter(|d| !snapshot.collected.documents.contains(d))
+                .count() as u64
+        })
+        .sum();
+    StatusSummary {
+        readmes: snapshot.collected.documents.len() as u64,
+        selected_files: snapshot.collected.file_bytes.len() as u64,
+        selected_bytes: snapshot.selected_bytes(),
+        current,
+        pending,
+        never_reviewed: never,
+        waiting,
+        guidance: guidance_counts(snapshot),
+        unowned: snapshot.ownership.unowned().len() as u64,
+        disconnected: snapshot.disconnected.len() as u64,
+        open_invalidations: snapshot.state.invalidations.len() as u64,
+        missing_invalidation_targets: missing_targets,
+        error_diagnostics: snapshot.diagnostics.iter().filter(|d| d.is_error()).count() as u64,
+        warning_diagnostics: snapshot
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == crate::error::Severity::Warning)
+            .count() as u64,
+    }
+}
+
+pub fn run_summary(services: &Services<'_>) -> Result<Outcome<StatusSummary>, AppError> {
+    let snapshot = snapshot::build(services)?;
+    let report = summary(&snapshot);
+    let errors = snapshot.structural_errors();
+    if !errors.is_empty() {
+        return Err(
+            AppError::many(ExitClass::Validation, snapshot.diagnostics.clone())
+                .with_data(report.to_detail()),
+        );
+    }
+    Ok(Outcome::new(report, snapshot.non_error_diagnostics()))
+}
+
 pub fn summarize(services: &Services<'_>, snapshot: &Snapshot) -> StatusReport {
     let mut current = 0;
     let mut pending = 0;
@@ -158,6 +315,27 @@ pub fn summarize(services: &Services<'_>, snapshot: &Snapshot) -> StatusReport {
         .map(|status| {
             let mut detail = document_status_detail(status);
             if let Detail::Map(map) = &mut detail {
+                let effective = snapshot.guidance_of(&status.document);
+                let reviewed = snapshot
+                    .state
+                    .reviews
+                    .get(&status.document)
+                    .map(|r| r.guidance.to_hex());
+                map.insert(
+                    "guidance".into(),
+                    DetailMap::default()
+                        .bool("present", !effective.is_empty())
+                        .with(
+                            "changed_since_review",
+                            snapshot
+                                .guidance_changed(&status.document)
+                                .map(Detail::Bool)
+                                .unwrap_or(Detail::Null),
+                        )
+                        .text("current_digest", effective.digest.to_hex())
+                        .with("reviewed_digest", Detail::option_text(reviewed))
+                        .build(),
+                );
                 map.insert(
                     "owned_files".into(),
                     Detail::Number(snapshot.ownership.owned_by(&status.document).len() as u64),
@@ -197,6 +375,7 @@ pub fn summarize(services: &Services<'_>, snapshot: &Snapshot) -> StatusReport {
         pending,
         never_reviewed: never,
         waiting,
+        guidance: guidance_counts(snapshot),
         invalidations,
         unowned: snapshot
             .ownership

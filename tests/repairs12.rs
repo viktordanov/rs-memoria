@@ -12,12 +12,12 @@ type Corruption<'a> = Box<dyn Fn(&mut Json) + 'a>;
 const REASON: &str = "Review every explanation once again.";
 
 fn state_json(project: &Project) -> Json {
-    parse_json(&project.state())
+    project.inspect_state()
 }
 
 fn write_state(project: &Project, value: &Json) -> Vec<u8> {
     let bytes = json::to_pretty(value).into_bytes();
-    project.write(".memoria/state.json", &bytes);
+    project.write("memoria.lock", &bytes);
     bytes
 }
 
@@ -252,7 +252,7 @@ fn corrupt_invalidation_references_and_sets_are_rejected_before_any_write() {
         );
     }
     // The genuine state is accepted again, and mutations keep it canonical.
-    project.write(".memoria/state.json", &good_bytes);
+    project.write("memoria.lock", &good_bytes);
     assert_eq!(project.json(&["status"]).0, 0);
     assert_eq!(
         project

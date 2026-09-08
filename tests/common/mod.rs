@@ -17,10 +17,66 @@ pub fn memoria_bin() -> &'static str {
     env!("CARGO_BIN_EXE_memoria")
 }
 
+/// Apply the isolated Git environment to a command.
+///
+/// The system and global configuration files are replaced by `/dev/null`,
+/// so no host setting reaches a fixture. A developer whose global
+/// configuration enables commit signing, a custom `core.excludesFile`, or a
+/// template directory still runs the same tests as CI.
+pub fn isolate_git<'a>(command: &'a mut Command, home: &Path) -> &'a mut Command {
+    command
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("HOME", home)
+        .env("XDG_CONFIG_HOME", home.join(".config"))
+        // Both one-shot configuration mechanisms are cleared too, so an
+        // outer environment cannot reintroduce a host setting that
+        // `GIT_CONFIG_GLOBAL` alone would not override.
+        .env_remove("GIT_CONFIG_COUNT")
+        .env_remove("GIT_CONFIG_PARAMETERS")
+        .env_remove("GIT_AUTHOR_NAME")
+        .env_remove("GIT_AUTHOR_EMAIL")
+        .env_remove("GIT_COMMITTER_NAME")
+        .env_remove("GIT_COMMITTER_EMAIL")
+        .env("GIT_AUTHOR_NAME", "Fixture")
+        .env("GIT_AUTHOR_EMAIL", "fixture@example.com")
+        .env("GIT_COMMITTER_NAME", "Fixture")
+        .env("GIT_COMMITTER_EMAIL", "fixture@example.com")
+}
+
+/// Run one Git command in `directory` with the isolated environment.
+pub fn git_isolated(directory: &Path, home: &Path, args: &[&str]) -> Output {
+    let mut command = Command::new("git");
+    command.arg("-C").arg(directory).args(args);
+    isolate_git(&mut command, home);
+    let output = command.output().unwrap();
+    assert!(
+        output.status.success(),
+        "git {args:?} in {} failed: {}",
+        directory.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+}
+
+/// Seed a bare fixture repository at `root` with the isolated environment.
+pub fn seed_repository(root: &Path, home: &Path) {
+    git_isolated(root, home, &["init", "-q"]);
+    git_isolated(root, home, &["config", "user.email", "fixture@example.com"]);
+    git_isolated(root, home, &["config", "user.name", "Fixture"]);
+    git_isolated(root, home, &["config", "commit.gpgsign", "false"]);
+    git_isolated(root, home, &["add", "-A"]);
+    git_isolated(root, home, &["commit", "-q", "-m", "seed"]);
+}
+
 pub struct Project {
     pub dir: TempDir,
     pub root: PathBuf,
     pub packets: TempDir,
+    /// An isolated home and XDG configuration directory. Tests that
+    /// exercise host ignore rules override these locations explicitly.
+    pub home: TempDir,
 }
 
 /// Fixture documents are stored under placeholder names so that this
@@ -58,6 +114,7 @@ impl Project {
             dir,
             root,
             packets: tempfile::tempdir().unwrap(),
+            home: tempfile::tempdir().unwrap(),
         };
         project.git(&["init", "-q"]);
         project.git(&["config", "user.email", "fixture@example.com"]);
@@ -76,6 +133,7 @@ impl Project {
             dir,
             root,
             packets: tempfile::tempdir().unwrap(),
+            home: tempfile::tempdir().unwrap(),
         };
         project.git(&["init", "-q"]);
         project.git(&["config", "user.email", "fixture@example.com"]);
@@ -84,20 +142,23 @@ impl Project {
         project
     }
 
+    /// Run one Git command in this project with the isolated environment.
+    /// No host global or system configuration reaches a fixture.
     pub fn git(&self, args: &[&str]) -> Output {
-        let output = Command::new("git")
-            .arg("-C")
-            .arg(&self.root)
-            .args(args)
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "git {args:?} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        output
+        git_isolated(&self.root, self.home.path(), args)
+    }
+
+    /// Run one Git command in another directory, still isolated from the
+    /// host. Tests that build a second repository use this.
+    pub fn git_in(&self, directory: &Path, args: &[&str]) -> Output {
+        git_isolated(directory, self.home.path(), args)
+    }
+
+    /// A command with this project's isolated Git and home environment.
+    pub fn isolated_command(&self, program: &str) -> Command {
+        let mut command = Command::new(program);
+        isolate_git(&mut command, self.home.path());
+        command
     }
 
     pub fn commit_all(&self, message: &str) {
@@ -109,7 +170,18 @@ impl Project {
         let mut cmd = Command::new(memoria_bin());
         cmd.current_dir(cwd)
             .args(args)
+            // Every test runs with an isolated home and XDG configuration,
+            // so a developer's own Git or agent settings never reach a
+            // fixture. Tests that exercise host rules override these.
             .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("HOME", self.home.path())
+            .env("XDG_CONFIG_HOME", self.home.path().join(".config"))
+            .env_remove("GIT_CONFIG_COUNT")
+            .env_remove("GIT_CONFIG_PARAMETERS")
+            .env_remove("CLAUDE_CONFIG_DIR")
+            .env_remove("CODEX_HOME")
             .stdin(Stdio::null());
         cmd
     }
@@ -177,6 +249,12 @@ impl Project {
         String::from_utf8(self.read(relative)).unwrap()
     }
 
+    /// The committed state rendered as inspection text, for substring checks
+    /// that used to read the JSON state file directly.
+    pub fn state_text(&self) -> String {
+        json::to_pretty(&self.inspect_state())
+    }
+
     pub fn remove(&self, relative: &str) {
         fs::remove_file(self.root.join(relative)).unwrap();
     }
@@ -185,8 +263,46 @@ impl Project {
         self.root.join(relative).exists()
     }
 
+    /// The committed state bytes.
     pub fn state(&self) -> Vec<u8> {
-        self.read(".memoria/state.json")
+        self.read("memoria.lock")
+    }
+
+    /// The worktree-private write lock path.
+    pub fn write_lock(&self) -> PathBuf {
+        self.root.join(".git/memoria/write.lock")
+    }
+
+    /// The committed state, decoded through the production codec.
+    pub fn decoded_state(&self) -> memoria_domain::ReviewState {
+        memoria_infrastructure::lock_codec::decode(&self.state())
+            .expect("the committed state decodes")
+            .state
+    }
+
+    /// Write a state that a decoder must reject for a semantic reason, with
+    /// framing and checksum that are themselves valid. This reaches the
+    /// invariant checks instead of stopping at the frame.
+    pub fn write_state(&self, state: &memoria_domain::ReviewState) -> Vec<u8> {
+        // A deliberately impossible state must still reach disk, so the
+        // decoder can reject it. Product writes use the verified encoder,
+        // which refuses exactly these bytes.
+        let bytes = memoria_infrastructure::lock_codec::encode_unverified(state)
+            .expect("the fixture state encodes");
+        self.write("memoria.lock", &bytes);
+        bytes
+    }
+
+    /// The complete `state inspect` envelope.
+    pub fn inspect_envelope(&self) -> Json {
+        let (code, value) = self.json(&["state", "inspect"]);
+        assert_eq!(code, 0, "state inspect failed: {}", json::to_pretty(&value));
+        value
+    }
+
+    /// The decoded review state, as read-only inspection publishes it.
+    pub fn inspect_state(&self) -> Json {
+        get(&self.inspect_envelope(), &["data", "state"]).clone()
     }
 
     /// Capture a focused packet outside the project. Returns the packet path
@@ -238,6 +354,38 @@ impl Project {
             "--note",
             note,
         ])
+    }
+
+    /// Acknowledge with the JSON envelope, for diagnostic assertions.
+    pub fn ack_json(
+        &self,
+        document: &str,
+        packet: &Path,
+        token: &str,
+        result: &str,
+        note: &str,
+    ) -> (i32, Json) {
+        let output = self.run(&[
+            "ack",
+            document,
+            "--packet",
+            packet.to_str().unwrap(),
+            "--token",
+            token,
+            "--reviewer",
+            "fixture",
+            "--result",
+            result,
+            "--note",
+            note,
+            "--format",
+            "json",
+        ]);
+        (
+            output.status.code().unwrap(),
+            json::parse(&output.stdout, Limits::STATE)
+                .unwrap_or_else(|e| panic!("invalid JSON from ack: {e}\n{}", stdout(&output))),
+        )
     }
 
     pub fn ack_ok(&self, document: &str) {
@@ -302,7 +450,14 @@ impl Project {
 
     /// init, render, acknowledge everything in order, and assert `check` passes.
     pub fn baseline(&self) {
-        assert_eq!(self.run(&["init"]).status.code(), Some(0));
+        // A root README is authored before Memoria writes anything.
+        if !self.exists("README.md") {
+            self.write(
+                "README.md",
+                "# Fixture\n\nThis README owns every selected file that no nearer README explains.\n",
+            );
+        }
+        assert_eq!(self.run(&["init", "--apply"]).status.code(), Some(0));
         assert_eq!(self.run(&["render"]).status.code(), Some(0));
         self.canonical_loop();
         let (code, value) = self.json(&["check"]);

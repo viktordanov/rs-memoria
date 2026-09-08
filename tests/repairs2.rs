@@ -6,7 +6,7 @@ mod common;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use common::*;
 use memoria_infrastructure::json::Json;
@@ -115,12 +115,9 @@ fn ignore_files_in_directories_without_eligible_files_still_change_policy() {
     // Nested repositories are not entered for policy either.
     fs::create_dir_all(project.root.join("vendor/lib")).unwrap();
     assert!(
-        Command::new("git")
-            .arg("-C")
-            .arg(project.root.join("vendor/lib"))
-            .args(["init", "-q"])
-            .status()
-            .unwrap()
+        project
+            .git_in(&project.root.join("vendor/lib"), &["init", "-q"])
+            .status
             .success()
     );
     project.write("vendor/lib/.gitignore", "inner\n");
@@ -268,17 +265,21 @@ fn copied_installations_cannot_move_another_installations_backup() {
         "codex",
         "--path",
         parent.to_str().unwrap(),
+        "--replace-existing",
     ]);
     assert_eq!(code, 0);
     assert!(parent.join("memoria.backup/user.txt").exists());
     let elsewhere = tempfile::tempdir().unwrap();
     let copy = elsewhere.path().join("skills");
     copy_dir(&parent, &copy);
+    // The copy sits outside the worktree, so it needs an explicit scope.
     let (code, report) = project.json(&[
         "agent",
         "uninstall",
         "--target",
         "codex",
+        "--scope",
+        "global",
         "--path",
         copy.to_str().unwrap(),
     ]);
@@ -400,6 +401,7 @@ fn interrupted_transactions_recover_through_the_cli() {
     assert!(!parent.join("memoria.removing").exists());
     assert!(!parent.join("memoria.install-txn.json").exists());
     assert!(!parent.join("memoria").exists());
+    // Uninstall is idempotent: an absent package succeeds without writes.
     let (code, missing) = project.json(&[
         "agent",
         "uninstall",
@@ -408,8 +410,8 @@ fn interrupted_transactions_recover_through_the_cli() {
         "--path",
         &parent_str,
     ]);
-    assert_eq!(code, 1);
-    assert_eq!(diagnostic_codes(&missing), vec!["skill_not_installed"]);
+    assert_eq!(code, 0, "{missing:?}");
+    assert!(get_bool(&missing, &["data", "plan", "no_change"]));
     // Interrupted installation: a complete staged package with its transaction, destination absent.
     assert_eq!(
         project
@@ -513,7 +515,7 @@ fn init_rejects_an_invalid_existing_readme_before_writing() {
         project.write("source.txt", "original\n");
         project.commit_all("seed");
         let before = project.tree_snapshot();
-        let (code, init) = project.json(&["init"]);
+        let (code, init) = project.json(&["init", "--apply"]);
         assert_eq!(code, 1, "{name}: {init:?}");
         let codes = diagnostic_codes(&init);
         assert!(
@@ -533,7 +535,7 @@ fn init_rejects_an_invalid_existing_readme_before_writing() {
         "# Root\n\n<!-- memoria:import src=\"nohash/README.md\" -->\n<!-- /memoria:import -->\n",
     );
     project.commit_all("seed");
-    let (code, init) = project.json(&["init"]);
+    let (code, init) = project.json(&["init", "--apply"]);
     assert_eq!(code, 1);
     assert_eq!(diagnostic_codes(&init), vec!["import_invalid"]);
     assert!(!project.exists("memoria.toml"));
@@ -541,11 +543,14 @@ fn init_rejects_an_invalid_existing_readme_before_writing() {
         "README.md",
         "# Root\n\n<!-- memoria:export id=\"summary\" -->\nFine.\n<!-- /memoria:export -->\n",
     );
-    let (code, init) = project.json(&["init"]);
+    let (code, init) = project.json(&["init", "--apply"]);
     assert_eq!(code, 0, "{init:?}");
+    // The root README is required, but it is authored content: apply never
+    // creates it and never lists it among the files it owns.
+    assert!(get_bool(&init, &["data", "root_readme_present"]));
     assert_eq!(
-        strings(get(&init, &["data", "existing"])),
-        vec!["README.md"]
+        strings(get(&init, &["data", "created"])),
+        vec!["memoria.toml", "memoria.lock"]
     );
     assert!(project.exists("memoria.toml"));
     assert_eq!(project.json(&["lint"]).0, 0);

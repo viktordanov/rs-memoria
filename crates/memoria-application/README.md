@@ -50,18 +50,21 @@ Source evidence: [snapshot.rs:100](src/snapshot.rs#L100), [snapshot.rs:772](src/
 ## A packet supplies the review evidence
 
 A document boundary groups the selected files that one README explains.
-A review packet contains that README, its files, imported text, and writing instructions for one review.
+A review packet contains that README, its files, imported text, and the project documentation guidance for one review.
 A human or agent judges the prose against those inputs.
 After a document edit, a new packet represents the changed bytes.
 
 An outdated import requires `render` before the consumer can receive a packet.
 Packet creation makes no change to the saved review state.
 
+Every packet and every command response carries envelope schema version 2.
+A packet from an older envelope is invalid, and the reader names the received version.
+
 ## Acknowledgement saves the review result
 
 An acknowledgement records who reviewed one README and why its explanation is correct.
 A revision is the counter that increases after each successful acknowledgement for that README.
-The packet token identifies the document, revision, inputs, and explicit review requests that the packet covers.
+The packet token identifies the document, revision, inputs, guidance digest, and explicit review requests that the packet covers.
 An invalidation is an explicit review request with a recorded reason.
 
 The manifest lists input paths, sizes, and hashes for comparison.
@@ -74,9 +77,13 @@ The acknowledgement path has five stages:
 5. A final snapshot comparison precedes the state save through `StateStore`.
 
 Changed inputs cause `snapshot_changed` with exit 3.
+Changed documentation guidance causes `guidance_changed` with exit 3.
 A pending provider causes `dependencies_pending` with exit 3.
 These conflicts leave the stored review unchanged.
 New invalidations remain pending unless the packet includes them.
+
+The guidance comparison runs at stage 2 and again at stage 5.
+Guidance is review context, so a change invalidates the packet without making a current document stale.
 
 Source evidence: [prepare_review.rs:105](src/usecases/prepare_review.rs#L105) and [ack.rs:193](src/usecases/ack.rs#L193).
 
@@ -93,17 +100,31 @@ The `lint` command examines documentation structure without writes.
 The `check` command also requires current reviews and current imported text.
 Neither command records an acknowledgement.
 
+The read-only commands are `status`, `guidance`, `state_inspect`, `plan`, `lint`, `check`, and `graph`.
+An `init` preview is read-only too; only `init --apply` writes.
+
+`guidance` reports a configuration error for a README that exists.
+It returns the errors with the partial report instead of hiding them.
+`agent hooks install` validates the root configuration before its first write.
+If that configuration is invalid, the command fails and changes nothing.
+
 Source evidence: [render.rs:114](src/usecases/render.rs#L114), [invalidate.rs:50](src/usecases/invalidate.rs#L50), and [check.rs:37](src/usecases/check.rs#L37).
 
 ## File map
 
 | File | Ownership |
 | --- | --- |
-| [ports.rs](src/ports.rs#L334) | `Services` and the adapter contracts |
-| [snapshot.rs](src/snapshot.rs#L82) | Repository facts and derived review state |
-| [packet.rs](src/packet.rs#L150) | Packet values, limits, and token construction |
-| [usecases](src/usecases/mod.rs#L3) | Command coordination and outcomes |
+| [ports.rs](src/ports.rs#L1) | `Services` and the adapter contracts |
+| [snapshot.rs](src/snapshot.rs#L1) | Repository facts and derived review state |
+| [packet.rs](src/packet.rs#L1) | Packet values, limits, and token construction |
+| [guidance.rs](src/guidance.rs#L1) | Effective guidance and its digest |
+| [usecases](src/usecases/mod.rs#L1) | Command coordination and outcomes |
 | [error.rs](src/error.rs#L185) | Diagnostics and application exit classes |
+
+The ports separate two questions that the release keeps apart.
+`GitRepository` decides which files are eligible, under the host settings.
+`RepositoryIgnoreMatcher` decides which repository rules are active, without host settings.
+This separation is what makes freshness portable between machines.
 
 The binary owns argument parsing and output delivery.
 Infrastructure owns Git processes, file access, and format parsers.

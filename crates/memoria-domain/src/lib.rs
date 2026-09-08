@@ -14,6 +14,7 @@ pub mod canonical;
 pub mod document;
 pub mod glob;
 pub mod graph;
+pub mod guidance;
 pub mod manifest;
 pub mod ownership;
 pub mod path;
@@ -26,7 +27,10 @@ pub mod text;
 pub use document::{ByteRange, Document, Export, ExportId, Import, SourceLocation};
 pub use glob::{Glob, GlobError};
 pub use graph::{GraphError, ImportGraph, NavigationGraph};
-pub use manifest::{FileInput, Hash64, ImportInput, InputChange, InputManifest, ManifestDiff};
+pub use guidance::{GuidanceDigest, GuidanceEntry, GuidanceKind};
+pub use manifest::{
+    FileInput, Hash64, ImportInput, InputChange, InputManifest, InvalidHash, ManifestDiff,
+};
 pub use ownership::OwnershipTree;
 pub use path::{DirPath, DocumentId, PathError, ProjectPath};
 pub use policy::{EffectivePolicy, GitRuleScope, PolicyRuleScope};

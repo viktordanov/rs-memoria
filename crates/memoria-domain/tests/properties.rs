@@ -5,8 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use memoria_domain::canonical::{encode_inputs, encode_review_token};
 use memoria_domain::{
-    ByteRange, DirPath, Document, DocumentId, Export, ExportId, FileInput, Hash64, Import,
-    ImportGraph, ImportInput, InputManifest, OwnershipTree, ProjectPath, SourceLocation,
+    ByteRange, DirPath, Document, DocumentId, Export, ExportId, FileInput, GuidanceDigest, Hash64,
+    Import, ImportGraph, ImportInput, InputManifest, OwnershipTree, ProjectPath, SourceLocation,
 };
 use proptest::prelude::*;
 
@@ -83,7 +83,8 @@ proptest! {
         prop_assert_eq!(encode_inputs(&manifest), encode_inputs(&permuted));
         let covered = vec![(2, "second reason text".to_string()), (1, "first reason text".to_string())];
         let reversed = vec![(1, "first reason text".to_string()), (2, "second reason text".to_string())];
-        prop_assert_eq!(encode_review_token(&doc, 1, &manifest, &covered), encode_review_token(&doc, 1, &permuted, &reversed));
+        let guidance = GuidanceDigest(Hash64(0x5eed));
+        prop_assert_eq!(encode_review_token(&doc, 1, &manifest, guidance, &covered), encode_review_token(&doc, 1, &permuted, guidance, &reversed));
         prop_assert!(manifest.diff(&permuted).is_empty());
     }
 

@@ -179,6 +179,7 @@ pub fn verify_packet(
         &packet.document,
         packet.review_revision,
         manifest,
+        packet.context.guidance.digest,
         &packet.covered_invalidations,
     );
     if expected != packet.token {
@@ -254,6 +255,10 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
     if !diff.is_empty() {
         return Err(snapshot_changed(&snapshot, &packet, &diff));
     }
+    // Guidance is review context, not freshness. A change after packet
+    // creation invalidates the reviewed context without marking a current
+    // document stale, so it is a conflict and never a state write.
+    guidance_conflict(&snapshot, &packet)?;
     if status.waiting() {
         let waiting: Vec<String> = status
             .waiting_on
@@ -307,6 +312,7 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
             covered: packet.covered_invalidations.clone(),
             input_fingerprint,
             token_digest,
+            guidance: packet.context.guidance.digest,
             reviewed_at: services.clock.now(),
             reviewer: reviewer.clone(),
             result,
@@ -349,6 +355,8 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
             ));
         }
     }
+    // The same guidance check runs again under the write lock.
+    guidance_conflict(&recheck, &packet)?;
     if let Some(final_status) = recheck.status_of(&document)
         && final_status.waiting()
     {
@@ -388,6 +396,33 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
             still_pending: outcome.still_pending,
         },
         snapshot.non_error_diagnostics(),
+    ))
+}
+
+/// Refuse acknowledgement when the effective guidance changed after the
+/// packet was created. The reviewer regenerates the packet; no review state
+/// changes and the document does not become stale.
+fn guidance_conflict(snapshot: &Snapshot, packet: &FocusedReviewPacket) -> Result<(), AppError> {
+    let current = snapshot.guidance_of(&packet.document);
+    if current.digest == packet.context.guidance.digest {
+        return Ok(());
+    }
+    Err(AppError::new(
+        ExitClass::Conflict,
+        Diagnostic::error(
+            "guidance_changed",
+            format!(
+                "project documentation guidance changed after the packet was created; run `memoria review {}` again for a fresh packet",
+                packet.document
+            ),
+        )
+        .at_path(packet.document.as_str())
+        .with_details(
+            DetailMap::default()
+                .text("packet_digest", packet.context.guidance.digest.to_hex())
+                .text("current_digest", current.digest.to_hex())
+                .build(),
+        ),
     ))
 }
 

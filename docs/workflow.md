@@ -31,9 +31,10 @@ The plan chooses the order from those dependencies.
 
 - [Review one document](#review-one-document)
 - [Why an old packet cannot approve new inputs](#why-an-old-packet-cannot-approve-new-inputs)
-- [Prepare or invalidate a project](#prepare-a-project-for-its-first-review)
+- [Prepare a project or request a review](#prepare-a-project-for-its-first-review)
+- [Read the project documentation guidance](#read-the-project-documentation-guidance)
 - [Resolve a rejection and check CI](#resolve-a-rejected-acknowledgement)
-- [Agent instructions and recovery](#agent-instructions-and-state-recovery)
+- [Agent guidance and recovery](#agent-guidance-and-state-recovery)
 
 ## Review one document
 
@@ -87,7 +88,7 @@ If the plan has no remaining task, continue at [finish the review cycle](#5-fini
 ### 2. Capture the packet
 
 A review packet is a file with one README and the exact inputs for its review.
-It contains the owned files, imported text, writing instructions, and reasons for the review.
+It contains the owned files, imported text, documentation guidance, and reasons for the review.
 The reviewer uses those contents as evidence.
 Packet creation does not make the README current.
 
@@ -113,7 +114,7 @@ If packet creation fails, resolve the reported error before the next stage.
 
 Read the packet fields in this order:
 
-1. Read `data.context.instructions` for the applicable writing rules and required skills.
+1. Read `data.context.guidance` for the applicable documentation goals and required skills.
 2. Read `data.covered_invalidations` for explicit review requests and their reasons.
 3. Read `data.content` for the README, owned files, and imported text.
 4. Examine `data.context.changes` and `data.context.diffs` for changed inputs.
@@ -206,6 +207,9 @@ A successful check returns exit 0.
 The final status shows current READMEs, no pending reviews, and no waiting reviews.
 If the check fails, its diagnostics identify the remaining review or structure problem.
 
+A changed-guidance count in the check output is a hint, not a failure.
+Guidance is advisory, so it never blocks the check.
+
 ## Why an old packet cannot approve new inputs
 
 ```mermaid
@@ -244,18 +248,31 @@ Source evidence: [packet creation](../crates/memoria-application/src/usecases/pr
 
 ## Prepare a project for its first review
 
+You choose what your README hierarchy represents.
+Memoria applies one structural rule: the nearest README above a file owns that file.
+Common strategies are architecture modules, business concepts, and operational workflows.
+Memoria supports each strategy and selects none of them.
+
 Prepare the documentation boundaries:
 
-1. Invoke `memoria init` at the Git worktree root.
-2. Examine the generated `memoria.toml` for source files that require exclusion.
-3. Add a `README.md` to each directory that requires a separate explanation.
-4. Invoke `memoria lint`.
-5. Continue at [review one document](#review-one-document).
+1. Write the root `README.md` yourself.
+2. Invoke `memoria init` at the Git worktree root to preview the setup.
+3. Invoke `memoria init --apply` to create `memoria.toml` and `memoria.lock`.
+4. Examine the generated `memoria.toml` for source files that require exclusion.
+5. Invoke `memoria lint`, then continue at [review one document](#review-one-document).
 
-`init` creates missing configuration, a root README, and empty review state.
-It preserves valid existing files.
-The first review plan includes READMEs without saved reviews.
+The preview reads the project and writes nothing.
+Apply creates only the two committed files, and it preserves valid existing files.
+If the root README is absent, apply reports `root_readme_missing` with exit 1 before any write.
+
+Add a `README.md` to each directory that requires a separate explanation.
+The first review plan includes each README without a saved review.
 The [command reference](cli.md#configuration-and-ownership) explains file selection and optional local rules.
+
+Commit both generated files.
+`memoria.toml` is your configuration.
+`memoria.lock` is generated, machine-owned state that Memoria writes and you commit.
+The [state guide](state.md) explains its format, its errors, and its recovery procedure.
 
 <details>
 <summary>Optional shared summaries</summary>
@@ -282,10 +299,43 @@ Relative links, raw HTML, and reference-style links are invalid inside exports.
 
 </details>
 
+## Read the project documentation guidance
+
+Project documentation guidance states your documentation goals, your readers, and your writing standards.
+It is review context for a person or an agent.
+It never selects files, and it never makes a document stale.
+
+Read the guidance of a boundary before you review that boundary:
+
+```sh
+memoria guidance src/README.md
+```
+
+The command works for current documents, needs no packet, and changes no state.
+Without a path, it shows the root guidance and lists each scope that adds more.
+
+Guidance lives in `memoria.toml` under `[documentation]`:
+
+```toml
+[documentation]
+guidance = [
+  "Explain the operational workflow before implementation details.",
+]
+guidance_files = ["docs/writing-guidance.md"]
+```
+
+A `README.memoria.toml` sidecar adds local guidance for its own boundary.
+Guidance appends from the root scope toward the document scope.
+Within each scope, inline entries come before file entries.
+
+When you change the wording, `memoria status` and `memoria check` report how many reviewed documents saw the older text.
+`check` still exits 0, because guidance is advisory.
+If the change needs fresh eyes, request the review explicitly.
+
 ## Request a review after a decision or policy change
 
 A fingerprint is a hash that represents review inputs for comparison.
-Writing instructions enter future packets but do not change input fingerprints.
+Guidance enters future packets but does not change input fingerprints.
 An explicit invalidation makes the requested READMEs pending.
 It stores the reason without changing their text.
 
@@ -322,6 +372,7 @@ These errors leave the previous saved review in place:
 | `snapshot_changed` | The reviewed inputs changed. | Examine the differences before a fresh packet. |
 | `revision_conflict` | Another acknowledgement advanced the README revision. | Obtain a fresh packet. |
 | `dependencies_pending` | A provider prevents this review. | Process the provider from the plan. |
+| `guidance_changed` | The documentation guidance changed after the packet. | Read the new guidance, then obtain a fresh packet. |
 | `packet_integrity_failed` | The packet differs from its integrity digest. | Obtain the packet again through the CLI. |
 | `note_invalid` | The note does not satisfy the text rules. | Write a specific note with at least three words. |
 
@@ -356,12 +407,12 @@ It does not start a prose review.
 
 </details>
 
-## Agent instructions and state recovery
+## Agent guidance and state recovery
 
 An agent skill is a file of instructions for an agent.
 The [Memoria skill](../skills/memoria/SKILL.md) gives the generic review procedure.
 The executable embeds that text at build time.
-The repository writing policy supplies additional instructions through each packet.
+The repository guidance travels to the agent inside each packet.
 
 Examine an installation plan:
 
@@ -369,10 +420,19 @@ Examine an installation plan:
 memoria agent install --target codex --dry-run
 ```
 
-The [agent package reference](cli.md#agent-packages) describes installation, removal, and recovery.
+The [agent integrations guide](agents.md) describes skill scopes, the lifecycle, and the optional `Stop` hook.
+The [agent package reference](cli.md#agent-packages) gives the exact arguments.
+
 A corrupt state file causes `state_corrupt` with exit 4.
 Memoria does not reset corrupt state.
-Recovery requires a known valid copy of `.memoria/state.json` from repository history or a backup.
-A lock file after a crash is harmless because the operating system releases the advisory lock.
+Recovery requires a known valid `memoria.lock` from repository history or a backup.
+Inspect a candidate file before you use it:
+
+```sh
+memoria state inspect --file /tmp/candidate.lock
+```
+
+The [state guide](state.md#6-errors-and-recovery) gives the complete recovery procedure.
+A lock file after a crash is harmless, because the operating system releases the advisory lock.
 
 Invoke `memoria review` to obtain the next documentation action.

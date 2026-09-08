@@ -1,0 +1,118 @@
+name: Acceptance
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: acceptance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Rust checks and CLI acceptance on Linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show the execution environment
+        run: |
+          set -euo pipefail
+          uname -s -r -m
+          git --version
+          rustc --version
+          cargo --version
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Lint
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+      - name: Build the release binary
+        run: cargo build --release --locked
+
+      - name: CLI acceptance
+        run: ./scripts/check-next-change-set.sh --binary ./target/release/memoria --agent-tests simulated
+
+      - name: Self-hosted documentation check
+        run: |
+          set -euo pipefail
+          ./target/release/memoria lint --format json
+          ./target/release/memoria check --format json
+          ./target/release/memoria status --format json
+          ./target/release/memoria status --summary --format json
+          ./target/release/memoria state inspect --format json
+
+  darwin-cross-build:
+    name: Cross-compile macOS binaries on Linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # This is the recipe the existing release workflow uses. Acceptance
+      # reuses it to prove build compatibility for both Apple targets.
+      # A successful cross-build does not prove macOS runtime behavior,
+      # locking, or filesystem durability.
+      - name: Compile both Apple targets
+        env:
+          BUILD_IMAGE: ghcr.io/rust-cross/cargo-zigbuild@sha256:9b4f6b3eb9e8f9fefb3960fe288ddba576627d66d9eff851ce7f62d2455564a5
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --platform linux/amd64 \
+            --volume "$GITHUB_WORKSPACE:/io" \
+            --workdir /io \
+            "$BUILD_IMAGE" \
+            sh -c '
+              set -eu
+              rustup target add aarch64-apple-darwin x86_64-apple-darwin
+              rustc --version
+              cargo --version
+              cargo zigbuild --release --locked --target aarch64-apple-darwin --bin memoria
+              cargo zigbuild --release --locked --target x86_64-apple-darwin --bin memoria
+            '
+
+      - name: Inspect the produced binaries
+        run: |
+          set -euo pipefail
+          for target in aarch64-apple-darwin x86_64-apple-darwin; do
+            binary="target/${target}/release/memoria"
+            test -x "$binary"
+            if [ "$target" = "aarch64-apple-darwin" ]; then
+              file "$binary" | grep -q 'Mach-O 64-bit arm64'
+            else
+              file "$binary" | grep -q 'Mach-O 64-bit x86_64'
+            fi
+            printf '%s: %s\n' "$target" "$(file "$binary")"
+          done
+
+      - name: Package the acceptance archives
+        env:
+          TAG: v0.2.0
+        run: |
+          set -euo pipefail
+          source_date_epoch="$(git show -s --format=%ct HEAD)"
+          mkdir -p dist
+          for target in aarch64-apple-darwin x86_64-apple-darwin; do
+            binary="target/${target}/release/memoria"
+            staging="dist/stage-${target}"
+            asset="memoria-${TAG}-${target}.tar.gz"
+
+            mkdir -p "$staging"
+            install -m 755 "$binary" "$staging/memoria"
+            install -m 644 LICENSE "$staging/LICENSE"
+            tar --sort=name --mtime="@${source_date_epoch}" \
+              --owner=0 --group=0 --numeric-owner \
+              -C "$staging" -czf "dist/${asset}" LICENSE memoria
+            (cd dist && sha256sum "$asset" > "${asset}.sha256")
+          done
+          ls -l dist

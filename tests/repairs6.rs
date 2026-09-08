@@ -164,55 +164,29 @@ fn raw_dirtiness_fallback_never_follows_links_or_opens_special_files() {
     // Submodule contents are opaque for the context as well.
     let project = Project::seed();
     let module = tempfile::tempdir().unwrap();
+    // The nested repository uses the fixture's isolated Git environment,
+    // so a host commit-signing setting cannot fail this seed.
     for args in [
         vec!["init", "-q"],
         vec!["config", "user.email", "m@example.com"],
         vec!["config", "user.name", "M"],
         vec!["config", "commit.gpgsign", "false"],
     ] {
-        assert!(
-            Command::new("git")
-                .arg("-C")
-                .arg(module.path())
-                .args(&args)
-                .output()
-                .unwrap()
-                .status
-                .success()
-        );
+        project.git_in(module.path(), &args);
     }
     fs::write(module.path().join("lib.rs"), "pub fn m() {}\n").unwrap();
     for args in [vec!["add", "-A"], vec!["commit", "-qm", "m"]] {
-        assert!(
-            Command::new("git")
-                .arg("-C")
-                .arg(module.path())
-                .args(&args)
-                .output()
-                .unwrap()
-                .status
-                .success()
-        );
+        project.git_in(module.path(), &args);
     }
-    let added = Command::new("git")
-        .arg("-C")
-        .arg(&project.root)
-        .args([
-            "-c",
-            "protocol.file.allow=always",
-            "submodule",
-            "add",
-            "-q",
-            module.path().to_str().unwrap(),
-            "vendor/module",
-        ])
-        .output()
-        .unwrap();
-    assert!(
-        added.status.success(),
-        "{}",
-        String::from_utf8_lossy(&added.stderr)
-    );
+    project.git(&[
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        "-q",
+        module.path().to_str().unwrap(),
+        "vendor/module",
+    ]);
     project.commit_all("submodule");
     project.write(".git/info/attributes", "unused filter=anything\n");
     project.baseline();

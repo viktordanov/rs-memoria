@@ -6,8 +6,8 @@ use crate::diff::{DiffText, diff_bytes};
 use crate::error::{AppError, Detail, DetailMap, Diagnostic, ExitClass, Outcome};
 use crate::packet::{
     ChangeEntry, ContentEncoding, DEFAULT_RAW_INPUT_LIMIT, DiffEntry, ExportEntry, FileContent,
-    FocusedReviewPacket, ImportContent, InstructionEntry, MAX_DECODED_BYTES, MAX_RAW_INPUT_LIMIT,
-    MAX_RECORDS, PacketContent, PacketContext, compute_token, manifest_detail,
+    FocusedReviewPacket, ImportContent, MAX_DECODED_BYTES, MAX_RAW_INPUT_LIMIT, MAX_RECORDS,
+    PacketContent, PacketContext, compute_token, manifest_detail,
 };
 use crate::ports::Services;
 use crate::snapshot::{self, Snapshot};
@@ -206,15 +206,10 @@ pub fn build_packet(
         .collect();
 
     let previous = snapshot.state.reviews.get(document).cloned();
-    let instructions: Vec<InstructionEntry> = snapshot
-        .applicable_instructions(document)
-        .into_iter()
-        .map(|i| InstructionEntry {
-            source: i.source,
-            kind: i.kind.to_string(),
-            text: i.text,
-        })
-        .collect();
+    // Effective guidance comes before the owned evidence. Its complete text
+    // belongs to the packet byte budget: an oversized entry produces an
+    // explicit limit error and never disappears through silent truncation.
+    let guidance = snapshot.guidance_of(document);
     let exports: Vec<ExportEntry> = snapshot.documents[document]
         .exports
         .iter()
@@ -243,10 +238,7 @@ pub fn build_packet(
     let mut decoded_budget: u64 = readme.bytes
         + files.iter().map(|f| f.bytes).sum::<u64>()
         + imports.iter().map(|i| i.bytes).sum::<u64>()
-        + instructions
-            .iter()
-            .map(|i| i.text.len() as u64)
-            .sum::<u64>();
+        + crate::guidance::text_bytes(&guidance.entries);
     if let Some(record) = &previous {
         let diff = record.manifest.diff(&manifest);
         for change in diff_changes(&diff) {
@@ -322,7 +314,14 @@ pub fn build_packet(
         .map(|inv| (inv.id, inv.reason.as_str().to_string()))
         .collect();
     let review_revision = snapshot.state.document_revision(document);
-    let token = compute_token(hasher, document, review_revision, &manifest, &covered);
+    let token = compute_token(
+        hasher,
+        document,
+        review_revision,
+        &manifest,
+        guidance.digest,
+        &covered,
+    );
 
     // Records are array elements across the whole envelope. The data subtree
     // is counted here; the codec adds the diagnostics array and publishes the
@@ -342,7 +341,7 @@ pub fn build_packet(
         context: PacketContext {
             previous_review: previous.clone(),
             git: snapshot.git.clone(),
-            instructions: instructions.clone(),
+            guidance: guidance.clone(),
             exports: exports.clone(),
             consumers: consumers.clone(),
             changes: changes.clone(),
@@ -384,7 +383,7 @@ pub fn build_packet(
         context: PacketContext {
             previous_review: previous,
             git: snapshot.git.clone(),
-            instructions,
+            guidance,
             exports,
             consumers,
             changes,
