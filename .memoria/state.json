@@ -1,18 +1,20 @@
 {
   "invalidations": [],
-  "next_invalidation_id": 1,
+  "next_invalidation_id": 2,
   "reviews": {
     "README.md": {
-      "acknowledged_invalidations": [],
+      "acknowledged_invalidations": [
+        1
+      ],
       "git": {
-        "base_commit": "1eaf9a03e6058f594a862c7b14275bce581d0678",
+        "base_commit": "1eaf6e9a99a50f944dbc0b189cf63414ad0978bd",
         "worktree_dirty": true
       },
-      "input_fingerprint": "cd2f8dea028932f1",
+      "input_fingerprint": "b5814320fae93b27",
       "input_manifest": {
         "document": "README.md",
-        "document_bytes": 9111,
-        "document_hash": "eca7c3ef55361f68",
+        "document_bytes": 10996,
+        "document_hash": "0d27565d9b019ef3",
         "files": [
           {
             "bytes": 16821,
@@ -30,18 +32,18 @@
             "path": "LICENSE"
           },
           {
-            "bytes": 22630,
-            "hash": "9270831bf3bc1b02",
+            "bytes": 22942,
+            "hash": "3fd7dabac5c081d4",
             "path": "docs/cli.md"
           },
           {
-            "bytes": 27870,
-            "hash": "f1c44f05f88c99f3",
+            "bytes": 27874,
+            "hash": "9f283c779c1e51a2",
             "path": "docs/specification.md"
           },
           {
-            "bytes": 13587,
-            "hash": "81b0202697c63747",
+            "bytes": 13972,
+            "hash": "668ac6a4f33c65eb",
             "path": "docs/workflow.md"
           },
           {
@@ -75,6 +77,12 @@
             "hash": "d03d8bc5727b81e3"
           },
           {
+            "bytes": 1174,
+            "document": "src/README.md",
+            "export_id": "cli-help",
+            "hash": "59968b9ae2fa5a5e"
+          },
+          {
             "bytes": 145,
             "document": "src/README.md",
             "export_id": "summary",
@@ -90,24 +98,26 @@
         "policy_hash": "336c150896928f05",
         "version": 1
       },
-      "note": "The consumer-first README and owned guides explain the TOML workflow, XXH3-64 fingerprints, self-demo, and nested boundaries.",
+      "note": "Reframed the public guide, corrected its workflow example, and added maintained navigation and CLI help.",
       "result": "updated",
-      "reviewed_at": "2026-09-07T23:30:37Z",
+      "reviewed_at": "2026-09-08T00:13:10Z",
       "reviewer": "Codex",
-      "revision": 1,
-      "token_digest": "88bfe8ebe8e8a074"
+      "revision": 2,
+      "token_digest": "a3832c23d47749aa"
     },
     "crates/memoria-application/README.md": {
-      "acknowledged_invalidations": [],
+      "acknowledged_invalidations": [
+        1
+      ],
       "git": {
-        "base_commit": "1eaf9a03e6058f594a862c7b14275bce581d0678",
+        "base_commit": "1eaf6e9a99a50f944dbc0b189cf63414ad0978bd",
         "worktree_dirty": true
       },
-      "input_fingerprint": "84f97ba01beeabf7",
+      "input_fingerprint": "fb31b6cfc5737b15",
       "input_manifest": {
         "document": "crates/memoria-application/README.md",
-        "document_bytes": 5158,
-        "document_hash": "2cf2403ded565032",
+        "document_bytes": 5436,
+        "document_hash": "89207d3ff4f9c541",
         "files": [
           {
             "bytes": 264,
@@ -219,24 +229,26 @@
         "policy_hash": "673636e22f15edd7",
         "version": 1
       },
-      "note": "The application boundary explains the integrated review flow and its state changes.",
+      "note": "Added a concise reading path without changing the application boundary explanation.",
       "result": "updated",
-      "reviewed_at": "2026-09-07T23:28:57Z",
+      "reviewed_at": "2026-09-08T00:11:36Z",
       "reviewer": "Codex",
-      "revision": 1,
-      "token_digest": "85c7d4f9d7559108"
+      "revision": 2,
+      "token_digest": "f6323fe27e73bf1e"
     },
     "crates/memoria-domain/README.md": {
-      "acknowledged_invalidations": [],
+      "acknowledged_invalidations": [
+        1
+      ],
       "git": {
-        "base_commit": "1eaf9a03e6058f594a862c7b14275bce581d0678",
+        "base_commit": "1eaf6e9a99a50f944dbc0b189cf63414ad0978bd",
         "worktree_dirty": true
       },
-      "input_fingerprint": "20369001cfd928f5",
+      "input_fingerprint": "7c40bf5c0319f396",
       "input_manifest": {
         "document": "crates/memoria-domain/README.md",
-        "document_bytes": 4868,
-        "document_hash": "e9ccceb283e9f763",
+        "document_bytes": 5207,
+        "document_hash": "ef5b99a6c88d7fe7",
         "files": [
           {
             "bytes": 296,
@@ -318,24 +330,26 @@
         "policy_hash": "635f5d502e43b288",
         "version": 1
       },
-      "note": "The domain boundary explains ownership, review ordering, revisions, and the XXH3-64 adapter boundary.",
+      "note": "Added a concise reading path without changing the domain rules explanation.",
       "result": "updated",
-      "reviewed_at": "2026-09-07T23:29:18Z",
+      "reviewed_at": "2026-09-08T00:11:40Z",
       "reviewer": "Codex",
-      "revision": 1,
-      "token_digest": "8d204a6583704cb0"
+      "revision": 2,
+      "token_digest": "ab2807e5b9d7bca6"
     },
     "crates/memoria-infrastructure/README.md": {
-      "acknowledged_invalidations": [],
+      "acknowledged_invalidations": [
+        1
+      ],
       "git": {
-        "base_commit": "1eaf9a03e6058f594a862c7b14275bce581d0678",
+        "base_commit": "1eaf6e9a99a50f944dbc0b189cf63414ad0978bd",
         "worktree_dirty": true
       },
-      "input_fingerprint": "30f5255e1191a86b",
+      "input_fingerprint": "40adecd787d6fd9f",
       "input_manifest": {
         "document": "crates/memoria-infrastructure/README.md",
-        "document_bytes": 4353,
-        "document_hash": "784075a6b66fecde",
+        "document_bytes": 4645,
+        "document_hash": "b694e946ce77dc98",
         "files": [
           {
             "bytes": 725,
@@ -407,24 +421,26 @@
         "policy_hash": "4be6515cf13e5300",
         "version": 1
       },
-      "note": "The infrastructure boundary explains the TOML and XXH3-64 adapters, packet limits, and durable writes.",
+      "note": "Added a concise reading path without changing the adapter boundary explanation.",
       "result": "updated",
-      "reviewed_at": "2026-09-07T23:29:37Z",
+      "reviewed_at": "2026-09-08T00:11:45Z",
       "reviewer": "Codex",
-      "revision": 1,
-      "token_digest": "5cc63613ebd879fc"
+      "revision": 2,
+      "token_digest": "3ef381e9ea36028f"
     },
     "src/README.md": {
-      "acknowledged_invalidations": [],
+      "acknowledged_invalidations": [
+        1
+      ],
       "git": {
-        "base_commit": "1eaf9a03e6058f594a862c7b14275bce581d0678",
+        "base_commit": "1eaf6e9a99a50f944dbc0b189cf63414ad0978bd",
         "worktree_dirty": true
       },
-      "input_fingerprint": "c7e10a367aa64a2b",
+      "input_fingerprint": "36e3dd6f548243c4",
       "input_manifest": {
         "document": "src/README.md",
-        "document_bytes": 3389,
-        "document_hash": "9f62e9681275bba7",
+        "document_bytes": 5027,
+        "document_hash": "f8f9e5c52e36d2cd",
         "files": [
           {
             "bytes": 15794,
@@ -456,24 +472,26 @@
         "policy_hash": "6c810e2c124e3b49",
         "version": 1
       },
-      "note": "The command entry-point boundary explains dispatch, output, packet handling, and exit statuses.",
+      "note": "Added navigation and the exact top-level help export owned by the command boundary.",
       "result": "updated",
-      "reviewed_at": "2026-09-07T23:29:53Z",
+      "reviewed_at": "2026-09-08T00:11:49Z",
       "reviewer": "Codex",
-      "revision": 1,
-      "token_digest": "0443bb98108e586d"
+      "revision": 2,
+      "token_digest": "ea1a99c40540b3ee"
     },
     "tests/README.md": {
-      "acknowledged_invalidations": [],
+      "acknowledged_invalidations": [
+        1
+      ],
       "git": {
-        "base_commit": "1eaf9a03e6058f594a862c7b14275bce581d0678",
+        "base_commit": "1eaf6e9a99a50f944dbc0b189cf63414ad0978bd",
         "worktree_dirty": true
       },
-      "input_fingerprint": "2bb9ff311f1ec19d",
+      "input_fingerprint": "d1bdd4f47e2d406a",
       "input_manifest": {
         "document": "tests/README.md",
-        "document_bytes": 3844,
-        "document_hash": "f4b497840addedd1",
+        "document_bytes": 4109,
+        "document_hash": "d613da64d7f2fd7f",
         "files": [
           {
             "bytes": 5634,
@@ -585,14 +603,14 @@
         "policy_hash": "78e77cedbf3b98fa",
         "version": 1
       },
-      "note": "The test boundary explains the TOML fixtures, harness, suites, and observable command behavior.",
+      "note": "Added a concise reading path without changing the integration-test boundary explanation.",
       "result": "updated",
-      "reviewed_at": "2026-09-07T23:30:10Z",
+      "reviewed_at": "2026-09-08T00:11:54Z",
       "reviewer": "Codex",
-      "revision": 1,
-      "token_digest": "362604b5f69b5b2c"
+      "revision": 2,
+      "token_digest": "6b257f1673317dca"
     }
   },
-  "revision": 6,
+  "revision": 13,
   "schema_version": 1
 }
