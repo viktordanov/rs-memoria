@@ -42,16 +42,20 @@ jobs:
           set -euo pipefail
           docker run --rm \
             --platform linux/amd64 \
+            "$BUILD_IMAGE" \
+            cargo --version
+          docker run --rm \
+            --platform linux/amd64 \
             --volume "$GITHUB_WORKSPACE:/io" \
             --workdir /io \
             "$BUILD_IMAGE" \
-            bash -lc '
-              set -euo pipefail
-              rustup toolchain install 1.96.0 --profile minimal --no-self-update
-              rustup target add aarch64-apple-darwin x86_64-apple-darwin --toolchain 1.96.0
-              cargo +1.96.0 zigbuild --release --locked --target aarch64-apple-darwin --bin memoria
-              cargo +1.96.0 zigbuild --release --locked --target x86_64-apple-darwin --bin memoria
-            '
+            cargo zigbuild --release --locked --target aarch64-apple-darwin --bin memoria
+          docker run --rm \
+            --platform linux/amd64 \
+            --volume "$GITHUB_WORKSPACE:/io" \
+            --workdir /io \
+            "$BUILD_IMAGE" \
+            cargo zigbuild --release --locked --target x86_64-apple-darwin --bin memoria
 
       - name: Inspect and package the binaries
         env:
