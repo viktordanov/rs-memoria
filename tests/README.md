@@ -9,6 +9,14 @@ The crate directories own their unit, property, and adapter tests.
 
 Read [workflow.rs](workflow.rs#L9) to start with the scenario that makes all reviews current.
 
+## On this page
+
+- [Role in the project](#role-in-the-project)
+- [Fixture setup](#a-fixture-becomes-a-repository)
+- [Observable assertions](#the-assertions-describe-observable-behavior)
+- [Suite map](#suite-map)
+- [Test boundaries and next step](#test-boundaries)
+
 ## Role in the project
 
 <!-- memoria:export id="summary" -->

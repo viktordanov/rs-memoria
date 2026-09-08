@@ -8,6 +8,14 @@ The application supplies repository facts.
 
 Read [ownership.rs](src/ownership.rs#L18) to start with the rule that assigns files to READMEs.
 
+## On this page
+
+- [Role in the project](#role-in-the-project)
+- [Files and shared text](#files-and-shared-text-have-different-relationships)
+- [Manifest comparison](#manifests-make-changes-visible)
+- [Review states and acknowledgement](#pending-and-waiting-describe-different-states)
+- [Boundaries and next step](#boundaries-and-errors)
+
 ## Role in the project
 
 <!-- memoria:export id="summary" -->

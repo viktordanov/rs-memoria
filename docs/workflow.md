@@ -27,6 +27,14 @@ Its review states describe the next task:
 A README can be current and still wait for another README.
 The plan chooses the order from those dependencies.
 
+## On this page
+
+- [Review one document](#review-one-document)
+- [Why an old packet cannot approve new inputs](#why-an-old-packet-cannot-approve-new-inputs)
+- [Prepare or invalidate a project](#prepare-a-project-for-its-first-review)
+- [Resolve a rejection and check CI](#resolve-a-rejected-acknowledgement)
+- [Agent instructions and recovery](#agent-instructions-and-state-recovery)
+
 ## Review one document
 
 The five stages that follow process one README.

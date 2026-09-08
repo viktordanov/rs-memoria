@@ -9,6 +9,14 @@ It keeps library types inside the adapters.
 
 Read [fs.rs](src/fs.rs#L110) to start with file classification and reads.
 
+## On this page
+
+- [Role in the project](#role-in-the-project)
+- [Repository adapters](#repository-facts-enter-through-adapters)
+- [State writes](#state-writes-preserve-a-clear-error-boundary)
+- [Formats, packets, and skill installation](#formats-and-packet-limits)
+- [Next step](#continue)
+
 ## Role in the project
 
 <!-- memoria:export id="summary" -->

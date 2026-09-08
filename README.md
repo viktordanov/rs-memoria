@@ -1,22 +1,20 @@
 # Memoria
 
-Memoria is a command-line tool that identifies which READMEs require review after project files change.
+**Keep project documentation connected to the code it explains.**
 
-Code changes can leave documentation out of date.
-Memoria connects each README to the files that it explains.
-You or an agent examines the explanation, and Memoria records the reviewed inputs.
-Later changes produce a list of required reviews.
+README drift rarely announces itself. A feature changes, the tests move on, and the explanation that once made sense quietly becomes misleading. In a large repository, even finding the documentation that deserves another look can be harder than fixing it.
 
-## Use cases
+Memoria turns that problem into a review queue. It maps files to nearby READMEs, shows which explanations may be affected, packages the relevant evidence for a human or agent, and remembers what was reviewed. It does not write your documentation or decide that the prose is correct; it makes that decision focused, repeatable, and visible.
 
-Memoria supports these tasks:
+## Contents
 
-- After a feature change, a developer finds the affected READMEs.
-- Before a merge, CI identifies documentation reviews that remain open.
-- During agent work, the reviewer receives source text and repository writing rules together.
-- After a writing-policy change, a maintainer requests reviews without a code change.
+- [Quick start](#quick-start)
+- [How Memoria works](#how-memoria-works)
+- [Command-line interface](#command-line-interface)
+- [Find the right guide](#find-the-right-guide)
+- [Self-hosting and development](#self-hosting-and-development)
 
-## Try a small example
+## Quick start
 
 Install Memoria from this checkout:
 
@@ -24,108 +22,135 @@ Install Memoria from this checkout:
 cargo install --locked --path .
 ```
 
-The example uses an existing Git project with one README and no saved Memoria reviews.
-A document boundary groups the selected files that one README explains.
-The nearest README owns each selected file.
-A child README starts a separate boundary.
+Then open an existing Git project and let Memoria create its starting files:
 
-In that project, prepare the first review:
+```sh
+memoria init
+memoria status
+memoria review
+```
 
-1. Invoke `memoria init`. It creates missing configuration, a root README, and empty review state.
-2. Invoke `memoria status`. It shows the current state without changing files.
-3. Invoke `memoria review`. It lists required reviews in order without recording a review result.
+`init` adds `memoria.toml`, a root README if one is missing, and empty review state under `.memoria/`. It preserves valid files that already exist. `status` gives you the overview, while `review` tells you exactly what to do next.
 
-`init` preserves valid existing files.
+When a README needs attention, capture a focused JSON packet outside the repository:
 
-Pending means that a README requires a review.
-In this example, the plan lists `README.md` as pending because it has no recorded review.
+```sh
+memoria review README.md --format json > /tmp/memoria-review.json
+```
 
-## Finish one review
+Read the packet, compare the README with its included source evidence, and update the prose when necessary. Then run `memoria lint`, create a fresh packet, and acknowledge that exact snapshot:
 
-A review packet is a file that contains one README and the exact inputs for its review.
-It also contains the applicable writing rules.
-The reviewer uses this packet as evidence for the explanation.
+```sh
+memoria lint
+memoria review README.md --format json > /tmp/memoria-review.json
+memoria_token=$(jq -r '.data.token' /tmp/memoria-review.json)
 
-An acknowledgement records who reviewed the README and why its explanation is correct.
-A revision counts successful acknowledgements for that README.
-A token is the packet identifier that connects an acknowledgement to the reviewed document, revision, and inputs.
+memoria ack README.md \
+  --packet /tmp/memoria-review.json \
+  --token "$memoria_token" \
+  --reviewer "Your name" \
+  --result updated \
+  --note "The README now describes the reviewed inputs."
 
-The `lint` command examines documentation structure, such as markers and references between READMEs.
-The `check` command also requires current reviews and current copies of shared text.
-A current README has no remaining review cause.
-Neither command records a review result.
+memoria check
+```
 
-The review has five stages:
+Use `--result no-update` when you inspected the evidence and the README was already correct. An acknowledgement makes one document current and advances its revision. It never claims that Memoria wrote or understood the prose.
 
-1. `memoria review` selects the next README.
-2. `memoria review <README.md> --format json` creates its packet.
-3. The reviewer examines the inputs and updates the explanation. After edits, a fresh packet captures the final text.
-4. `memoria lint` examines the structure, and `memoria ack` records the review against the final packet and token.
-5. After all required reviews, `memoria check` succeeds.
+For the complete packet procedure, including the required fresh-packet step after an edit, follow the [review workflow](docs/workflow.md).
 
-Memoria determines whether the recorded inputs still match.
-The reviewer remains responsible for the meaning of the prose.
-Memoria makes no LLM calls.
+## How Memoria works
 
-## Share a short explanation between READMEs
+Every README creates a documentation boundary. By default, it owns the selected files beneath it until another README creates a more specific boundary. When an owned input changes, Memoria marks that README for review.
 
-An export is a marked section that another README can reuse.
-An import declares a managed copy of that section.
-The README that supplies it is the provider, and the README that copies it is the consumer.
+```mermaid
+flowchart LR
+    accTitle: A code change becomes a recorded documentation review.
+    accDescr: Memoria identifies the owning README, prepares its evidence, and records a human or agent decision.
+    change["Code changes"] --> owner["Owning README becomes pending"]
+    owner --> packet["Memoria prepares a review packet"]
+    packet --> decision["Human or agent checks the explanation"]
+    decision --> ack["Acknowledgement records the result"]
+    ack --> current["README becomes current"]
+```
 
-The `render` command updates these copies from their providers.
-It changes the imported text but does not record a review result.
-If a copy is outdated, the plan requests `render` before the consumer review.
+This workflow is useful in several common situations:
 
-A source change first affects its README owner.
-Consumers wait for their providers to finish review.
-If a provider export stays unchanged, that source change does not create a review cause for its consumers.
-Normal Markdown links provide navigation without review dependencies.
+- A feature changes, and a developer needs to find the affected explanations.
+- CI must block a merge until required documentation reviews are complete.
+- An agent needs the relevant source and writing policy in one bounded handoff.
+- A policy or architecture decision calls for review even though no source file changed.
 
-## Request a review without a file change
+The packet is the handoff. It contains the README, its selected files, imported text, review reasons, and the writing instructions from project configuration. A compact token binds the acknowledgement to that exact document revision and evidence. If the repository changes before acknowledgement, Memoria rejects the stale packet instead of approving different inputs by accident.
 
-An invalidation is an explicit review request with a recorded reason.
-It makes the selected READMEs pending without changing their text.
-This is useful after a change to writing rules or project decisions.
-A writing-policy edit alone does not request a review.
+READMEs can also share small, stable explanations. A provider marks an export, and a consumer declares an import. `memoria render` refreshes only those managed copies. The provider finishes first, so consumers never review text from an unfinished dependency.
 
-## Examine the self-demo
+Sometimes the reason for another review is not a file diff. `memoria invalidate` records an explicit request, such as a changed writing policy or architecture decision, and carries that reason into the packet.
 
-This repository uses the same workflow for its own documentation.
-Six READMEs define its document boundaries.
-The root README imports five short summaries from those boundaries.
-Memoria stores the review results in `.memoria/state.json`.
+## Command-line interface
 
-Start the self-demo:
+This is the complete top-level interface. The command entry-point documentation owns this snapshot, and Memoria imports it here.
 
-1. Invoke `memoria status`.
-2. Invoke `memoria invalidate all --reason "Review the documentation against the repository writing policy."`.
-3. Invoke `memoria review`.
+<!-- memoria:import src="src/README.md#cli-help" -->
+```text
+Keep a project's documented mental model connected to its code.
 
-The plan puts the five providers before the root README.
-The policy in `memoria.toml` enters every packet.
-It requires the `simple-english` and `i-have-adhd` skills before documentation edits.
-If a required skill is unavailable, the policy requires the author to stop and name it.
+Usage: memoria [OPTIONS] <COMMAND>
 
-## Continue with the relevant guide
+Commands:
+  init        Create root configuration, a minimal root README, and empty state
+  status      Show coverage, input size, and review state
+  lint        Check structure, configuration, markers, and link hints
+  review      Show the ordered review plan, or a focused packet for one README
+  render      Refresh declared import blocks only
+  ack         Record a review result against the exact packet snapshot
+  invalidate  Mark one README, a subtree, or the whole project for semantic review
+  check       Run read-only validation for CI
+  graph       Show documentation ownership, imports, navigation, and status
+  agent       Install or remove the managed Memoria skill for an agent
+  help        Print this message or the help of the given subcommand(s)
 
-| Guide | Reader task |
+Options:
+      --root <DIRECTORY>  Project root. Must be the Git worktree root. Defaults to discovery from the current directory
+      --format <FORMAT>   Output format [default: human] [possible values: human, json]
+  -h, --help              Print help
+  -V, --version           Print version
+```
+<!-- /memoria:import -->
+
+The [command reference](docs/cli.md) covers every argument, state change, diagnostic, and exit status.
+
+## Find the right guide
+
+| If you want to… | Read… |
 | --- | --- |
-| [Review workflow](docs/workflow.md) | Process a required review with packet and acknowledgement commands. |
-| [Command reference](docs/cli.md) | Find arguments, state changes, limits, and diagnostics. |
-| [Agent skill](skills/memoria/SKILL.md) | Read the generic procedure that the executable supplies to agents. |
-| [Specification](docs/specification.md) | Examine the original requirements and proposed decisions. |
+| Complete a documentation review | [Review workflow](docs/workflow.md) |
+| Look up a command or failure | [Command reference](docs/cli.md) |
+| Install the reusable agent procedure | [Agent skill](skills/memoria/SKILL.md) |
+| Understand the product contract | [Specification](docs/specification.md) |
+| Explore the implementation | [Repository map](#repository-map) |
 
-This checkout uses `memoria.toml`, raw byte fingerprints, and local Git worktrees on Linux.
-The [toolchain file](rust-toolchain.toml) identifies its Rust version.
-The [command reference](docs/cli.md#fingerprints-and-limits-of-the-result) describes the implementation limits.
+The workflow is task-oriented; start there if you are using Memoria for the first time. The command reference is the detailed lookup guide. The specification preserves the product rules and their original rationale.
 
-## Repository structure
+## Self-hosting and development
 
-The domain crate contains review rules.
-The application crate coordinates commands through ports, which are contracts for external operations.
-Infrastructure adapters implement those contracts with Git, file access, and format libraries.
-The `memoria` executable constructs these parts.
+Memoria is its own first real project. This repository has six README boundaries, and the root README imports short summaries from the other five. The review state in `.memoria/state.json` records the evidence that each explanation was checked against.
+
+The repository policy in `memoria.toml` also travels inside every review packet. It asks documentation agents to load the `simple-english` and `i-have-adhd` skills, makes this root page the only exception to strict Simplified Technical English, and establishes Mermaid as the diagram format.
+
+To watch the repository review itself:
+
+```sh
+memoria status
+memoria invalidate all --reason "Review the documentation against the repository writing policy."
+memoria review
+```
+
+The plan schedules the five provider READMEs before this root consumer. Run `memoria graph` to see the same ownership and import relationships as data.
+
+### Repository map
+
+The workspace follows domain-driven and clean-architecture dependency boundaries:
 
 ```mermaid
 flowchart TD
@@ -138,15 +163,11 @@ flowchart TD
     application --> domain
 ```
 
-Each arrow means that one workspace package declares a dependency on another.
-All paths point toward the domain, which declares no runtime dependency.
-Source evidence: [root manifest](Cargo.toml), [application manifest](crates/memoria-application/Cargo.toml), [infrastructure manifest](crates/memoria-infrastructure/Cargo.toml), and [domain manifest](crates/memoria-domain/Cargo.toml).
+Each arrow means that one workspace package declares a dependency on another. All paths point toward the domain, which has no runtime dependency. The [root manifest](Cargo.toml), [application manifest](crates/memoria-application/Cargo.toml), [infrastructure manifest](crates/memoria-infrastructure/Cargo.toml), and [domain manifest](crates/memoria-domain/Cargo.toml) are the source evidence.
 
-The imported summaries identify the local implementation boundaries.
-Each linked README supplies enough context for a developer or agent who opens it directly.
+The summaries below are managed imports. Each implementation boundary owns its explanation locally, while this page gives readers a compact map of the whole system.
 
-
-### [Domain](crates/memoria-domain/README.md)
+#### [Domain](crates/memoria-domain/README.md)
 
 <!-- memoria:import src="crates/memoria-domain/README.md#summary" -->
 The domain crate assigns selected files to their nearest README.
@@ -154,7 +175,7 @@ It compares recorded review inputs with current inputs.
 Its rules determine which READMEs require review and their order.
 <!-- /memoria:import -->
 
-### [Application](crates/memoria-application/README.md)
+#### [Application](crates/memoria-application/README.md)
 
 <!-- memoria:import src="crates/memoria-application/README.md#summary" -->
 The application crate coordinates Memoria commands through domain rules.
@@ -162,7 +183,7 @@ Its ports describe external operations, and adapters supply those operations.
 Each command returns structured results for the executable.
 <!-- /memoria:import -->
 
-### [Infrastructure](crates/memoria-infrastructure/README.md)
+#### [Infrastructure](crates/memoria-infrastructure/README.md)
 
 <!-- memoria:import src="crates/memoria-infrastructure/README.md#summary" -->
 The infrastructure crate implements Git, file, parser, and storage operations.
@@ -170,14 +191,14 @@ It supplies these operations through application ports.
 Its writers compare expected content before replacement.
 <!-- /memoria:import -->
 
-### [Command entry point](src/README.md)
+#### [Command entry point](src/README.md)
 
 <!-- memoria:import src="src/README.md#summary" -->
 The executable parses arguments, constructs adapters, and calls the application.
 It writes human text or JSON and returns a process exit status.
 <!-- /memoria:import -->
 
-### [Command behavior tests](tests/README.md)
+#### [Command behavior tests](tests/README.md)
 
 <!-- memoria:import src="tests/README.md#summary" -->
 The integration tests invoke Memoria commands in temporary Git worktrees.
@@ -185,11 +206,10 @@ They compare output, exit statuses, and stored files.
 The sample repositories stay outside this project documentation scope.
 <!-- /memoria:import -->
 
-The root README owns the shared guides, root build files, license, and source skill.
-The configuration excludes `tests/fixtures/**` because those files represent other repositories.
+The root README owns the shared guides, root build files, license, and source skill. The configuration excludes `tests/fixtures/**` because those files represent other repositories.
 
 <details>
-<summary>Development commands</summary>
+<summary>Development checks</summary>
 
 ```sh
 cargo fmt --all -- --check
@@ -201,6 +221,6 @@ cargo build --release --locked --bin memoria
 
 </details>
 
-The project uses the [MIT license](LICENSE).
+Memoria is available under the [MIT license](LICENSE).
 
-Invoke `memoria status` to examine the documentation state in your project.
+Start with `memoria status`; it will tell you what the documentation needs next.

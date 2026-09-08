@@ -7,6 +7,14 @@ A human or agent remains responsible for the prose.
 
 Read the [workflow](workflow.md) for a first review with commands in task order.
 
+## On this page
+
+- [Terms, invocation, and paths](#terms-used-in-this-reference)
+- [Configuration and ownership](#configuration-and-ownership)
+- [Inspection commands and packets](#inspection-commands)
+- [Mutations and agent packages](#review-mutations)
+- [Diagnostics, exits, and limits](#json-and-diagnostics)
+
 ## Terms used in this reference
 
 A document boundary groups the selected files that one README explains.

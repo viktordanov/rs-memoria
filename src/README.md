@@ -9,11 +9,51 @@ The application and domain determine review state.
 
 Read [main.rs](main.rs#L82) to start with the command dispatch.
 
+## On this page
+
+- [Role in the project](#role-in-the-project)
+- [Command surface](#command-surface)
+- [Arguments become an outcome](#arguments-become-an-outcome)
+- [Output and exit statuses](#output-can-fail-after-a-mutation)
+- [File map and next step](#file-map)
+
 ## Role in the project
 
 <!-- memoria:export id="summary" -->
 The executable parses arguments, constructs adapters, and calls the application.
 It writes human text or JSON and returns a process exit status.
+<!-- /memoria:export -->
+
+## Command surface
+
+The root README imports this block.
+This arrangement keeps the public command list with the command entry point.
+
+<!-- memoria:export id="cli-help" -->
+```text
+Keep a project's documented mental model connected to its code.
+
+Usage: memoria [OPTIONS] <COMMAND>
+
+Commands:
+  init        Create root configuration, a minimal root README, and empty state
+  status      Show coverage, input size, and review state
+  lint        Check structure, configuration, markers, and link hints
+  review      Show the ordered review plan, or a focused packet for one README
+  render      Refresh declared import blocks only
+  ack         Record a review result against the exact packet snapshot
+  invalidate  Mark one README, a subtree, or the whole project for semantic review
+  check       Run read-only validation for CI
+  graph       Show documentation ownership, imports, navigation, and status
+  agent       Install or remove the managed Memoria skill for an agent
+  help        Print this message or the help of the given subcommand(s)
+
+Options:
+      --root <DIRECTORY>  Project root. Must be the Git worktree root. Defaults to discovery from the current directory
+      --format <FORMAT>   Output format [default: human] [possible values: human, json]
+  -h, --help              Print help
+  -V, --version           Print version
+```
 <!-- /memoria:export -->
 
 ## Arguments become an outcome

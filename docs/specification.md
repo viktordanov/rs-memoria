@@ -14,7 +14,13 @@ File names, command names, and configuration keys are proposed, not final.
 
 In this document, **must** means required. **Should** means preferred. **May** means optional.
 
-**Read by topic:** [Purpose](#1-purpose) · [Repository rules](#2-repository-rules) · [Documentation links](#3-documentation-links) · [Review](#4-change-detection-and-review) · [CLI and agents](#5-cli-and-agent-support) · [Scope](#6-delivery-scope)
+## On this page
+
+- [Purpose](#1-purpose)
+- [Repository rules](#2-repository-rules)
+- [Documentation links](#3-documentation-links)
+- [Change detection and review](#4-change-detection-and-review)
+- [CLI, agents, and delivery scope](#5-cli-and-agent-support)
 
 ## 1. Purpose
 

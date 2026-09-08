@@ -10,6 +10,14 @@ This crate depends on `memoria-domain` and the Rust standard library.
 
 Read [plan.rs](src/usecases/plan.rs#L43) to start with a command that makes no writes.
 
+## On this page
+
+- [Role in the project](#role-in-the-project)
+- [Review planning](#inputs-become-a-review-plan)
+- [Packets and acknowledgements](#a-packet-supplies-the-review-evidence)
+- [Mutation boundaries](#mutation-boundaries-differ)
+- [File map and next step](#file-map)
+
 ## Role in the project
 
 <!-- memoria:export id="summary" -->
