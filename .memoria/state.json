@@ -5,18 +5,18 @@
     "README.md": {
       "acknowledged_invalidations": [],
       "git": {
-        "base_commit": "1eafd0b379a738e6bd822ebf119551a593b0ecbb",
+        "base_commit": "1eaf350bd9b8d94a87b0697c4fe73d72d2050a1a",
         "worktree_dirty": true
       },
-      "input_fingerprint": "a6a563d6450dc033",
+      "input_fingerprint": "ef328c9652cee768",
       "input_manifest": {
         "document": "README.md",
         "document_bytes": 10996,
         "document_hash": "0d27565d9b019ef3",
         "files": [
           {
-            "bytes": 3253,
-            "hash": "e210d92d3430f6cc",
+            "bytes": 3194,
+            "hash": "4674fe390fb63339",
             "path": ".github/workflows/release-assets.yml"
           },
           {
@@ -101,12 +101,12 @@
         "policy_hash": "336c150896928f05",
         "version": 1
       },
-      "note": "The cross-builder now invokes the image's provided Cargo command directly. The existing product documentation remains accurate.",
+      "note": "The cross-builder installs both Apple Rust targets inside its non-login container. The existing product documentation remains accurate.",
       "result": "no-update",
-      "reviewed_at": "2026-09-08T09:30:29Z",
+      "reviewed_at": "2026-09-08T09:34:49Z",
       "reviewer": "Codex",
-      "revision": 6,
-      "token_digest": "fc88e35497a22c5b"
+      "revision": 7,
+      "token_digest": "f08b4522d65b9ffb"
     },
     "crates/memoria-application/README.md": {
       "acknowledged_invalidations": [
@@ -614,6 +614,6 @@
       "token_digest": "6b257f1673317dca"
     }
   },
-  "revision": 17,
+  "revision": 18,
   "schema_version": 1
 }
