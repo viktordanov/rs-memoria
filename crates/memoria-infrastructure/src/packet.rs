@@ -6,17 +6,20 @@ use std::path::PathBuf;
 
 use base64::Engine as _;
 use memoria_application::error::{Detail, Diagnostic};
+use memoria_application::guidance::EffectiveGuidance;
 use memoria_application::packet::{
-    ChangeEntry, ContentEncoding, DiffEntry, EnvelopeSize, ExportEntry, FileContent,
-    FocusedReviewPacket, ImportContent, InstructionEntry, MAX_DECODED_BYTES, MAX_DEPTH,
-    MAX_RECORDS, MAX_SERIALIZED_BYTES, PACKET_VERSION, PacketContent, PacketContext,
+    ChangeEntry, ContentEncoding, DiffEntry, ENVELOPE_SCHEMA_VERSION, EnvelopeSize, ExportEntry,
+    FileContent, FocusedReviewPacket, ImportContent, MAX_DECODED_BYTES, MAX_DEPTH, MAX_RECORDS,
+    MAX_SERIALIZED_BYTES, PACKET_VERSION, PacketContent, PacketContext,
 };
 use memoria_application::ports::{
     AdapterError, FileKind, FingerprintHasher, HashStream, PacketFailure, PacketInput,
     PacketSource, ReviewPacketCodec,
 };
 use memoria_domain::canonical::PACKET_DOMAIN;
-use memoria_domain::{DocumentId, GitContext, Hash64};
+use memoria_domain::{
+    DirPath, DocumentId, GitContext, GuidanceDigest, GuidanceEntry, GuidanceKind, Hash64,
+};
 
 use crate::fs::{kind_of, read_bounded};
 use crate::json::{self, Json, JsonError, Limits, ObjectReader, expect_string, from_detail};
@@ -245,7 +248,10 @@ pub fn generic_envelope(
     diagnostics: &[Diagnostic],
 ) -> Json {
     let mut map = BTreeMap::new();
-    map.insert("schema_version".into(), Json::Number(1));
+    map.insert(
+        "schema_version".into(),
+        Json::Number(ENVELOPE_SCHEMA_VERSION),
+    );
     map.insert("command".into(), Json::String(command.into()));
     map.insert("ok".into(), Json::Bool(ok));
     map.insert("data".into(), from_detail(data));
@@ -364,8 +370,13 @@ fn decode_envelope(envelope: Json, digest: String) -> Result<FocusedReviewPacket
         message: m,
     };
     let mut reader = ObjectReader::new(envelope, "envelope")?;
-    if reader.take_u64("schema_version")? != 1 {
-        return Err(schema("envelope.schema_version must be 1".into()));
+    // Version 1 envelopes belong to the previous release. Rejecting them
+    // here keeps the clean cutover visible at the transport boundary.
+    let envelope_schema = reader.take_u64("schema_version")?;
+    if envelope_schema != ENVELOPE_SCHEMA_VERSION {
+        return Err(schema(format!(
+            "envelope.schema_version must be {ENVELOPE_SCHEMA_VERSION}; this release does not accept version {envelope_schema} envelopes"
+        )));
     }
     if reader.take_string("command")? != "review" {
         return Err(schema("envelope.command must be \"review\"".into()));
@@ -462,17 +473,44 @@ fn decode_envelope(envelope: Json, digest: String) -> Result<FocusedReviewPacket
         worktree_dirty: git.take_bool("worktree_dirty")?,
     };
     git.finish()?;
-    let mut instructions = Vec::new();
-    for (index, item) in context.take_array("instructions")?.into_iter().enumerate() {
-        let ctx = format!("data.context.instructions[{index}]");
+    // Effective guidance travels with the packet so the token can bind the
+    // exact context the reviewer saw. Its complete text counts against the
+    // decoded budget; it is never truncated.
+    let mut guidance_reader = context.take_object("guidance")?;
+    let guidance_digest = GuidanceDigest(
+        Hash64::parse(&guidance_reader.take_string("digest")?)
+            .map_err(|e| schema(format!("data.context.guidance.digest: {e}")))?,
+    );
+    let mut guidance_entries = Vec::new();
+    for (index, item) in guidance_reader
+        .take_array("entries")?
+        .into_iter()
+        .enumerate()
+    {
+        let ctx = format!("data.context.guidance.entries[{index}]");
         let mut entry = ObjectReader::new(item, &ctx)?;
+        let scope = DirPath::parse(&entry.take_string("scope")?)
+            .map_err(|e| schema(format!("{ctx}.scope: {e}")))?;
         let source = entry.take_string("source")?;
-        let kind = entry.take_string("kind")?;
+        let kind_text = entry.take_string("kind")?;
+        let kind = GuidanceKind::parse(&kind_text)
+            .ok_or_else(|| schema(format!("{ctx}.kind must be `inline` or `file`")))?;
         let text = entry.take_string("text")?;
         entry.finish()?;
         add_budget(&mut budget, text.len() as u64)?;
-        instructions.push(InstructionEntry { source, kind, text });
+        guidance_entries.push(GuidanceEntry {
+            scope,
+            source,
+            kind,
+            text,
+        });
     }
+    guidance_reader.finish()?;
+    let guidance = EffectiveGuidance {
+        document: document.clone(),
+        entries: guidance_entries,
+        digest: guidance_digest,
+    };
     let mut exports = Vec::new();
     for (index, item) in context.take_array("exports")?.into_iter().enumerate() {
         let ctx = format!("data.context.exports[{index}]");
@@ -574,7 +612,7 @@ fn decode_envelope(envelope: Json, digest: String) -> Result<FocusedReviewPacket
         context: PacketContext {
             previous_review,
             git: git_context,
-            instructions,
+            guidance,
             exports,
             consumers,
             changes,
@@ -785,7 +823,11 @@ mod tests {
             context: PacketContext {
                 previous_review: None,
                 git: GitContext::default(),
-                instructions: vec![],
+                guidance: EffectiveGuidance {
+                    document: DirPath::root().readme(),
+                    entries: vec![],
+                    digest: GuidanceDigest::default(),
+                },
                 exports: vec![],
                 consumers: vec![],
                 changes: vec![],

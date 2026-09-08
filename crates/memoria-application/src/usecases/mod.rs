@@ -2,14 +2,17 @@
 
 pub mod ack;
 pub mod agent;
+pub mod agent_hooks;
 pub mod check;
 pub mod graph;
+pub mod guidance;
 pub mod init;
 pub mod invalidate;
 pub mod lint;
 pub mod plan;
 pub mod prepare_review;
 pub mod render;
+pub mod state_inspect;
 pub mod status;
 
 use memoria_domain::{DocumentId, DocumentStatus, InputChange, ManifestDiff, PendingCause};

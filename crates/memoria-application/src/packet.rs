@@ -1,13 +1,17 @@
 //! The focused review packet and its deterministic token.
 
 use memoria_domain::canonical;
-use memoria_domain::{DocumentId, GitContext, Hash64, InputManifest, ReviewRecord};
+use memoria_domain::{DocumentId, GitContext, GuidanceDigest, Hash64, InputManifest, ReviewRecord};
 
 use crate::error::{Detail, DetailMap};
+use crate::guidance::EffectiveGuidance;
 use crate::ports::FingerprintHasher;
 
-pub const PACKET_VERSION: u64 = 1;
-pub const TOKEN_PREFIX: &str = "mrv1.";
+pub const PACKET_VERSION: u64 = 2;
+/// The version of every CLI JSON envelope. The release has one clean
+/// cutover: `schema_version: 2` for envelopes and packets alike.
+pub const ENVELOPE_SCHEMA_VERSION: u64 = 2;
+pub const TOKEN_PREFIX: &str = "mrv2.";
 pub const TOKEN_LENGTH: usize = 21;
 
 /// Default raw-input budget: 8 MiB.
@@ -94,14 +98,6 @@ pub struct PacketContent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InstructionEntry {
-    /// `memoria.toml`, a sidecar path, or an instruction file path.
-    pub source: String,
-    pub kind: String,
-    pub text: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExportEntry {
     pub id: String,
     pub bytes: u64,
@@ -138,7 +134,8 @@ pub struct DiffEntry {
 pub struct PacketContext {
     pub previous_review: Option<ReviewRecord>,
     pub git: GitContext,
-    pub instructions: Vec<InstructionEntry>,
+    /// Effective project documentation guidance, before the owned evidence.
+    pub guidance: EffectiveGuidance,
     pub exports: Vec<ExportEntry>,
     pub consumers: Vec<String>,
     pub changes: Vec<ChangeEntry>,
@@ -163,18 +160,21 @@ pub struct FocusedReviewPacket {
 }
 
 /// Compute the compact token for the snapshot fields.
+#[allow(clippy::too_many_arguments)]
 pub fn compute_token(
     hasher: &dyn FingerprintHasher,
     document: &DocumentId,
     review_revision: u64,
     manifest: &InputManifest,
+    guidance: GuidanceDigest,
     covered: &[(u64, String)],
 ) -> String {
-    let bytes = canonical::encode_review_token(document, review_revision, manifest, covered);
+    let bytes =
+        canonical::encode_review_token(document, review_revision, manifest, guidance, covered);
     format!("{TOKEN_PREFIX}{}", hasher.hash(&bytes).to_hex())
 }
 
-/// Validate the fixed 21-byte token grammar `^mrv1\.[0-9a-f]{16}$`.
+/// Validate the fixed 21-byte token grammar `^mrv2\.[0-9a-f]{16}$`.
 pub fn validate_token_text(token: &str) -> Result<Hash64, String> {
     if token.len() != TOKEN_LENGTH {
         return Err(format!(
@@ -194,7 +194,7 @@ pub fn validate_token_text(token: &str) -> Result<Hash64, String> {
 
 pub fn manifest_detail(manifest: &InputManifest) -> Detail {
     DetailMap::default()
-        .number("version", 1)
+        .number("version", 2)
         .text("document", manifest.document.as_str())
         .text("policy_hash", manifest.policy_hash.to_hex())
         .number("document_bytes", manifest.document_bytes)
@@ -229,6 +229,7 @@ pub fn review_record_detail(record: &ReviewRecord) -> Detail {
         .with("input_manifest", manifest_detail(&record.manifest))
         .text("input_fingerprint", record.input_fingerprint.to_hex())
         .text("token_digest", record.token_digest.to_hex())
+        .text("guidance_digest", record.guidance.to_hex())
         .text("reviewed_at", record.reviewed_at.0.clone())
         .text("reviewer", record.reviewer.as_str())
         .text("result", record.result.as_str())
@@ -361,16 +362,7 @@ impl FocusedReviewPacket {
                             .bool("worktree_dirty", context.git.worktree_dirty)
                             .build(),
                     )
-                    .with(
-                        "instructions",
-                        Detail::list(context.instructions.iter().map(|i| {
-                            DetailMap::default()
-                                .text("source", i.source.clone())
-                                .text("kind", i.kind.clone())
-                                .text("text", i.text.clone())
-                                .build()
-                        })),
-                    )
+                    .with("guidance", context.guidance.to_detail())
                     .with(
                         "exports",
                         Detail::list(context.exports.iter().map(|e| {
@@ -452,13 +444,14 @@ mod tests {
 
     #[test]
     fn token_grammar() {
-        assert!(validate_token_text("mrv1.ef46db3751d8e999").is_ok());
-        assert!(validate_token_text("mrv1.EF46DB3751D8E999").is_err());
-        assert!(validate_token_text("mrv1.ef46db3751d8e99").is_err());
-        assert!(validate_token_text("mrv1.ef46db3751d8e9999").is_err());
-        assert!(validate_token_text("mrv2.ef46db3751d8e999").is_err());
-        assert!(validate_token_text("mrv1.ef46db3751d8e99 ").is_err());
-        assert!(validate_token_text("mrv1.ef46db3751d8e99é").is_err());
+        assert!(validate_token_text("mrv2.ef46db3751d8e999").is_ok());
+        assert!(validate_token_text("mrv2.EF46DB3751D8E999").is_err());
+        assert!(validate_token_text("mrv2.ef46db3751d8e99").is_err());
+        assert!(validate_token_text("mrv2.ef46db3751d8e9999").is_err());
+        // Version 1 packets are rejected before acknowledgement.
+        assert!(validate_token_text("mrv1.ef46db3751d8e999").is_err());
+        assert!(validate_token_text("mrv2.ef46db3751d8e99 ").is_err());
+        assert!(validate_token_text("mrv2.ef46db3751d8e99é").is_err());
         assert!(validate_token_text(&"a".repeat(256)).is_err());
         assert!(validate_token_text(&"a".repeat(257)).is_err());
     }

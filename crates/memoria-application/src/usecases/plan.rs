@@ -10,6 +10,8 @@ use super::document_status_detail;
 pub struct ReviewPlan {
     pub tasks: Vec<Detail>,
     pub waiting_current: Vec<Detail>,
+    /// Read the effective guidance of a boundary before you review it.
+    pub guidance_first: String,
     pub next_ready: Option<String>,
     /// The next executable step: `("render", document)` when the ready
     /// document still has outdated imports, otherwise `("review", document)`.
@@ -25,6 +27,7 @@ impl ReviewPlan {
                 "waiting_current",
                 Detail::List(self.waiting_current.clone()),
             )
+            .text("guidance_first", self.guidance_first.clone())
             .with("next_ready", Detail::option_text(self.next_ready.clone()))
             .with(
                 "next_action",
@@ -65,6 +68,22 @@ pub fn plan_from(snapshot: &Snapshot) -> ReviewPlan {
                     Detail::Number(snapshot.ownership.owned_by(&status.document).len() as u64),
                 );
                 map.insert("render_required".into(), Detail::Bool(!outdated.is_empty()));
+                let effective = snapshot.guidance_of(&status.document);
+                map.insert(
+                    "guidance_present".into(),
+                    Detail::Bool(!effective.is_empty()),
+                );
+                map.insert(
+                    "guidance_changed".into(),
+                    snapshot
+                        .guidance_changed(&status.document)
+                        .map(Detail::Bool)
+                        .unwrap_or(Detail::Null),
+                );
+                map.insert(
+                    "guidance_command".into(),
+                    Detail::Text(format!("memoria guidance {}", status.document)),
+                );
                 map.insert(
                     "outdated_imports".into(),
                     Detail::texts(
@@ -94,6 +113,9 @@ pub fn plan_from(snapshot: &Snapshot) -> ReviewPlan {
     ReviewPlan {
         tasks,
         waiting_current,
+        guidance_first:
+            "Read the effective guidance of a boundary before you review it: `memoria guidance <README.md>`."
+                .to_string(),
         next_ready,
         next_action,
     }

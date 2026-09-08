@@ -2,8 +2,15 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::Arc;
 
 use memoria_application::ports::{AdapterError, FileKind, GitRepository};
+
+use crate::bounded_process::Supervisor;
+
+/// Captured stdout for a supervised Git command, in bytes. Supervised Git is
+/// used only for repository discovery, whose output is a few short lines.
+const SUPERVISED_OUTPUT: u64 = 1024 * 1024;
 
 pub struct GitCli {
     root: PathBuf,
@@ -11,6 +18,9 @@ pub struct GitCli {
     /// The repository's empty tree, used as an attribute source so no
     /// `.gitattributes` filter driver can run during inspection.
     empty_tree: String,
+    /// Present only for the native hook endpoint, which owns every process
+    /// it starts and must terminate them when its deadline expires.
+    supervisor: Option<Arc<Supervisor>>,
 }
 
 fn command(cwd: &Path) -> Command {
@@ -42,26 +52,44 @@ fn command(cwd: &Path) -> Command {
     cmd
 }
 
-/// Exact filename bytes from Git output (no trimming, no lossy conversion).
-#[cfg(unix)]
-fn os_str_from_bytes(bytes: &[u8]) -> std::ffi::OsString {
-    use std::os::unix::ffi::OsStrExt;
-    std::ffi::OsStr::from_bytes(bytes).to_os_string()
-}
-
-#[cfg(not(unix))]
-fn os_str_from_bytes(bytes: &[u8]) -> std::ffi::OsString {
-    std::ffi::OsString::from(String::from_utf8_lossy(bytes).into_owned())
-}
-
-fn run_in(cwd: &Path, args: &[&str]) -> Result<Output, AdapterError> {
-    command(cwd).args(args).output().map_err(|e| {
-        AdapterError::new(
+fn run_in(
+    cwd: &Path,
+    args: &[&str],
+    supervisor: Option<&Supervisor>,
+) -> Result<Output, AdapterError> {
+    let mut cmd = command(cwd);
+    cmd.args(args);
+    let Some(owner) = supervisor else {
+        return cmd.output().map_err(|e| {
+            AdapterError::new(
+                "git",
+                Some(cwd.display().to_string()),
+                format!("cannot run git {}: {e}", args.join(" ")),
+            )
+        });
+    };
+    // The endpoint owns this child: it runs in its own session, under the
+    // deadline that remains, and its group is terminated on expiry.
+    let output = owner.run(cmd, owner.remaining(), SUPERVISED_OUTPUT, true)?;
+    if output.timed_out {
+        return Err(AdapterError::new(
             "git",
             Some(cwd.display().to_string()),
-            format!("cannot run git {}: {e}", args.join(" ")),
-        )
+            format!("git {} did not finish within the deadline", args.join(" ")),
+        ));
+    }
+    let code = output.exit_code.unwrap_or(1);
+    Ok(Output {
+        status: exit_status(code),
+        stdout: output.stdout,
+        stderr: output.stderr,
     })
+}
+
+/// Rebuild an exit status from a supervised child's exit code.
+fn exit_status(code: i32) -> std::process::ExitStatus {
+    use std::os::unix::process::ExitStatusExt as _;
+    std::process::ExitStatus::from_raw(code << 8)
 }
 
 fn failure(args: &[&str], output: &Output) -> AdapterError {
@@ -79,13 +107,30 @@ fn failure(args: &[&str], output: &Output) -> AdapterError {
 impl GitCli {
     /// Discover the worktree root that contains `start`.
     pub fn discover(start: &Path) -> Result<GitCli, AdapterError> {
+        GitCli::discover_owned(start, None)
+    }
+
+    /// Discover under an owner that can terminate the Git children it
+    /// starts. The native hook endpoint uses this so a stalled discovery
+    /// cannot outlive its deadline.
+    pub fn discover_supervised(
+        start: &Path,
+        supervisor: Arc<Supervisor>,
+    ) -> Result<GitCli, AdapterError> {
+        GitCli::discover_owned(start, Some(supervisor))
+    }
+
+    fn discover_owned(
+        start: &Path,
+        supervisor: Option<Arc<Supervisor>>,
+    ) -> Result<GitCli, AdapterError> {
         let args = [
             "rev-parse",
             "--path-format=absolute",
             "--show-toplevel",
             "--git-common-dir",
         ];
-        let output = run_in(start, &args)?;
+        let output = run_in(start, &args, supervisor.as_deref())?;
         if !output.status.success() {
             return Err(AdapterError::new(
                 "git",
@@ -107,7 +152,11 @@ impl GitCli {
         })?;
         let common = lines.next().unwrap_or(".git");
         let root = PathBuf::from(root);
-        let empty = run_in(&root, &["hash-object", "-t", "tree", "/dev/null"])?;
+        let empty = run_in(
+            &root,
+            &["hash-object", "-t", "tree", "/dev/null"],
+            supervisor.as_deref(),
+        )?;
         if !empty.status.success() {
             return Err(failure(&["hash-object", "-t", "tree", "/dev/null"], &empty));
         }
@@ -116,6 +165,7 @@ impl GitCli {
             root,
             common_dir: PathBuf::from(common),
             empty_tree,
+            supervisor,
         })
     }
 
@@ -130,7 +180,7 @@ impl GitCli {
         let source = format!("--attr-source={}", self.empty_tree);
         let mut full: Vec<&str> = vec![&source];
         full.extend_from_slice(args);
-        run_in(&self.root, &full)
+        run_in(&self.root, &full, self.supervisor.as_deref())
     }
 
     /// Whether `$GIT_DIR/info/attributes` (which `--attr-source` cannot
@@ -305,63 +355,6 @@ impl GitRepository for GitCli {
         Ok(output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "true")
     }
 
-    fn global_excludes(&self) -> Result<Option<Vec<u8>>, AdapterError> {
-        // `-z` terminates the value with NUL instead of a newline, so the
-        // configured path (whitespace included) survives byte for byte; only
-        // that delimiter is removed.
-        let output = self.run(&["config", "-z", "--path", "--get", "core.excludesFile"])?;
-        let path = if output.status.success() {
-            let raw = output.stdout.strip_suffix(b"\0").unwrap_or(&output.stdout);
-            // An explicitly empty value disables the global source in Git:
-            // no file is read and the XDG default does not apply. Any other
-            // value, whitespace included, is a filename.
-            if raw.is_empty() {
-                return Ok(None);
-            }
-            // Git resolves a relative core.excludesFile against its working
-            // directory, which is always the worktree root here.
-            let configured = PathBuf::from(os_str_from_bytes(raw));
-            if configured.is_absolute() {
-                configured
-            } else {
-                self.root.join(configured)
-            }
-        } else {
-            match std::env::var_os("XDG_CONFIG_HOME") {
-                Some(xdg) if !xdg.is_empty() => PathBuf::from(xdg).join("git").join("ignore"),
-                _ => match std::env::var_os("HOME") {
-                    Some(home) => PathBuf::from(home)
-                        .join(".config")
-                        .join("git")
-                        .join("ignore"),
-                    None => return Ok(None),
-                },
-            }
-        };
-        match std::fs::read(&path) {
-            Ok(bytes) => Ok(Some(bytes)),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(err) => Err(AdapterError::new(
-                "read",
-                Some(path.display().to_string()),
-                err.to_string(),
-            )),
-        }
-    }
-
-    fn repository_excludes(&self) -> Result<Option<Vec<u8>>, AdapterError> {
-        let path = self.common_dir.join("info").join("exclude");
-        match std::fs::read(&path) {
-            Ok(bytes) => Ok(Some(bytes)),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(err) => Err(AdapterError::new(
-                "read",
-                Some(path.display().to_string()),
-                err.to_string(),
-            )),
-        }
-    }
-
     fn head_commit(&self) -> Result<Option<String>, AdapterError> {
         let output = self.run(&["rev-parse", "--verify", "--quiet", "HEAD^{commit}"])?;
         if output.status.success() {
@@ -406,71 +399,6 @@ impl GitRepository for GitCli {
         }
     }
 
-    fn ignored_directories(&self, directories: &[String]) -> Result<Vec<String>, AdapterError> {
-        if directories.is_empty() {
-            return Ok(Vec::new());
-        }
-        let mut input = Vec::new();
-        for directory in directories {
-            input.extend_from_slice(directory.trim_end_matches('/').as_bytes());
-            input.extend_from_slice(b"/\0");
-        }
-        let mut child = command(&self.root)
-            .args(["check-ignore", "--stdin", "-z", "--no-index"])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                AdapterError::new(
-                    "git",
-                    Some(self.root.display().to_string()),
-                    format!("cannot run git check-ignore: {e}"),
-                )
-            })?;
-        // Feed stdin from a separate thread while this thread drains stdout
-        // and stderr: Git emits matches while it reads, so writing the whole
-        // request first can fill both pipes and deadlock.
-        let mut stdin = child.stdin.take().expect("piped stdin");
-        let writer = std::thread::spawn(move || -> std::io::Result<()> {
-            use std::io::Write as _;
-            stdin.write_all(&input)?;
-            stdin.flush()
-        });
-        let output = child
-            .wait_with_output()
-            .map_err(|e| AdapterError::new("git", None, format!("git check-ignore failed: {e}")))?;
-        let fed = writer.join().map_err(|_| {
-            AdapterError::new("git", None, "the check-ignore writer thread panicked")
-        })?;
-        if let Err(e) = fed
-            && (output.status.success() || output.status.code() == Some(1))
-        {
-            return Err(AdapterError::new(
-                "git",
-                None,
-                format!("cannot feed git check-ignore: {e}"),
-            ));
-        }
-        // Exit 1 means "nothing ignored"; other failures are errors.
-        if !output.status.success() && output.status.code() != Some(1) {
-            return Err(AdapterError::new(
-                "git",
-                None,
-                format!(
-                    "git check-ignore failed: {}",
-                    String::from_utf8_lossy(&output.stderr).trim()
-                ),
-            ));
-        }
-        Ok(output
-            .stdout
-            .split(|b| *b == 0)
-            .filter(|p| !p.is_empty())
-            .map(|p| String::from_utf8_lossy(p).trim_end_matches('/').to_string())
-            .collect())
-    }
-
     fn explain_ignore(&self, path: &str) -> Result<Option<String>, AdapterError> {
         let output = self.run(&["check-ignore", "--verbose", "--non-matching", "--", path])?;
         let text = String::from_utf8_lossy(&output.stdout);
@@ -480,5 +408,70 @@ impl GitRepository for GitCli {
         }
         // Format: <source>:<linenum>:<pattern>\t<path>
         Ok(line.split('\t').next().map(|s| s.to_string()))
+    }
+
+    fn git_dir(&self) -> Result<String, AdapterError> {
+        let args = ["rev-parse", "--path-format=absolute", "--absolute-git-dir"];
+        let output = self.run(&args)?;
+        if !output.status.success() {
+            return Err(failure(&args, &output));
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        let path = text.lines().next().unwrap_or("").trim();
+        if path.is_empty() {
+            return Err(AdapterError::new(
+                "git",
+                None,
+                "git rev-parse --absolute-git-dir returned no path",
+            ));
+        }
+        Ok(path.to_string())
+    }
+
+    fn private_path(&self, relative: &str) -> Result<String, AdapterError> {
+        // `git rev-parse --git-path` resolves symlinked components, so a
+        // substituted directory inside the metadata location would silently
+        // move the destination. The path is composed from the metadata
+        // directory instead; the filesystem adapter then refuses any
+        // symlink between that directory and the target.
+        if relative.is_empty()
+            || relative.starts_with('/')
+            || relative
+                .split('/')
+                .any(|part| part.is_empty() || part == "." || part == "..")
+        {
+            return Err(AdapterError::new(
+                "git",
+                Some(relative.to_string()),
+                "a private path must be a normalized relative path",
+            ));
+        }
+        let mut path = PathBuf::from(self.git_dir()?);
+        for part in relative.split('/') {
+            path.push(part);
+        }
+        Ok(path.display().to_string())
+    }
+
+    fn main_worktree(&self) -> Result<String, AdapterError> {
+        // The common Git directory belongs to the main checkout. Its parent
+        // is that checkout's worktree root, unless this repository is the
+        // main checkout itself.
+        let common = if self.common_dir.is_absolute() {
+            self.common_dir.clone()
+        } else {
+            self.root.join(&self.common_dir)
+        };
+        let parent = common.parent().ok_or_else(|| {
+            AdapterError::new(
+                "git",
+                Some(common.display().to_string()),
+                "the common Git directory has no parent worktree",
+            )
+        })?;
+        let canonical = parent.canonicalize().map_err(|err| {
+            AdapterError::new("git", Some(parent.display().to_string()), err.to_string())
+        })?;
+        Ok(canonical.display().to_string())
     }
 }

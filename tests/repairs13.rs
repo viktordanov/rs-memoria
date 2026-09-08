@@ -15,7 +15,7 @@ fn oversized_project() -> Project {
     let project = Project::empty_repo();
     project.write("README.md", "# Root\n");
     project.commit_all("seed");
-    assert_eq!(project.run(&["init"]).status.code(), Some(0));
+    assert_eq!(project.run(&["init", "--apply"]).status.code(), Some(0));
     let body = [b'x'; 100];
     for i in 0..FILES {
         fs::write(project.root.join(format!("{i:06}.txt")), body).unwrap();
@@ -126,7 +126,7 @@ fn oversized_refusals_are_bounded_in_both_presentations() {
     // Human output: exit 1, no token, the same bounded counts on stderr.
     let output = project.run(&["review", "README.md"]);
     assert_eq!(output.status.code(), Some(1));
-    assert!(!stdout(&output).contains("mrv1."));
+    assert!(!stdout(&output).contains("mrv2."));
     let err = stderr(&output);
     assert!(err.contains("packet_too_large"), "{err}");
     assert!(err.contains("100001"), "{err}");
@@ -158,7 +158,7 @@ fn small_refusals_keep_the_full_manifest() {
     let project = Project::empty_repo();
     project.write("README.md", "# Root\n");
     project.commit_all("seed");
-    assert_eq!(project.run(&["init"]).status.code(), Some(0));
+    assert_eq!(project.run(&["init", "--apply"]).status.code(), Some(0));
     project.write("large.bin", vec![b'x'; 8 * 1024 * 1024 + 1]);
     let (code, out) = review_json(&project, &[]);
     assert_eq!(code, 1);

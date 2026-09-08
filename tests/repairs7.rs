@@ -128,30 +128,30 @@ fn substituted_installed_files_never_hang_or_get_removed() {
 
 // MEM-039
 #[test]
-fn instruction_only_sidecars_are_context_not_policy() {
+fn guidance_only_sidecars_are_context_not_policy() {
     let project = Project::seed();
     project.baseline();
     let before = project.state();
     project.write(
         "src/execution/README.memoria.toml",
-        "[documentation]\ninstructions = [\n    \"Use clear short sentences.\",\n]\n",
+        "[documentation]\nguidance = [\n    \"Use clear short sentences.\",\n]\n",
     );
     assert_eq!(
         project.json(&["check"]).0,
         0,
-        "adding an instruction-only sidecar changes no fingerprint"
+        "adding a guidance-only sidecar changes no fingerprint"
     );
-    project.write("src/execution/README.memoria.toml", "[documentation]\ninstructions = [\n    \"Use even shorter sentences.\",\n]\ninstruction_files = []\n");
+    project.write("src/execution/README.memoria.toml", "[documentation]\nguidance = [\n    \"Use even shorter sentences.\",\n]\nguidance_files = []\n");
     assert_eq!(project.json(&["check"]).0, 0);
-    // Packets still inherit the local instruction.
+    // Packets still inherit the local guidance.
     project.append("src/execution/runner.rs", "// edit\n");
     let (packet, _) = project.review_packet("src/execution/README.md");
     let value = parse_json(&fs::read(packet).unwrap());
-    let Json::Array(instructions) = get(&value, &["data", "context", "instructions"]) else {
+    let Json::Array(guidance) = get(&value, &["data", "context", "guidance", "entries"]) else {
         panic!()
     };
     assert!(
-        instructions
+        guidance
             .iter()
             .any(|i| get_str(i, &["text"]) == "Use even shorter sentences."
                 && get_str(i, &["source"]) == "src/execution/README.memoria.toml")
@@ -166,7 +166,7 @@ fn instruction_only_sidecars_are_context_not_policy() {
     // A real local rule is policy, as before.
     project.write(
         "src/execution/README.memoria.toml",
-        "ignore = [\n    \"*.tmp\",\n]\n\n[documentation]\ninstructions = [\n    \"Keep it short.\",\n]\n",
+        "ignore = [\n    \"*.tmp\",\n]\n\n[documentation]\nguidance = [\n    \"Keep it short.\",\n]\n",
     );
     assert_eq!(
         project.cause_codes("src/execution/README.md"),
@@ -208,7 +208,7 @@ fn packet_record_counts_match_the_complete_envelope() {
     let project = Project::empty_repo();
     project.write("README.md", "# Root\n");
     project.commit_all("seed");
-    assert_eq!(project.run(&["init"]).status.code(), Some(0));
+    assert_eq!(project.run(&["init", "--apply"]).status.code(), Some(0));
     let output = project.run(&["review", "README.md", "--format", "json"]);
     assert_eq!(output.status.code(), Some(0));
     let envelope = json::parse(&output.stdout, Limits::PACKET).unwrap();

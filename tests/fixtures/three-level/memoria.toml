@@ -1,14 +1,14 @@
-version = 1
+version = 2
 ignore = [
     "**/generated/**",
     "**/fixtures/**",
 ]
 
 [documentation]
-instructions = [
+guidance = [
     "Use short sentences.",
 ]
-instruction_files = [
+guidance_files = [
     ".agents/writing.md",
 ]
 
