@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -24,6 +30,8 @@ jobs:
     steps:
       - name: Check out the tagged source
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Install the pinned Rust toolchain
         env:
@@ -35,7 +43,7 @@ jobs:
 
       - name: Verify the tag matches the package version
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
           release_version="${TAG#v}"
@@ -52,7 +60,7 @@ jobs:
 
       - name: Package the binary and license
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
