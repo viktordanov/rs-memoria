@@ -5,18 +5,18 @@
     "README.md": {
       "acknowledged_invalidations": [],
       "git": {
-        "base_commit": "1eaf3c538c61470049e8061dc2f5304d5a98928d",
+        "base_commit": "1eaf70627760d52f0ab354b75b56e36133817a29",
         "worktree_dirty": true
       },
-      "input_fingerprint": "ba2ddeb60381d333",
+      "input_fingerprint": "044a09c55b4f8392",
       "input_manifest": {
         "document": "README.md",
         "document_bytes": 10996,
         "document_hash": "0d27565d9b019ef3",
         "files": [
           {
-            "bytes": 2261,
-            "hash": "94643231adf9d2c3",
+            "bytes": 2489,
+            "hash": "28546bd38eb84a54",
             "path": ".github/workflows/release-assets.yml"
           },
           {
@@ -101,12 +101,12 @@
         "policy_hash": "336c150896928f05",
         "version": 1
       },
-      "note": "The release workflow changes distribution only. The existing product and development explanations remain accurate.",
+      "note": "The retry input changes release operations only. The existing product documentation remains accurate.",
       "result": "no-update",
-      "reviewed_at": "2026-09-08T07:59:01Z",
+      "reviewed_at": "2026-09-08T08:03:58Z",
       "reviewer": "Codex",
-      "revision": 3,
-      "token_digest": "fbc8b528bf8b93d6"
+      "revision": 4,
+      "token_digest": "1b8d49d10420bd9b"
     },
     "crates/memoria-application/README.md": {
       "acknowledged_invalidations": [
@@ -614,6 +614,6 @@
       "token_digest": "6b257f1673317dca"
     }
   },
-  "revision": 14,
+  "revision": 15,
   "schema_version": 1
 }
