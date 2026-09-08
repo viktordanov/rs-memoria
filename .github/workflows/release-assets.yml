@@ -50,7 +50,6 @@ jobs:
               rustup target add aarch64-apple-darwin x86_64-apple-darwin
               rustc --version
               cargo --version
-              cargo zigbuild --version
               cargo zigbuild --release --locked --target aarch64-apple-darwin --bin memoria
               cargo zigbuild --release --locked --target x86_64-apple-darwin --bin memoria
             '
