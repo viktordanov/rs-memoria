@@ -26,6 +26,13 @@ impl Progress for Quiet {
 
 fn git(root: &Path, args: &[&str]) {
     let output = Command::new("git")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        // One-shot host configuration takes precedence over the fixture's
+        // local commit.gpgsign=false setting unless it is removed too.
+        .env_remove("GIT_CONFIG_COUNT")
+        .env_remove("GIT_CONFIG_PARAMETERS")
         .arg("-C")
         .arg(root)
         .args(args)

@@ -6,6 +6,10 @@
 # the developer's checkout, and it configures no remote.
 set -eu
 
+# Isolate every fixture Git command, including seed commits outside mem().
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_GLOBAL=/dev/null
+unset GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS
+
 binary=""
 agent_tests="simulated"
 
