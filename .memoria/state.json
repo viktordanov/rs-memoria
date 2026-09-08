@@ -5,14 +5,14 @@
     "README.md": {
       "acknowledged_invalidations": [],
       "git": {
-        "base_commit": "1eafc7cd16bac445d55c8dc1eba13de184371f0e",
+        "base_commit": "1eaff70ffcf7368a552ce3c1c7585e0285d104ab",
         "worktree_dirty": true
       },
-      "input_fingerprint": "3f86fe8f73bbf893",
+      "input_fingerprint": "640881ec7943e9f3",
       "input_manifest": {
         "document": "README.md",
-        "document_bytes": 10996,
-        "document_hash": "0d27565d9b019ef3",
+        "document_bytes": 11141,
+        "document_hash": "10e39d1ba86b4d97",
         "files": [
           {
             "bytes": 3155,
@@ -101,12 +101,12 @@
         "policy_hash": "336c150896928f05",
         "version": 1
       },
-      "note": "The cross-build removed an unsupported diagnostic flag. The existing product documentation remains accurate.",
-      "result": "no-update",
-      "reviewed_at": "2026-09-08T09:38:34Z",
+      "note": "Homebrew is now the primary macOS install path, with Cargo retained for source builds.",
+      "result": "updated",
+      "reviewed_at": "2026-09-08T10:11:33Z",
       "reviewer": "Codex",
-      "revision": 8,
-      "token_digest": "b1455a6e291295ec"
+      "revision": 9,
+      "token_digest": "d5cc42ecb761f0e5"
     },
     "crates/memoria-application/README.md": {
       "acknowledged_invalidations": [
@@ -614,6 +614,6 @@
       "token_digest": "6b257f1673317dca"
     }
   },
-  "revision": 19,
+  "revision": 20,
   "schema_version": 1
 }

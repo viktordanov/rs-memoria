@@ -16,7 +16,13 @@ Memoria turns that problem into a review queue. It maps files to nearby READMEs,
 
 ## Quick start
 
-Install Memoria from this checkout:
+Install Memoria with Homebrew on an Apple Silicon or Intel Mac:
+
+```sh
+brew install viktordanov/tap/memoria
+```
+
+To build Memoria from this checkout instead, install it with Cargo:
 
 ```sh
 cargo install --locked --path .
