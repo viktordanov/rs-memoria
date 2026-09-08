@@ -16,16 +16,10 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            target: aarch64-apple-darwin
-          - runner: macos-15-intel
-            target: x86_64-apple-darwin
+    name: Cross-compile macOS binaries on Linux
+    runs-on: ubuntu-24.04
+    env:
+      BUILD_IMAGE: ghcr.io/rust-cross/cargo-zigbuild@sha256:9b4f6b3eb9e8f9fefb3960fe288ddba576627d66d9eff851ce7f62d2455564a5
 
     steps:
       - name: Check out the tagged source
@@ -33,48 +27,70 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
 
-      - name: Install the pinned Rust toolchain
-        env:
-          TARGET: ${{ matrix.target }}
-        run: |
-          set -euo pipefail
-          rustup toolchain install 1.96.0 --profile minimal --no-self-update
-          rustup target add "$TARGET" --toolchain 1.96.0
-
       - name: Verify the tag matches the package version
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
           release_version="${TAG#v}"
-          package_version="$(cargo +1.96.0 metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "rs-memoria") | .version')"
+          package_version="$(grep -A5 '^\[workspace.package\]$' Cargo.toml | grep -m1 '^version = ' | cut -d '"' -f 2)"
           test "$TAG" != "$release_version"
           test "$release_version" = "$package_version"
 
-      - name: Build the release binary
-        env:
-          TARGET: ${{ matrix.target }}
+      - name: Cross-compile both macOS binaries
         run: |
           set -euo pipefail
-          cargo +1.96.0 build --release --locked --target "$TARGET" --bin memoria
+          docker run --rm \
+            --platform linux/amd64 \
+            --volume "$GITHUB_WORKSPACE:/io" \
+            --workdir /io \
+            "$BUILD_IMAGE" \
+            bash -lc '
+              set -euo pipefail
+              rustup toolchain install 1.96.0 --profile minimal --no-self-update
+              rustup target add aarch64-apple-darwin x86_64-apple-darwin --toolchain 1.96.0
+              cargo +1.96.0 zigbuild --release --locked --target aarch64-apple-darwin --bin memoria
+              cargo +1.96.0 zigbuild --release --locked --target x86_64-apple-darwin --bin memoria
+            '
 
-      - name: Package the binary and license
+      - name: Inspect and package the binaries
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
-          TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          asset="memoria-${TAG}-${TARGET}.tar.gz"
-          mkdir -p "dist/${TARGET}"
-          cp "target/${TARGET}/release/memoria" "dist/${TARGET}/memoria"
-          cp LICENSE "dist/${TARGET}/LICENSE"
-          tar -C "dist/${TARGET}" -czf "dist/${asset}" memoria LICENSE
-          (cd dist && shasum -a 256 "$asset" > "${asset}.sha256")
+          source_date_epoch="$(git show -s --format=%ct HEAD)"
 
-      - name: Upload the release archive
+          for target in aarch64-apple-darwin x86_64-apple-darwin; do
+            binary="target/${target}/release/memoria"
+            staging="dist/stage-${target}"
+            asset="memoria-${TAG}-${target}.tar.gz"
+
+            test -x "$binary"
+            if [ "$target" = "aarch64-apple-darwin" ]; then
+              file "$binary" | grep -q 'Mach-O 64-bit arm64'
+            else
+              file "$binary" | grep -q 'Mach-O 64-bit x86_64'
+            fi
+
+            mkdir -p "$staging"
+            install -m 755 "$binary" "$staging/memoria"
+            install -m 644 LICENSE "$staging/LICENSE"
+            tar \
+              --sort=name \
+              --mtime="@${source_date_epoch}" \
+              --owner=0 \
+              --group=0 \
+              --numeric-owner \
+              -C "$staging" \
+              -czf "dist/${asset}" \
+              LICENSE memoria
+            (cd dist && sha256sum "$asset" > "${asset}.sha256")
+          done
+
+      - name: Upload the release archives
         uses: actions/upload-artifact@v7
         with:
-          name: memoria-${{ matrix.target }}
+          name: memoria-macos
           path: |
             dist/*.tar.gz
             dist/*.sha256
