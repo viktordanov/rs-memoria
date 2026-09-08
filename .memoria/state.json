@@ -5,18 +5,18 @@
     "README.md": {
       "acknowledged_invalidations": [],
       "git": {
-        "base_commit": "1eaf70627760d52f0ab354b75b56e36133817a29",
+        "base_commit": "1eaf6382b722d4c01296d4cd9a2657b1ad7cd381",
         "worktree_dirty": true
       },
-      "input_fingerprint": "044a09c55b4f8392",
+      "input_fingerprint": "3b32c1fe97378a4c",
       "input_manifest": {
         "document": "README.md",
         "document_bytes": 10996,
         "document_hash": "0d27565d9b019ef3",
         "files": [
           {
-            "bytes": 2489,
-            "hash": "28546bd38eb84a54",
+            "bytes": 3224,
+            "hash": "706aed731b64d306",
             "path": ".github/workflows/release-assets.yml"
           },
           {
@@ -101,12 +101,12 @@
         "policy_hash": "336c150896928f05",
         "version": 1
       },
-      "note": "The retry input changes release operations only. The existing product documentation remains accurate.",
+      "note": "The release builder moved from native macOS runners to Linux cross-compilation. The existing product documentation remains accurate.",
       "result": "no-update",
-      "reviewed_at": "2026-09-08T08:03:58Z",
+      "reviewed_at": "2026-09-08T09:26:12Z",
       "reviewer": "Codex",
-      "revision": 4,
-      "token_digest": "1b8d49d10420bd9b"
+      "revision": 5,
+      "token_digest": "b56c2f81f544d399"
     },
     "crates/memoria-application/README.md": {
       "acknowledged_invalidations": [
@@ -614,6 +614,6 @@
       "token_digest": "6b257f1673317dca"
     }
   },
-  "revision": 15,
+  "revision": 16,
   "schema_version": 1
 }
