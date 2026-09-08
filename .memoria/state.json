@@ -3,19 +3,22 @@
   "next_invalidation_id": 2,
   "reviews": {
     "README.md": {
-      "acknowledged_invalidations": [
-        1
-      ],
+      "acknowledged_invalidations": [],
       "git": {
-        "base_commit": "1eaf6e9a99a50f944dbc0b189cf63414ad0978bd",
+        "base_commit": "1eaf3c538c61470049e8061dc2f5304d5a98928d",
         "worktree_dirty": true
       },
-      "input_fingerprint": "b5814320fae93b27",
+      "input_fingerprint": "ba2ddeb60381d333",
       "input_manifest": {
         "document": "README.md",
         "document_bytes": 10996,
         "document_hash": "0d27565d9b019ef3",
         "files": [
+          {
+            "bytes": 2261,
+            "hash": "94643231adf9d2c3",
+            "path": ".github/workflows/release-assets.yml"
+          },
           {
             "bytes": 16821,
             "hash": "fa7fb4c1877781aa",
@@ -98,12 +101,12 @@
         "policy_hash": "336c150896928f05",
         "version": 1
       },
-      "note": "Reframed the public guide, corrected its workflow example, and added maintained navigation and CLI help.",
-      "result": "updated",
-      "reviewed_at": "2026-09-08T00:13:10Z",
+      "note": "The release workflow changes distribution only. The existing product and development explanations remain accurate.",
+      "result": "no-update",
+      "reviewed_at": "2026-09-08T07:59:01Z",
       "reviewer": "Codex",
-      "revision": 2,
-      "token_digest": "a3832c23d47749aa"
+      "revision": 3,
+      "token_digest": "fbc8b528bf8b93d6"
     },
     "crates/memoria-application/README.md": {
       "acknowledged_invalidations": [
@@ -611,6 +614,6 @@
       "token_digest": "6b257f1673317dca"
     }
   },
-  "revision": 13,
+  "revision": 14,
   "schema_version": 1
 }

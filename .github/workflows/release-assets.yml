@@ -1,0 +1,75 @@
+name: Build Homebrew assets
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+
+    steps:
+      - name: Check out the tagged source
+        uses: actions/checkout@v7
+
+      - name: Install the pinned Rust toolchain
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.96.0 --profile minimal --no-self-update
+          rustup target add "$TARGET" --toolchain 1.96.0
+
+      - name: Verify the tag matches the package version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          release_version="${TAG#v}"
+          package_version="$(cargo +1.96.0 metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "rs-memoria") | .version')"
+          test "$TAG" != "$release_version"
+          test "$release_version" = "$package_version"
+
+      - name: Build the release binary
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          cargo +1.96.0 build --release --locked --target "$TARGET" --bin memoria
+
+      - name: Package the binary and license
+        env:
+          TAG: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          asset="memoria-${TAG}-${TARGET}.tar.gz"
+          mkdir -p "dist/${TARGET}"
+          cp "target/${TARGET}/release/memoria" "dist/${TARGET}/memoria"
+          cp LICENSE "dist/${TARGET}/LICENSE"
+          tar -C "dist/${TARGET}" -czf "dist/${asset}" memoria LICENSE
+          (cd dist && shasum -a 256 "$asset" > "${asset}.sha256")
+
+      - name: Upload the release archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: memoria-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
