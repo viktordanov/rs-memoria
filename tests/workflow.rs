@@ -8,11 +8,11 @@ use memoria_infrastructure::json::{Json, to_pretty};
 #[test]
 fn baseline_workflow_reaches_a_passing_check() {
     let project = Project::seed();
-    let (code, init) = project.json(&["init"]);
+    let (code, init) = project.json(&["init", "--apply"]);
     assert_eq!(code, 0);
     assert_eq!(
         strings(get(&init, &["data", "created"])),
-        vec![".memoria/state.json"]
+        vec!["memoria.lock"]
     );
     assert!(project.exists("memoria.toml"));
 
@@ -286,7 +286,7 @@ fn language_filters_are_deferred_and_explicit() {
     // A nonempty filter configuration fails explicitly instead of silently ignoring it.
     project.write(
         "memoria.toml",
-        "version = 1\n\n[fingerprints]\ndefault = \"raw\"\n\n[fingerprints.languages]\npython = \"strip-comments\"\n",
+        "version = 2\n\n[fingerprints]\ndefault = \"raw\"\n\n[fingerprints.languages]\npython = \"strip-comments\"\n",
     );
     let (code, status) = project.json(&["status"]);
     assert_eq!(code, 1);
@@ -310,7 +310,7 @@ fn no_update_result_records_a_meaningful_note() {
         "The types module still matches the corpus summary.",
     );
     assert_eq!(output.status.code(), Some(0));
-    let state = parse_json(&project.state());
+    let state = project.inspect_state();
     assert_eq!(
         get_str(&state, &["reviews", "src/corpus/README.md", "result"]),
         "no-update"
@@ -327,7 +327,7 @@ fn no_update_result_records_a_meaningful_note() {
 }
 
 #[test]
-fn writing_instruction_changes_do_not_stale_documents() {
+fn guidance_changes_do_not_stale_documents() {
     let project = Project::seed();
     project.baseline();
     let before = project.state();
@@ -347,10 +347,10 @@ fn writing_instruction_changes_do_not_stale_documents() {
     project.append("src/execution/runner.rs", "// edit\n");
     let (packet, _) = project.review_packet("src/execution/README.md");
     let value = parse_json(&std::fs::read(packet).unwrap());
-    let Json::Array(instructions) = get(&value, &["data", "context", "instructions"]) else {
+    let Json::Array(guidance) = get(&value, &["data", "context", "guidance", "entries"]) else {
         panic!()
     };
-    let texts: Vec<&str> = instructions.iter().map(|i| get_str(i, &["text"])).collect();
+    let texts: Vec<&str> = guidance.iter().map(|i| get_str(i, &["text"])).collect();
     assert!(
         texts
             .iter()
@@ -365,7 +365,7 @@ fn writing_instruction_changes_do_not_stale_documents() {
     project.remove(".agents/writing.md");
     let (code, lint) = project.json(&["lint"]);
     assert_eq!(code, 1);
-    assert!(diagnostic_codes(&lint).contains(&"instruction_file_missing".to_string()));
+    assert!(diagnostic_codes(&lint).contains(&"guidance_file_missing".to_string()));
 }
 
 #[test]
@@ -494,7 +494,7 @@ fn new_invalidation_after_packet_creation_survives_acknowledgement() {
         project.cause_codes("src/execution/README.md"),
         vec!["explicit_invalidation"]
     );
-    let state = parse_json(&project.state());
+    let state = project.inspect_state();
     assert_eq!(
         numbers(get(
             &state,
@@ -707,7 +707,7 @@ fn prose_changes_outside_exports_keep_consumers_current() {
         project.waiting_on("src/retrieval/naive/README.md"),
         vec!["src/execution/README.md"]
     );
-    let state = parse_json(&project.state());
+    let state = project.inspect_state();
     let stored = get(
         &state,
         &[
@@ -720,7 +720,7 @@ fn prose_changes_outside_exports_keep_consumers_current() {
     project.ack_ok("src/execution/README.md");
     let (_, plan) = project.json(&["review"]);
     assert!(matches!(get(&plan, &["data", "tasks"]), Json::Array(t) if t.is_empty()));
-    let state = parse_json(&project.state());
+    let state = project.inspect_state();
     assert_eq!(
         get(
             &state,
@@ -770,7 +770,7 @@ fn normal_link_change_creates_no_dependency() {
 #[test]
 fn render_is_idempotent_and_preserves_authored_text() {
     let project = Project::seed();
-    assert_eq!(project.run(&["init"]).status.code(), Some(0));
+    assert_eq!(project.run(&["init", "--apply"]).status.code(), Some(0));
     let authored_before = project.read_string("README.md");
     let (code, dry) = project.json(&["render", "--dry-run"]);
     assert_eq!(code, 0);
@@ -928,8 +928,8 @@ fn policy_changes_invalidate_only_inheriting_scopes() {
     project.write(
         "memoria.toml",
         project.read_string("memoria.toml").replace(
-            "version = 1\n",
-            "version = 1\ninclude = [\n    \"nothing/**\",\n]\n",
+            "version = 2\n",
+            "version = 2\ninclude = [\n    \"nothing/**\",\n]\n",
         ),
     );
     for doc in [

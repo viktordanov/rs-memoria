@@ -157,6 +157,11 @@ fn temp_path(target: &Path) -> PathBuf {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
+    if name == "memoria.lock" {
+        // The committed state has one reserved temporary pattern, so a
+        // snapshot can recognize it without guessing.
+        return target.with_file_name(format!(".memoria.lock.tmp.{}", random_hex32()));
+    }
     let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -166,6 +171,23 @@ fn temp_path(target: &Path) -> PathBuf {
         ".{name}.memoria-tmp-{}-{counter}-{nanos}",
         std::process::id()
     ))
+}
+
+/// Thirty-two lowercase hexadecimal characters from the process identity,
+/// a monotonic counter, and the clock. The name only has to be unique
+/// within one directory; `create_new` still refuses an existing file.
+fn random_hex32() -> String {
+    let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed) as u128;
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let pid = std::process::id() as u128;
+    let mixed = nanos
+        .wrapping_mul(0x2545_f491_4f6c_dd1d)
+        .wrapping_add(counter.wrapping_mul(0x9e37_79b9_7f4a_7c15))
+        .wrapping_add(pid << 64);
+    format!("{mixed:032x}")
 }
 
 /// Synchronize a directory so completed renames are durable.
@@ -316,14 +338,52 @@ impl AtomicWriter for AtomicFileWriter<'_> {
     }
 }
 
-/// Exclusive, nonblocking advisory lock on `.memoria/write.lock`.
+/// Exclusive, nonblocking advisory lock on a worktree-private path.
+///
+/// The committed `memoria.lock` never acts as the process lock. The write
+/// lock lives under Git metadata, at the path
+/// `git rev-parse --git-path memoria/write.lock` resolves, so linked
+/// worktrees receive separate locks and read-only commands create nothing
+/// inside the worktree.
 pub struct LockFileCoordinator {
     root: PathBuf,
+    lock_path: PathBuf,
+    /// The directory the lock must stay under, with no symlink between.
+    boundary: PathBuf,
 }
 
 impl LockFileCoordinator {
-    pub fn new(root: PathBuf) -> LockFileCoordinator {
-        LockFileCoordinator { root }
+    /// `lock_path` is the absolute worktree-private destination.
+    /// `boundary` defaults to the lock's grandparent when the caller has no
+    /// Git metadata directory to supply.
+    pub fn new(root: PathBuf, lock_path: PathBuf) -> LockFileCoordinator {
+        let boundary = lock_path
+            .parent()
+            .and_then(Path::parent)
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| root.clone());
+        LockFileCoordinator {
+            root,
+            lock_path,
+            boundary,
+        }
+    }
+
+    /// The Git metadata directory is the containment boundary.
+    pub fn with_boundary(
+        root: PathBuf,
+        lock_path: PathBuf,
+        boundary: PathBuf,
+    ) -> LockFileCoordinator {
+        LockFileCoordinator {
+            root,
+            lock_path,
+            boundary,
+        }
+    }
+
+    pub fn lock_path(&self) -> &Path {
+        &self.lock_path
     }
 }
 
@@ -333,19 +393,94 @@ pub struct FileGuard {
 
 impl WriteGuard for FileGuard {}
 
+/// Whether `path` is a symlink, following nothing.
+fn is_symlink(path: &Path) -> bool {
+    fs::symlink_metadata(path)
+        .map(|meta| meta.file_type().is_symlink())
+        .unwrap_or(false)
+}
+
+/// Refuse a symlink anywhere from `boundary` down to `path`, and refuse a
+/// nonregular entry at `path` itself.
+///
+/// The lock lives under Git metadata, outside the worktree, so the state
+/// writer's containment guarantees must be enforced on this path too. A
+/// substituted directory or lock file would otherwise place the advisory
+/// lock outside the private metadata location.
+fn refuse_substituted_lock_path(path: &Path, boundary: &Path) -> Result<(), LockFailure> {
+    let refuse = |what: &Path, reason: &str| -> LockFailure {
+        LockFailure::Io(AdapterError::new(
+            "contain",
+            Some(what.display().to_string()),
+            format!("{} {reason}; Memoria refuses to use it", what.display()),
+        ))
+    };
+    // Ancestors between the boundary and the lock, outermost first.
+    let mut ancestors: Vec<&Path> = Vec::new();
+    let mut current = path.parent();
+    while let Some(dir) = current {
+        if dir == boundary || dir.parent().is_none() {
+            break;
+        }
+        ancestors.push(dir);
+        current = dir.parent();
+    }
+    for dir in ancestors.into_iter().rev() {
+        if is_symlink(dir) {
+            return Err(refuse(dir, "is a symlink"));
+        }
+        match fs::symlink_metadata(dir) {
+            Ok(meta) if meta.is_dir() => {}
+            Ok(_) => return Err(refuse(dir, "is not a directory")),
+            // A missing ancestor is created below, under this same check.
+            Err(_) => {}
+        }
+    }
+    if is_symlink(path) {
+        return Err(refuse(path, "is a symlink"));
+    }
+    match kind_of(path) {
+        Ok(FileKind::Missing) | Ok(FileKind::Regular) => Ok(()),
+        Ok(other) => Err(refuse(path, &format!("is a {other:?}, not a regular file"))),
+        Err(err) => Err(LockFailure::Io(adapter("stat", path, err))),
+    }
+}
+
 /// Acquire an exclusive nonblocking flock on `path`, creating it if needed.
-pub fn lock_file(path: &Path) -> Result<FileGuard, LockFailure> {
+///
+/// `boundary` is the directory the lock must stay under, normally the Git
+/// metadata directory that resolved it. Every component between the
+/// boundary and the lock must be a real directory, and the lock itself must
+/// be a regular file.
+pub fn lock_file_within(path: &Path, boundary: &Path) -> Result<FileGuard, LockFailure> {
+    refuse_substituted_lock_path(path, boundary)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| LockFailure::Io(adapter("create_dir", parent, e)))?;
     }
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
+    // Re-check after creation: a concurrent writer could have substituted a
+    // component between the check and the create.
+    refuse_substituted_lock_path(path, boundary)?;
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        // Never traverse a final symlink, even one created just now.
+        options.custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32);
+    }
+    let file = options
         .open(path)
         .map_err(|e| LockFailure::Io(adapter("open", path, e)))?;
+    let meta = file
+        .metadata()
+        .map_err(|e| LockFailure::Io(adapter("stat", path, e)))?;
+    if !meta.is_file() {
+        return Err(LockFailure::Io(AdapterError::new(
+            "contain",
+            Some(path.display().to_string()),
+            format!("{} is not a regular file", path.display()),
+        )));
+    }
     match rustix::fs::flock(&file, rustix::fs::FlockOperation::NonBlockingLockExclusive) {
         Ok(()) => Ok(FileGuard { _file: file }),
         Err(rustix::io::Errno::WOULDBLOCK) => Err(LockFailure::Busy),
@@ -357,9 +492,21 @@ pub fn lock_file(path: &Path) -> Result<FileGuard, LockFailure> {
     }
 }
 
-/// Fail when `.memoria`, the lock file, or the state file is a symlink.
+/// [`lock_file_within`] with the lock's own parent as the boundary.
+pub fn lock_file(path: &Path) -> Result<FileGuard, LockFailure> {
+    let boundary = path
+        .parent()
+        .and_then(Path::parent)
+        .unwrap_or_else(|| Path::new("/"));
+    lock_file_within(path, boundary)
+}
+
+/// Fail when a reserved state path is a symlink or another special file.
+///
+/// The committed state and its reserved temporary destination must be
+/// ordinary files. A symlink there would let a write leave the project.
 pub fn check_state_dir(root: &Path) -> Result<(), AdapterError> {
-    for relative in [".memoria", ".memoria/write.lock", ".memoria/state.json"] {
+    for relative in ["memoria.lock", ".memoria", ".memoria/state.json"] {
         let full = root.join(relative);
         if let Ok(meta) = fs::symlink_metadata(&full)
             && meta.file_type().is_symlink()
@@ -377,7 +524,9 @@ pub fn check_state_dir(root: &Path) -> Result<(), AdapterError> {
 impl WriteCoordinator for LockFileCoordinator {
     fn lock(&self) -> Result<Box<dyn WriteGuard + '_>, LockFailure> {
         check_state_dir(&self.root).map_err(LockFailure::Io)?;
-        let guard = lock_file(&self.root.join(".memoria").join("write.lock"))?;
+        // The Git metadata directory is the containment boundary: no
+        // component below it may be substituted.
+        let guard = lock_file_within(&self.lock_path, &self.boundary)?;
         Ok(Box::new(guard))
     }
 }
@@ -478,7 +627,10 @@ mod tests {
     #[test]
     fn lock_is_exclusive() {
         let dir = tempfile::tempdir().unwrap();
-        let coordinator = LockFileCoordinator::new(dir.path().to_path_buf());
+        let coordinator = LockFileCoordinator::new(
+            dir.path().to_path_buf(),
+            dir.path().join(".git/memoria/write.lock"),
+        );
         let first = coordinator.lock().unwrap_or_else(|_| panic!("first lock"));
         assert!(matches!(coordinator.lock().err(), Some(LockFailure::Busy)));
         drop(first);
@@ -595,7 +747,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
         std::os::unix::fs::symlink(outside.path(), dir.path().join(".memoria")).unwrap();
-        let coordinator = LockFileCoordinator::new(dir.path().to_path_buf());
+        let coordinator = LockFileCoordinator::new(
+            dir.path().to_path_buf(),
+            dir.path().join(".git/memoria/write.lock"),
+        );
         assert!(matches!(coordinator.lock().err(), Some(LockFailure::Io(_))));
         assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
     }

@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use crate::guidance::GuidanceDigest;
 use crate::manifest::{Hash64, InputManifest, ManifestDiff};
 use crate::path::{DirPath, DocumentId};
 use crate::text;
@@ -179,8 +180,11 @@ pub struct GitContext {
 pub struct ReviewRecord {
     pub revision: u64,
     pub manifest: InputManifest,
+    /// Derived from the manifest, never a second stored checksum.
     pub input_fingerprint: Hash64,
     pub token_digest: Hash64,
+    /// The guidance the reviewer saw. Advisory context, not freshness.
+    pub guidance: GuidanceDigest,
     pub reviewed_at: Timestamp,
     pub reviewer: ReviewerName,
     pub result: ReviewResult,
@@ -396,6 +400,8 @@ pub struct AckRequest {
     pub covered: Vec<(u64, String)>,
     pub input_fingerprint: Hash64,
     pub token_digest: Hash64,
+    /// The guidance digest the application already compared with the packet.
+    pub guidance: GuidanceDigest,
     pub reviewed_at: Timestamp,
     pub reviewer: ReviewerName,
     pub result: ReviewResult,
@@ -699,6 +705,7 @@ impl ReviewState {
                 manifest: request.current_manifest,
                 input_fingerprint: request.input_fingerprint,
                 token_digest: request.token_digest,
+                guidance: request.guidance,
                 reviewed_at: request.reviewed_at,
                 reviewer: request.reviewer,
                 result: request.result,
@@ -758,6 +765,7 @@ mod tests {
             covered,
             input_fingerprint: Hash64(9),
             token_digest: Hash64(8),
+            guidance: GuidanceDigest(Hash64(6)),
             reviewed_at: Timestamp("2026-09-07T12:00:00Z".into()),
             reviewer: ReviewerName::parse("fixture").unwrap(),
             result: ReviewResult::NoUpdate,

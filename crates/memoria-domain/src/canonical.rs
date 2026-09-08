@@ -6,16 +6,21 @@
 //! present. Every hashed structure begins with a length-prefixed
 //! domain-separation string.
 
+use crate::guidance::{GuidanceDigest, GuidanceEntry};
 use crate::manifest::InputManifest;
 use crate::path::DocumentId;
 use crate::policy::EffectivePolicy;
 
-pub const POLICY_DOMAIN: &str = "memoria.policy.v1";
-pub const INPUTS_DOMAIN: &str = "memoria.inputs.v1";
-pub const REVIEW_TOKEN_DOMAIN: &str = "memoria.review-token.v1";
-pub const PACKET_DOMAIN: &str = "memoria.packet.v1";
+pub const POLICY_DOMAIN: &str = "memoria.policy.v2";
+pub const INPUTS_DOMAIN: &str = "memoria.inputs.v2";
+pub const REVIEW_TOKEN_DOMAIN: &str = "memoria.review-token.v2";
+pub const PACKET_DOMAIN: &str = "memoria.packet.v2";
+pub const GUIDANCE_DOMAIN: &str = "memoria.guidance.v1";
 
-pub const SELECTION_ALGORITHM: &str = "git-worktree-v1";
+pub const SELECTION_ALGORITHM: &str = "git-worktree-v2";
+/// Repository-only, case-sensitive ignore inventory. Host ignore settings
+/// decide actual Git eligibility; they never enter this policy.
+pub const REPOSITORY_IGNORE_ALGORITHM: &str = "repository-ignore-v1";
 pub const OWNERSHIP_ALGORITHM: &str = "nearest-readme-v1";
 pub const FINGERPRINT_ALGORITHM: &str = "raw-v1";
 pub const HASH_ALGORITHM: &str = "xxh3-64-seed0";
@@ -78,6 +83,7 @@ pub fn encode_policy(policy: &EffectivePolicy) -> Vec<u8> {
     e.str(POLICY_DOMAIN)
         .str(policy.owner.as_str())
         .str(SELECTION_ALGORITHM)
+        .str(REPOSITORY_IGNORE_ALGORITHM)
         .str(OWNERSHIP_ALGORITHM)
         .str(FINGERPRINT_ALGORITHM)
         .str(HASH_ALGORITHM)
@@ -132,12 +138,29 @@ fn encode_inputs_into(e: &mut Encoder, manifest: &InputManifest) {
     }
 }
 
-/// `memoria.review-token.v1` canonical bytes. Invalidations must be sorted
-/// by id; the encoder sorts defensively.
+/// `memoria.guidance.v1` canonical bytes: the domain, the entry count, and
+/// each entry's four length-prefixed UTF-8 fields in authored order.
+pub fn encode_guidance(entries: &[GuidanceEntry]) -> Vec<u8> {
+    let mut e = Encoder::new();
+    e.str(GUIDANCE_DOMAIN);
+    e.list_len(entries.len());
+    for entry in entries {
+        e.str(entry.scope.as_str())
+            .str(&entry.source)
+            .str(entry.kind.as_str())
+            .str(&entry.text);
+    }
+    e.finish()
+}
+
+/// `memoria.review-token.v2` canonical bytes. The guidance digest follows the
+/// manifest, before the sorted covered invalidations. Invalidations must be
+/// sorted by id; the encoder sorts defensively.
 pub fn encode_review_token(
     document: &DocumentId,
     review_revision: u64,
     manifest: &InputManifest,
+    guidance: GuidanceDigest,
     invalidations: &[(u64, String)],
 ) -> Vec<u8> {
     let mut sorted: Vec<&(u64, String)> = invalidations.iter().collect();
@@ -147,6 +170,7 @@ pub fn encode_review_token(
         .str(document.as_str())
         .u64(review_revision);
     encode_inputs_into(&mut e, manifest);
+    e.u64(guidance.0.0);
     e.list_len(sorted.len());
     for (id, reason) in sorted {
         e.u64(*id).str(reason);
@@ -205,7 +229,7 @@ mod tests {
             v.extend_from_slice(&(s.len() as u64).to_be_bytes());
             v.extend_from_slice(s.as_bytes());
         };
-        push_str(&mut expected, "memoria.inputs.v1");
+        push_str(&mut expected, "memoria.inputs.v2");
         push_str(&mut expected, "README.md");
         expected.extend_from_slice(&0x0102030405060708u64.to_be_bytes());
         expected.extend_from_slice(&3u64.to_be_bytes());
@@ -244,16 +268,19 @@ mod tests {
         )
         .unwrap();
         let doc = DocumentId::parse("README.md").unwrap();
+        let none = GuidanceDigest::default();
         let a = encode_review_token(
             &doc,
             1,
             &manifest,
+            none,
             &[(2, "two words here".into()), (1, "one reason here".into())],
         );
         let b = encode_review_token(
             &doc,
             1,
             &manifest,
+            none,
             &[(1, "one reason here".into()), (2, "two words here".into())],
         );
         assert_eq!(a, b);
@@ -261,8 +288,44 @@ mod tests {
             &doc,
             2,
             &manifest,
+            none,
             &[(1, "one reason here".into()), (2, "two words here".into())],
         );
         assert_ne!(a, c);
+        // The guidance digest binds the reviewed context into the token.
+        let d = encode_review_token(
+            &doc,
+            1,
+            &manifest,
+            GuidanceDigest(Hash64(7)),
+            &[(1, "one reason here".into()), (2, "two words here".into())],
+        );
+        assert_ne!(a, d);
+    }
+
+    #[test]
+    fn guidance_encoding_separates_every_field() {
+        use crate::guidance::{GuidanceEntry, GuidanceKind};
+        use crate::path::DirPath;
+        let entry = |source: &str, text: &str| GuidanceEntry {
+            scope: DirPath::root(),
+            source: source.to_string(),
+            kind: GuidanceKind::Inline,
+            text: text.to_string(),
+        };
+        assert_ne!(
+            encode_guidance(&[entry("memoria.toml", "ab")]),
+            encode_guidance(&[entry("memoria.tomla", "b")])
+        );
+        // Order is authored order, never a sorted set.
+        assert_ne!(
+            encode_guidance(&[entry("a", "one"), entry("b", "two")]),
+            encode_guidance(&[entry("b", "two"), entry("a", "one")])
+        );
+        assert_eq!(encode_guidance(&[]), {
+            let mut e = Encoder::new();
+            e.str(GUIDANCE_DOMAIN).list_len(0);
+            e.finish()
+        });
     }
 }

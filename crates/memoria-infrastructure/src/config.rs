@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use memoria_application::config::{RootConfig, SidecarConfig};
+use memoria_application::config::{CONFIG_VERSION, RootConfig, SidecarConfig};
 use memoria_application::ports::ConfigurationReader;
 use memoria_application::snapshot::{ROOT_CONFIG_PATH, SIDECAR_FILE_NAME};
 use serde::Deserialize;
@@ -29,7 +29,7 @@ struct RootWire {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SidecarWire {
-    #[serde(default = "version_one")]
+    #[serde(default = "inherited_version")]
     version: i64,
     #[serde(default)]
     ignore: Vec<String>,
@@ -39,15 +39,28 @@ struct SidecarWire {
     documentation: DocumentationWire,
 }
 
-fn version_one() -> i64 {
-    1
+fn inherited_version() -> i64 {
+    CONFIG_VERSION as i64
 }
 
+/// The documentation section. The version 1 keys are still parsed, so a
+/// project that has not finished the cutover receives the exact replacement
+/// name instead of an unknown-field message.
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct DocumentationWire {
-    instructions: Vec<String>,
-    instruction_files: Vec<String>,
+    guidance: Vec<String>,
+    guidance_files: Vec<String>,
+    instructions: Option<Vec<String>>,
+    instruction_files: Option<Vec<String>>,
+}
+
+/// The exact cutover guidance for a retired configuration key.
+fn retired_key(old: &str, new: &str) -> String {
+    format!(
+        "documentation.{old} was replaced by documentation.{new} in configuration version {CONFIG_VERSION}. \
+Rename the key. See the clean cutover in docs/releases/0.2.0.md."
+    )
 }
 
 #[derive(Deserialize)]
@@ -81,10 +94,25 @@ impl Default for LintWire {
 }
 
 fn validate_version(version: i64) -> Result<(), String> {
-    if version != 1 {
+    if version != CONFIG_VERSION as i64 {
         return Err(format!(
-            "unsupported version {version}; only version 1 is supported"
+            "unsupported version {version}; only version {CONFIG_VERSION} is supported. \
+This release has one clean cutover: change the version, rename documentation.instructions to \
+documentation.guidance and documentation.instruction_files to documentation.guidance_files, \
+then follow docs/releases/0.2.0.md."
         ));
+    }
+    Ok(())
+}
+
+/// Reject the retired keys before any value is used, so a mixed
+/// configuration never silently selects one of the two spellings.
+fn validate_documentation(documentation: &DocumentationWire) -> Result<(), String> {
+    if documentation.instructions.is_some() {
+        return Err(retired_key("instructions", "guidance"));
+    }
+    if documentation.instruction_files.is_some() {
+        return Err(retired_key("instruction_files", "guidance_files"));
     }
     Ok(())
 }
@@ -97,10 +125,10 @@ fn validate_lists(
     for (name, values) in [
         ("ignore", ignore),
         ("include", include),
-        ("documentation.instructions", &documentation.instructions),
+        ("documentation.guidance", &documentation.guidance),
         (
-            "documentation.instruction_files",
-            &documentation.instruction_files,
+            "documentation.guidance_files",
+            &documentation.guidance_files,
         ),
     ] {
         if values.iter().any(|value| value.trim().is_empty()) {
@@ -132,6 +160,7 @@ impl ConfigurationReader for TomlConfigurationReader {
     fn parse_root(&self, bytes: &[u8]) -> Result<RootConfig, String> {
         let wire: RootWire = parse(bytes, ROOT_CONFIG_PATH)?;
         validate_version(wire.version)?;
+        validate_documentation(&wire.documentation)?;
         validate_lists(&wire.ignore, &wire.include, &wire.documentation)?;
         if wire.fingerprints.default != "raw" {
             return Err(
@@ -145,8 +174,8 @@ impl ConfigurationReader for TomlConfigurationReader {
         Ok(RootConfig {
             ignore: wire.ignore,
             include: wire.include,
-            instructions: wire.documentation.instructions,
-            instruction_files: wire.documentation.instruction_files,
+            guidance: wire.documentation.guidance,
+            guidance_files: wire.documentation.guidance_files,
             missing_import_hint: wire.lint.missing_import_hint,
         })
     }
@@ -154,12 +183,13 @@ impl ConfigurationReader for TomlConfigurationReader {
     fn parse_sidecar(&self, bytes: &[u8]) -> Result<SidecarConfig, String> {
         let wire: SidecarWire = parse(bytes, SIDECAR_FILE_NAME)?;
         validate_version(wire.version)?;
+        validate_documentation(&wire.documentation)?;
         validate_lists(&wire.ignore, &wire.include, &wire.documentation)?;
         Ok(SidecarConfig {
             ignore: wire.ignore,
             include: wire.include,
-            instructions: wire.documentation.instructions,
-            instruction_files: wire.documentation.instruction_files,
+            guidance: wire.documentation.guidance,
+            guidance_files: wire.documentation.guidance_files,
         })
     }
 }
@@ -171,7 +201,7 @@ mod tests {
 
     #[test]
     fn root_defaults_and_init_template() {
-        for text in ["version = 1\n", ROOT_CONFIG_TEMPLATE] {
+        for text in ["version = 2\n", ROOT_CONFIG_TEMPLATE] {
             assert_eq!(
                 TomlConfigurationReader.parse_root(text.as_bytes()).unwrap(),
                 RootConfig::default()
@@ -186,15 +216,15 @@ mod tests {
         let config = TomlConfigurationReader
             .parse_root(
                 br#"
-version = 1 # supported version
+version = 2 # supported version
 ignore = ["**/generated/**", 'build/**']
 include = ['fixtures/**']
 [documentation]
-instructions = ["Style: use \"plain\" words # literally.", """
+guidance = ["Style: use \"plain\" words # literally.", """
 Explain the boundary.
 Keep the trailing newline.
 """, '''Use 'single' quotes.''']
-instruction_files = ['.agents/writing.md', 'rules with spaces.md']
+guidance_files = ['.agents/writing.md', 'rules with spaces.md']
 [fingerprints]
 default = 'raw'
 languages = {}
@@ -206,7 +236,7 @@ missing_import_hint = false
         assert_eq!(config.ignore, ["**/generated/**", "build/**"]);
         assert_eq!(config.include, ["fixtures/**"]);
         assert_eq!(
-            config.instructions,
+            config.guidance,
             [
                 "Style: use \"plain\" words # literally.",
                 "Explain the boundary.\nKeep the trailing newline.\n",
@@ -214,7 +244,7 @@ missing_import_hint = false
             ]
         );
         assert_eq!(
-            config.instruction_files,
+            config.guidance_files,
             [".agents/writing.md", "rules with spaces.md"]
         );
         assert!(!config.missing_import_hint);
@@ -222,7 +252,7 @@ missing_import_hint = false
 
     #[test]
     fn sidecar_defaults_optional_version_and_fields() {
-        for text in ["", "# comment only\n", "version = 1\n"] {
+        for text in ["", "# comment only\n", "version = 2\n"] {
             assert_eq!(
                 TomlConfigurationReader
                     .parse_sidecar(text.as_bytes())
@@ -233,23 +263,23 @@ missing_import_hint = false
         let config = TomlConfigurationReader
             .parse_sidecar(
                 br#"
-version = 1
+version = 2
 ignore = ['*.tmp']
 include = ['fixtures/**']
 [documentation]
-instructions = ['''Local rule:
+guidance = ['''Local rule:
 Use "plain" words. # literal'''] # comment
-instruction_files = ['local rules.md']
+guidance_files = ['local rules.md']
 "#,
             )
             .unwrap();
         assert_eq!(config.ignore, ["*.tmp"]);
         assert_eq!(config.include, ["fixtures/**"]);
         assert_eq!(
-            config.instructions,
+            config.guidance,
             ["Local rule:\nUse \"plain\" words. # literal"]
         );
-        assert_eq!(config.instruction_files, ["local rules.md"]);
+        assert_eq!(config.guidance_files, ["local rules.md"]);
     }
 
     #[test]
@@ -261,7 +291,7 @@ instruction_files = ['local rules.md']
             "[lint]\nunknown = true",
         ] {
             let error = TomlConfigurationReader
-                .parse_root(format!("version = 1\n{text}").as_bytes())
+                .parse_root(format!("version = 2\n{text}").as_bytes())
                 .unwrap_err();
             assert!(error.contains("unknown field"), "{error}");
         }
@@ -286,14 +316,14 @@ instruction_files = ['local rules.md']
             "ignore = [' ']",
             "include = ['']",
             "documentation = []",
-            "documentation.instructions = [false]",
-            "documentation.instructions = [' ']",
-            "documentation.instruction_files = 'a.md'",
-            "documentation.instruction_files = ['']",
+            "documentation.guidance = [false]",
+            "documentation.guidance = [' ']",
+            "documentation.guidance_files = 'a.md'",
+            "documentation.guidance_files = ['']",
         ] {
             assert!(
                 TomlConfigurationReader
-                    .parse_root(format!("version = 1\n{text}").as_bytes())
+                    .parse_root(format!("version = 2\n{text}").as_bytes())
                     .is_err(),
                 "{text}"
             );
@@ -315,7 +345,7 @@ instruction_files = ['local rules.md']
         ] {
             assert!(
                 TomlConfigurationReader
-                    .parse_root(format!("version = 1\n{text}").as_bytes())
+                    .parse_root(format!("version = 2\n{text}").as_bytes())
                     .is_err(),
                 "{text}"
             );
@@ -331,15 +361,21 @@ instruction_files = ['local rules.md']
                 .contains("version")
         );
         for bytes in [
-            &b"version = 2"[..],
+            &b"version = 1"[..],
+            b"version = 3",
             b"version = -1",
             b"version = '1'",
-            b"version = 1.0",
+            b"version = 2.0",
             b"version = true",
-            b"version = 1\nversion = 1",
-            b"version: 1\n",
+            b"version = 2\nversion = 2",
+            b"version: 2\n",
             b"\xff",
-            b"version = 1\nignore = ['unterminated]",
+            b"version = 2\nignore = ['unterminated]",
+            // The retired keys fail with their exact replacement names.
+            b"version = 2\n[documentation]\ninstructions = []",
+            b"version = 2\n[documentation]\ninstruction_files = []",
+            // A mixed configuration never selects one spelling silently.
+            b"version = 2\n[documentation]\nguidance = ['a']\ninstructions = ['b']",
         ] {
             assert!(
                 TomlConfigurationReader.parse_root(bytes).is_err(),
@@ -350,15 +386,32 @@ instruction_files = ['local rules.md']
                 "{bytes:?}"
             );
         }
+        // The version error names the exact cutover procedure.
+        let version_error = TomlConfigurationReader
+            .parse_root(b"version = 1")
+            .unwrap_err();
         assert!(
-            TomlConfigurationReader
-                .parse_root(b"version = 2")
-                .unwrap_err()
-                .contains("unsupported version")
+            version_error.contains("unsupported version 1"),
+            "{version_error}"
         );
         assert!(
+            version_error.contains("documentation.guidance")
+                && version_error.contains("docs/releases/0.2.0.md"),
+            "{version_error}"
+        );
+        // A retired key names its replacement, not an unknown-field message.
+        let key_error = TomlConfigurationReader
+            .parse_root(b"version = 2\n[documentation]\ninstructions = []")
+            .unwrap_err();
+        assert!(
+            key_error.contains("documentation.instructions")
+                && key_error.contains("documentation.guidance"),
+            "{key_error}"
+        );
+        assert!(!key_error.contains("unknown field"), "{key_error}");
+        assert!(
             TomlConfigurationReader
-                .parse_root(b"version = 1\nversion = 1")
+                .parse_root(b"version = 2\nversion = 2")
                 .unwrap_err()
                 .contains("duplicate")
         );

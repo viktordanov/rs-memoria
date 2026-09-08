@@ -190,6 +190,7 @@ mod tests {
                 covered: vec![],
                 input_fingerprint: Hash64(0),
                 token_digest: Hash64(0),
+                guidance: crate::GuidanceDigest::default(),
                 reviewed_at: Timestamp("t".into()),
                 reviewer: ReviewerName::parse("fixture").unwrap(),
                 result: ReviewResult::NoUpdate,

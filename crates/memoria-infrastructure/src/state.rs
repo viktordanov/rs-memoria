@@ -1,52 +1,33 @@
-//! Versioned JSON state store with compare-and-swap replacement.
+//! Committed state: the `memoria.lock` store and its read-only inspector.
+//!
+//! The store owns the artifact's bytes. It detects the clean cutover before
+//! it chooses a decoder, so a leftover version 1 file is reported instead of
+//! silently ignored. Writes keep compare-and-swap, final snapshot
+//! validation, atomic rename, and directory synchronization.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use memoria_application::packet::{manifest_detail, review_record_detail};
-use memoria_application::ports::{AdapterError, LoadedState, StateFailure, StateStore};
+use memoria_application::ports::{
+    AdapterError, FileKind, InspectedState, LoadedState, StateFailure, StateInspector, StateStore,
+};
 use memoria_domain::{
-    DirPath, DocumentId, ExportId, FileInput, GitContext, Hash64, ImportInput, InputManifest,
-    Invalidation, InvalidationScope, ProjectPath, Reason, ReviewNote, ReviewRecord, ReviewResult,
-    ReviewState, ReviewerName, Timestamp,
+    DocumentId, ExportId, FileInput, GitContext, GuidanceDigest, Hash64, ImportInput,
+    InputManifest, ProjectPath, ReviewNote, ReviewRecord, ReviewResult, ReviewState, ReviewerName,
+    Timestamp,
 };
 
 use crate::fs::{
     FaultHook, NO_FAULTS, check_state_dir, durable_replace_with, kind_of, read_regular,
 };
-use crate::json::{
-    self, Json, JsonError, Limits, ObjectReader, expect_string, expect_u64, from_detail,
-};
+use crate::json::{Json, JsonError, ObjectReader, expect_u64, from_detail};
+use crate::lock_codec::{self, LockError, MAX_FILE_BYTES, codec_name};
 
-pub const STATE_RELATIVE: &str = ".memoria/state.json";
-
-pub struct JsonStateStore<'a> {
-    root: PathBuf,
-    path: PathBuf,
-    faults: FaultHook<'a>,
-}
-
-impl JsonStateStore<'static> {
-    pub fn new(root: PathBuf) -> JsonStateStore<'static> {
-        JsonStateStore {
-            path: root.join(STATE_RELATIVE),
-            root,
-            faults: NO_FAULTS,
-        }
-    }
-}
-
-impl<'a> JsonStateStore<'a> {
-    /// A store whose durable replacement consults `faults` (see
-    /// [`durable_replace_with`]).
-    pub fn with_faults(root: PathBuf, faults: FaultHook<'a>) -> JsonStateStore<'a> {
-        JsonStateStore {
-            path: root.join(STATE_RELATIVE),
-            root,
-            faults,
-        }
-    }
-}
+/// The generated committed state, beside `memoria.toml`.
+pub const STATE_RELATIVE: &str = "memoria.lock";
+/// The version 1 state file. Recognized only to report the clean cutover.
+pub const LEGACY_STATE_RELATIVE: &str = ".memoria/state.json";
 
 fn schema(message: impl Into<String>) -> JsonError {
     JsonError {
@@ -61,8 +42,8 @@ fn hash_from(text: String, context: &str) -> Result<Hash64, JsonError> {
 
 pub fn manifest_from_json(value: Json, context: &str) -> Result<InputManifest, JsonError> {
     let mut reader = ObjectReader::new(value, context)?;
-    if reader.take_u64("version")? != 1 {
-        return Err(schema(format!("{context}.version must be 1")));
+    if reader.take_u64("version")? != 2 {
+        return Err(schema(format!("{context}.version must be 2")));
     }
     let document = DocumentId::parse(&reader.take_string("document")?)
         .map_err(|e| schema(format!("{context}.document: {e}")))?;
@@ -141,6 +122,10 @@ pub fn record_from_json(value: Json, context: &str) -> Result<ReviewRecord, Json
         reader.take_string("token_digest")?,
         &format!("{context}.token_digest"),
     )?;
+    let guidance = GuidanceDigest(hash_from(
+        reader.take_string("guidance_digest")?,
+        &format!("{context}.guidance_digest"),
+    )?);
     let reviewed_at = Timestamp(reader.take_string("reviewed_at")?);
     let reviewer = ReviewerName::from_stored(reader.take_string("reviewer")?);
     let result = ReviewResult::parse(&reader.take_string("result")?)
@@ -167,6 +152,7 @@ pub fn record_from_json(value: Json, context: &str) -> Result<ReviewRecord, Json
         manifest,
         input_fingerprint,
         token_digest,
+        guidance,
         reviewed_at,
         reviewer,
         result,
@@ -179,85 +165,12 @@ pub fn record_from_json(value: Json, context: &str) -> Result<ReviewRecord, Json
     })
 }
 
-fn invalidation_from_json(value: Json, context: &str) -> Result<Invalidation, JsonError> {
-    let mut reader = ObjectReader::new(value, context)?;
-    let id = reader.take_u64("id")?;
-    let scope_text = reader.take_string("scope")?;
-    let scope = if scope_text == "all" {
-        InvalidationScope::All
-    } else if let Some(doc) = scope_text.strip_prefix("doc:") {
-        InvalidationScope::Document(
-            DocumentId::parse(doc).map_err(|e| schema(format!("{context}.scope: {e}")))?,
-        )
-    } else if let Some(dir) = scope_text.strip_prefix("subtree:") {
-        InvalidationScope::Subtree(
-            DirPath::parse(dir).map_err(|e| schema(format!("{context}.scope: {e}")))?,
-        )
-    } else {
-        return Err(schema(format!(
-            "{context}.scope {scope_text:?} is not recognized"
-        )));
-    };
-    let reason = Reason::from_stored(reader.take_string("reason")?);
-    let created_at = Timestamp(reader.take_string("created_at")?);
-    let docs = |items: Vec<Json>, key: &str| -> Result<Vec<DocumentId>, JsonError> {
-        items
-            .into_iter()
-            .enumerate()
-            .map(|(i, item)| {
-                DocumentId::parse(&expect_string(item, &format!("{context}.{key}[{i}]"))?)
-                    .map_err(|e| schema(format!("{context}.{key}[{i}]: {e}")))
-            })
-            .collect()
-    };
-    let targets = docs(reader.take_array("targets")?, "targets")?;
-    let pending = docs(reader.take_array("pending_documents")?, "pending_documents")?;
-    reader.finish()?;
-    Ok(Invalidation {
-        id,
-        scope,
-        reason,
-        created_at,
-        targets,
-        pending,
-    })
+pub fn manifest_to_json(manifest: &InputManifest) -> Json {
+    from_detail(&manifest_detail(manifest))
 }
 
-pub fn state_from_json(value: Json) -> Result<ReviewState, JsonError> {
-    let mut reader = ObjectReader::new(value, "state")?;
-    let schema_version = reader.take_u64("schema_version")?;
-    if schema_version != 1 {
-        return Err(JsonError {
-            code: "state_unsupported_schema",
-            message: format!(
-                "unsupported state schema_version {schema_version}; this release supports version 1 only"
-            ),
-        });
-    }
-    let revision = reader.take_u64("revision")?;
-    let next_invalidation_id = reader.take_u64("next_invalidation_id")?;
-    let mut reviews = BTreeMap::new();
-    let reviews_reader = ObjectReader::new(reader.take("reviews")?, "state.reviews")?;
-    for (key, value) in reviews_reader.into_fields() {
-        let document = DocumentId::parse(&key)
-            .map_err(|e| schema(format!("state.reviews key {key:?}: {e}")))?;
-        let record = record_from_json(value, &format!("state.reviews[{key:?}]"))?;
-        reviews.insert(document, record);
-    }
-    let mut invalidations = Vec::new();
-    for (index, item) in reader.take_array("invalidations")?.into_iter().enumerate() {
-        invalidations.push(invalidation_from_json(
-            item,
-            &format!("state.invalidations[{index}]"),
-        )?);
-    }
-    reader.finish()?;
-    Ok(ReviewState {
-        revision,
-        next_invalidation_id,
-        reviews,
-        invalidations,
-    })
+pub fn record_to_json(record: &ReviewRecord) -> Json {
+    from_detail(&review_record_detail(record))
 }
 
 impl ObjectReader {
@@ -266,124 +179,159 @@ impl ObjectReader {
     }
 }
 
-pub fn state_to_json(state: &ReviewState) -> Json {
-    let reviews: BTreeMap<String, Json> = state
-        .reviews
-        .iter()
-        .map(|(doc, record)| {
-            (
-                doc.as_str().to_string(),
-                from_detail(&review_record_detail(record)),
-            )
-        })
-        .collect();
-    let invalidations: Vec<Json> = state
-        .invalidations
-        .iter()
-        .map(|inv| {
-            let mut map = BTreeMap::new();
-            map.insert("id".into(), Json::Number(inv.id));
-            map.insert("scope".into(), Json::String(inv.scope.to_string()));
-            map.insert("reason".into(), Json::String(inv.reason.as_str().into()));
-            map.insert("created_at".into(), Json::String(inv.created_at.0.clone()));
-            map.insert(
-                "targets".into(),
-                Json::Array(
-                    inv.targets
-                        .iter()
-                        .map(|d| Json::String(d.as_str().into()))
-                        .collect(),
-                ),
-            );
-            map.insert(
-                "pending_documents".into(),
-                Json::Array(
-                    inv.pending
-                        .iter()
-                        .map(|d| Json::String(d.as_str().into()))
-                        .collect(),
-                ),
-            );
-            Json::Object(map)
-        })
-        .collect();
-    let mut map = BTreeMap::new();
-    map.insert("schema_version".into(), Json::Number(1));
-    map.insert("revision".into(), Json::Number(state.revision));
-    map.insert(
-        "next_invalidation_id".into(),
-        Json::Number(state.next_invalidation_id),
-    );
-    map.insert("reviews".into(), Json::Object(reviews));
-    map.insert("invalidations".into(), Json::Array(invalidations));
-    Json::Object(map)
-}
-
-pub fn manifest_to_json(manifest: &InputManifest) -> Json {
-    from_detail(&manifest_detail(manifest))
-}
-
-impl StateStore for JsonStateStore<'_> {
-    fn load(&self) -> Result<Option<LoadedState>, StateFailure> {
-        check_state_dir(&self.root).map_err(StateFailure::Io)?;
-        match kind_of(&self.path) {
-            Ok(memoria_application::ports::FileKind::Missing) => return Ok(None),
-            Ok(memoria_application::ports::FileKind::Regular) => {}
-            Ok(other) => {
-                return Err(StateFailure::Corrupt(format!(
-                    "{} must be a regular file, found {other:?}",
-                    self.path.display()
-                )));
-            }
-            Err(err) => {
-                return Err(StateFailure::Io(AdapterError::new(
-                    "stat",
-                    Some(self.path.display().to_string()),
-                    err.to_string(),
-                )));
-            }
+fn lock_failure(error: LockError, path: &Path) -> StateFailure {
+    let where_ = format!("{}: ", path.display());
+    match error {
+        LockError::Corrupt(message) => StateFailure::Corrupt(format!("{where_}{message}")),
+        LockError::Limit(message) => StateFailure::LimitExceeded(format!("{where_}{message}")),
+        LockError::UnsupportedSchema(message) => {
+            StateFailure::UnsupportedSchema(format!("{where_}{message}"))
         }
-        let bytes = read_regular(&self.path).map_err(StateFailure::Io)?;
-        let value = json::parse(&bytes, Limits::STATE)
-            .map_err(|e| StateFailure::Corrupt(format!("state file is not strict JSON: {e}")))?;
-        let state = state_from_json(value).map_err(|e| StateFailure::Corrupt(e.message))?;
-        Ok(Some(LoadedState { bytes, state }))
+        LockError::UnsupportedCodec(message) => {
+            StateFailure::UnsupportedCodec(format!("{where_}{message}"))
+        }
+    }
+}
+
+/// Refuse anything that is not an ordinary file, so a symlink or device
+/// cannot stand in for committed state.
+fn require_regular(path: &Path) -> Result<bool, StateFailure> {
+    match kind_of(path) {
+        Ok(FileKind::Missing) => Ok(false),
+        Ok(FileKind::Regular) => Ok(true),
+        Ok(other) => Err(StateFailure::Corrupt(format!(
+            "{} must be a regular file, found {other:?}",
+            path.display()
+        ))),
+        Err(err) => Err(StateFailure::Io(AdapterError::new(
+            "stat",
+            Some(path.display().to_string()),
+            err.to_string(),
+        ))),
+    }
+}
+
+/// Whether a path exists at all, following no symlink.
+fn exists(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok()
+}
+
+/// Decide which decoder applies, before reading either file.
+///
+/// This release has one clean cutover. A lone legacy file is reported as
+/// `state_legacy`; both files present are `state_ambiguous`, even when one
+/// of them is corrupt. The loader never picks a winner.
+fn choose(root: &Path) -> Result<bool, StateFailure> {
+    let lock = root.join(STATE_RELATIVE);
+    let legacy = root.join(LEGACY_STATE_RELATIVE);
+    let has_lock = exists(&lock);
+    let has_legacy = exists(&legacy);
+    match (has_lock, has_legacy) {
+        (true, true) => Err(StateFailure::Ambiguous(format!(
+            "both {STATE_RELATIVE} and the version 1 {LEGACY_STATE_RELATIVE} exist. \
+Archive the legacy file outside the worktree, verify the archive, then remove it. \
+See docs/releases/0.2.0.md."
+        ))),
+        (false, true) => Err(StateFailure::Legacy(format!(
+            "only the version 1 {LEGACY_STATE_RELATIVE} exists. This release reads {STATE_RELATIVE} \
+and performs no automatic migration. Archive the legacy file outside the worktree, verify the \
+archive, remove it, then run `memoria init --apply`. See docs/releases/0.2.0.md."
+        ))),
+        (has_lock, false) => Ok(has_lock),
+    }
+}
+
+/// The `memoria.lock` store.
+pub struct LockStateStore<'a> {
+    root: PathBuf,
+    path: PathBuf,
+    faults: FaultHook<'a>,
+}
+
+impl LockStateStore<'static> {
+    pub fn new(root: PathBuf) -> LockStateStore<'static> {
+        LockStateStore {
+            path: root.join(STATE_RELATIVE),
+            root,
+            faults: NO_FAULTS,
+        }
+    }
+}
+
+impl<'a> LockStateStore<'a> {
+    /// A store whose durable replacement consults `faults` (see
+    /// [`durable_replace_with`]).
+    pub fn with_faults(root: PathBuf, faults: FaultHook<'a>) -> LockStateStore<'a> {
+        LockStateStore {
+            path: root.join(STATE_RELATIVE),
+            root,
+            faults,
+        }
     }
 
-    fn encode(&self, state: &ReviewState) -> Vec<u8> {
-        json::to_pretty(&state_to_json(state)).into_bytes()
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+/// Read one state file with its size bound enforced before allocation.
+fn read_bounded(path: &Path) -> Result<Vec<u8>, StateFailure> {
+    let metadata = std::fs::metadata(path).map_err(|err| {
+        StateFailure::Io(AdapterError::new(
+            "stat",
+            Some(path.display().to_string()),
+            err.to_string(),
+        ))
+    })?;
+    if metadata.len() > MAX_FILE_BYTES {
+        return Err(StateFailure::LimitExceeded(format!(
+            "{} is {} bytes, above the limit of {MAX_FILE_BYTES}",
+            path.display(),
+            metadata.len()
+        )));
+    }
+    read_regular(path).map_err(StateFailure::Io)
+}
+
+impl StateStore for LockStateStore<'_> {
+    fn load(&self) -> Result<Option<LoadedState>, StateFailure> {
+        check_state_dir(&self.root).map_err(StateFailure::Io)?;
+        if !choose(&self.root)? {
+            return Ok(None);
+        }
+        require_regular(&self.path)?;
+        let bytes = read_bounded(&self.path)?;
+        let decoded = lock_codec::decode(&bytes).map_err(|e| lock_failure(e, &self.path))?;
+        Ok(Some(LoadedState {
+            bytes,
+            state: decoded.state,
+        }))
+    }
+
+    fn encode(&self, state: &ReviewState) -> Result<Vec<u8>, StateFailure> {
+        lock_codec::encode(state).map_err(|e| lock_failure(e, &self.path))
     }
 
     fn save(&self, state: &ReviewState, expected: Option<&[u8]>) -> Result<Vec<u8>, StateFailure> {
         check_state_dir(&self.root).map_err(StateFailure::Io)?;
-        // Never serialize a state that would be rejected on the next load.
+        // Never write a state that the next load would reject.
         state.validate().map_err(|e| {
             StateFailure::Corrupt(format!("refusing to write inconsistent state: {e}"))
         })?;
-        let current = match kind_of(&self.path) {
-            Ok(memoria_application::ports::FileKind::Missing) => None,
-            Ok(_) => Some(read_regular(&self.path).map_err(StateFailure::Io)?),
-            Err(err) => {
-                return Err(StateFailure::Io(AdapterError::new(
-                    "stat",
-                    Some(self.path.display().to_string()),
-                    err.to_string(),
-                )));
-            }
+        // The legacy file must be gone before this release writes state.
+        let present = choose(&self.root)?;
+        let current = if present {
+            require_regular(&self.path)?;
+            Some(read_bounded(&self.path)?)
+        } else {
+            None
         };
         if current.as_deref() != expected {
             return Err(StateFailure::Conflict);
         }
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                StateFailure::Io(AdapterError::new(
-                    "create_dir",
-                    Some(parent.display().to_string()),
-                    e.to_string(),
-                ))
-            })?;
-        }
-        let bytes = self.encode(state);
+        // Encoding, including compression, happens before replacement, so an
+        // allocation or encoding failure leaves the previous state intact.
+        let bytes = self.encode(state)?;
         let mode = {
             use std::os::unix::fs::PermissionsExt;
             std::fs::metadata(&self.path)
@@ -396,127 +344,80 @@ impl StateStore for JsonStateStore<'_> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Bounded, read-only inspection of a committed state artifact.
+pub struct LockStateInspector {
+    root: Option<PathBuf>,
+    /// The directory an explicit `--file` path resolves against.
+    invocation_dir: PathBuf,
+}
 
-    #[test]
-    fn empty_state_round_trip_is_canonical() {
-        let json = state_to_json(&ReviewState::empty());
-        let text = json::to_pretty(&json);
-        assert_eq!(
-            text,
-            "{\n  \"invalidations\": [],\n  \"next_invalidation_id\": 1,\n  \"reviews\": {},\n  \"revision\": 0,\n  \"schema_version\": 1\n}\n"
-        );
-        let parsed = state_from_json(json::parse(text.as_bytes(), Limits::STATE).unwrap()).unwrap();
-        assert_eq!(parsed, ReviewState::empty());
-    }
-
-    #[test]
-    fn rejects_future_schema_and_unknown_fields() {
-        let err = state_from_json(json::parse(b"{\"schema_version\":2,\"revision\":0,\"next_invalidation_id\":1,\"reviews\":{},\"invalidations\":[]}", Limits::STATE).unwrap()).unwrap_err();
-        assert_eq!(err.code, "state_unsupported_schema");
-        let err = state_from_json(json::parse(b"{\"schema_version\":1,\"revision\":0,\"next_invalidation_id\":1,\"reviews\":{},\"invalidations\":[],\"extra\":1}", Limits::STATE).unwrap()).unwrap_err();
-        assert!(err.message.contains("unknown field"));
-    }
-
-    #[test]
-    fn save_refuses_inconsistent_state_and_symlinked_directory() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = JsonStateStore::new(dir.path().to_path_buf());
-        let mut zero = ReviewState::empty();
-        zero.next_invalidation_id = 0;
-        assert!(matches!(
-            store.save(&zero, None),
-            Err(StateFailure::Corrupt(_))
-        ));
-        assert!(store.load().unwrap().is_none());
-        let outside = tempfile::tempdir().unwrap();
-        std::os::unix::fs::symlink(outside.path(), dir.path().join(".memoria")).unwrap();
-        assert!(matches!(
-            store.save(&ReviewState::empty(), None),
-            Err(StateFailure::Io(_))
-        ));
-        assert!(matches!(store.load(), Err(StateFailure::Io(_))));
-        assert_eq!(std::fs::read_dir(outside.path()).unwrap().count(), 0);
-    }
-
-    #[test]
-    fn injected_write_failures_keep_the_previous_state() {
-        for step in ["temp-create", "sync-file", "rename"] {
-            let dir = tempfile::tempdir().unwrap();
-            let plain = JsonStateStore::new(dir.path().to_path_buf());
-            let before = plain.save(&ReviewState::empty(), None).unwrap();
-            let hook = move |name: &str| {
-                if name == step {
-                    Some(std::io::Error::other(format!("injected {step}")))
-                } else {
-                    None
-                }
-            };
-            let faulty = JsonStateStore::with_faults(dir.path().to_path_buf(), &hook);
-            let mut next = ReviewState::empty();
-            next.revision = 1;
-            assert!(
-                matches!(faulty.save(&next, Some(&before)), Err(StateFailure::Io(_))),
-                "{step}"
-            );
-            assert_eq!(
-                std::fs::read(dir.path().join(STATE_RELATIVE)).unwrap(),
-                before,
-                "{step}"
-            );
-            let leftovers = std::fs::read_dir(dir.path().join(".memoria"))
-                .unwrap()
-                .count();
-            assert_eq!(leftovers, 1, "{step} left temporary files");
+impl LockStateInspector {
+    pub fn new(root: Option<PathBuf>, invocation_dir: PathBuf) -> LockStateInspector {
+        LockStateInspector {
+            root,
+            invocation_dir,
         }
-        // Directory sync failure: the complete new state is in place and the error is explicit.
-        let dir = tempfile::tempdir().unwrap();
-        let plain = JsonStateStore::new(dir.path().to_path_buf());
-        let before = plain.save(&ReviewState::empty(), None).unwrap();
-        let hook = |name: &str| {
-            if name == "sync-dir" {
-                Some(std::io::Error::other("injected sync-dir"))
-            } else {
-                None
-            }
-        };
-        let faulty = JsonStateStore::with_faults(dir.path().to_path_buf(), &hook);
-        let mut next = ReviewState::empty();
-        next.revision = 1;
-        let err = faulty.save(&next, Some(&before)).unwrap_err();
-        assert!(
-            matches!(&err, StateFailure::Io(e) if e.operation == "sync_dir"),
-            "{err:?}"
-        );
-        assert_eq!(plain.load().unwrap().unwrap().state.revision, 1);
     }
 
-    #[test]
-    fn store_compare_and_swap() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = JsonStateStore::new(dir.path().to_path_buf());
-        assert!(store.load().unwrap().is_none());
-        let bytes = store.save(&ReviewState::empty(), None).unwrap();
-        assert!(matches!(
-            store.save(&ReviewState::empty(), None),
-            Err(StateFailure::Conflict)
-        ));
-        let loaded = store.load().unwrap().unwrap();
-        assert_eq!(loaded.bytes, bytes);
-        let mut state = ReviewState::empty();
-        state.revision = 1;
-        store.save(&state, Some(&bytes)).unwrap();
-        assert!(matches!(
-            store.save(&state, Some(&bytes)),
-            Err(StateFailure::Conflict)
-        ));
-        std::fs::write(
-            dir.path().join(STATE_RELATIVE),
-            b"{\"schema_version\":1,\"schema_version\":1}",
-        )
-        .unwrap();
-        assert!(matches!(store.load(), Err(StateFailure::Corrupt(_))));
+    fn inspect_path(&self, path: &Path, display: String) -> Result<InspectedState, StateFailure> {
+        if !exists(path) {
+            return Err(StateFailure::Missing(format!(
+                "{display} does not exist; commit state is created by `memoria init --apply` and by acknowledgements"
+            )));
+        }
+        if !require_regular(path)? {
+            return Err(StateFailure::Missing(format!("{display} does not exist")));
+        }
+        let bytes = read_bounded(path)?;
+        let decoded = lock_codec::decode(&bytes).map_err(|e| lock_failure(e, path))?;
+        Ok(InspectedState {
+            path: display,
+            file_bytes: decoded.file_bytes,
+            payload_bytes: decoded.payload_bytes,
+            format_version: u64::from(decoded.format_version),
+            codec: codec_name(decoded.codec),
+            checksum: decoded.checksum,
+            guidance: decoded
+                .guidance
+                .iter()
+                .map(|(document, digest)| (document.as_str().to_string(), digest.to_hex()))
+                .collect(),
+            state: decoded.state,
+        })
+    }
+}
+
+impl StateInspector for LockStateInspector {
+    fn inspect_project(&self) -> Result<InspectedState, StateFailure> {
+        let root = self.root.as_ref().ok_or_else(|| {
+            StateFailure::Io(AdapterError::new(
+                "inspect",
+                None,
+                "no project is selected; pass --file to inspect an explicit state file",
+            ))
+        })?;
+        check_state_dir(root).map_err(StateFailure::Io)?;
+        // The cutover check runs before any decoder is chosen.
+        if !choose(root)? {
+            return Err(StateFailure::Missing(format!(
+                "{} does not exist; run `memoria init --apply` to create it",
+                root.join(STATE_RELATIVE).display()
+            )));
+        }
+        let path = root.join(STATE_RELATIVE);
+        let display = STATE_RELATIVE.to_string();
+        self.inspect_path(&path, display)
+    }
+
+    fn inspect_file(&self, raw: &str) -> Result<InspectedState, StateFailure> {
+        let candidate = Path::new(raw);
+        let path = if candidate.is_absolute() {
+            candidate.to_path_buf()
+        } else {
+            self.invocation_dir.join(candidate)
+        };
+        // An explicit file needs no worktree, configuration, or scan. It is
+        // still refused when it is a symlink or another special file.
+        self.inspect_path(&path, raw.to_string())
     }
 }

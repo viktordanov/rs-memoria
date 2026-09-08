@@ -10,7 +10,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use memoria_application::ports::{
-    AdapterError, AgentTarget, SkillFailure, SkillOperation, SkillPackageStore, SkillPlan,
+    AdapterError, AgentScope, AgentTarget, OverlappingPackage, RetainedArtifact, SkillFailure,
+    SkillOperation, SkillPackageStore, SkillPlan, SkillRequest,
 };
 
 use crate::fs::{FaultHook, NO_FAULTS, durable_replace, fault, kind_of, lock_file, sync_dir};
@@ -65,7 +66,11 @@ fn hash_hex(bytes: &[u8]) -> String {
 
 #[derive(Debug, Clone)]
 struct Record {
+    /// 1 for a package this release found, 2 for one it writes.
+    schema_version: u64,
     target: String,
+    /// `local` or `global`. Schema 1 records carry no scope.
+    scope: Option<String>,
     package_version: String,
     hashes: BTreeMap<String, String>,
     backup: Option<String>,
@@ -73,8 +78,12 @@ struct Record {
 
 fn record_to_json(record: &Record) -> Json {
     let mut map = BTreeMap::new();
-    map.insert("schema_version".into(), Json::Number(1));
+    map.insert("schema_version".into(), Json::Number(2));
     map.insert("target".into(), Json::String(record.target.clone()));
+    map.insert(
+        "scope".into(),
+        record.scope.clone().map(Json::String).unwrap_or(Json::Null),
+    );
     map.insert(
         "package_version".into(),
         Json::String(record.package_version.clone()),
@@ -114,10 +123,30 @@ fn record_from_bytes(bytes: &[u8]) -> Result<Record, String> {
     let value = json::parse(bytes, Limits::STATE).map_err(|e| e.message)?;
     let mut reader = ObjectReader::new(value, "install record").map_err(|e| e.message)?;
     let convert = |e: json::JsonError| e.message;
-    if reader.take_u64("schema_version").map_err(convert)? != 1 {
-        return Err("unsupported install record schema".into());
+    // Schema 1 records are read for an explicit upgrade or uninstall. This
+    // limited installer compatibility does not imply compatibility with
+    // version 1 review state.
+    let schema_version = reader.take_u64("schema_version").map_err(convert)?;
+    if schema_version != 1 && schema_version != 2 {
+        return Err(format!(
+            "unsupported install record schema {schema_version}; this release reads schema 1 and 2"
+        ));
     }
     let target = reader.take_string("target").map_err(convert)?;
+    let scope = if schema_version >= 2 {
+        let scope = reader.take_optional_string("scope").map_err(convert)?;
+        if let Some(scope) = &scope
+            && scope != "local"
+            && scope != "global"
+        {
+            return Err(format!(
+                "install record scope {scope:?} is not local or global"
+            ));
+        }
+        scope
+    } else {
+        None
+    };
     let package_version = reader.take_string("package_version").map_err(convert)?;
     let _ = reader.take_array("managed_paths").map_err(convert)?;
     let hashes_reader = reader.take_object("hashes").map_err(convert)?;
@@ -131,7 +160,9 @@ fn record_from_bytes(bytes: &[u8]) -> Result<Record, String> {
     let backup = reader.take_optional_string("backup").map_err(convert)?;
     reader.finish().map_err(convert)?;
     Ok(Record {
+        schema_version,
         target,
+        scope,
         package_version,
         hashes,
         backup,
@@ -428,12 +459,19 @@ impl<'a> FsSkillStore<'a> {
         }
     }
 
-    fn managed_files(&self, target: AgentTarget, backup: Option<String>) -> Vec<(String, Vec<u8>)> {
+    fn managed_files(
+        &self,
+        target: AgentTarget,
+        scope: AgentScope,
+        backup: Option<String>,
+    ) -> Vec<(String, Vec<u8>)> {
         let skill_bytes = self.skill.as_bytes().to_vec();
         let mut hashes = BTreeMap::new();
         hashes.insert(SKILL_FILE.to_string(), hash_hex(&skill_bytes));
         let record = Record {
+            schema_version: 2,
             target: target.as_str().to_string(),
+            scope: Some(scope.as_str().to_string()),
             package_version: self.version.to_string(),
             hashes,
             backup,
@@ -617,114 +655,443 @@ fn next_backup(base: &Path) -> PathBuf {
     }
 }
 
-impl SkillPackageStore for FsSkillStore<'_> {
-    fn directory_exists(&self, relative: &str) -> bool {
-        self.root.join(relative).is_dir()
-    }
-
-    fn is_managed_package(&self, relative: &str) -> bool {
-        matches!(
-            inspect(&self.root.join(relative)),
-            Ok(Existing::Managed { .. })
-        )
-    }
-
-    fn plan_install(&self, target: AgentTarget, parent: &str) -> Result<SkillPlan, SkillFailure> {
-        let layout = self.layout(parent);
-        let recovery_needed = self.recovery_state(&layout)?.is_some();
-        let files = self.managed_files(target, None);
-        let writes: Vec<String> = files.iter().map(|(name, _)| name.clone()).collect();
+impl FsSkillStore<'_> {
+    /// Inspect a destination and build the plan for one request. This never
+    /// writes and never creates a directory or a lock, so `status` and every
+    /// dry run preserve each byte.
+    fn classify(&self, request: &SkillRequest) -> Result<SkillPlan, SkillFailure> {
+        let layout = self.layout(&request.parent);
+        // An absent parent needs no recovery probe and must not be created.
+        let recovery = if layout.parent.exists() {
+            self.recovery_state(&layout)?
+        } else {
+            None
+        };
+        let recovery_needed = recovery.is_some();
+        let mut retained = Vec::new();
+        if layout.lock.exists() {
+            // The parent lock is a deliberate synchronization artifact.
+            // Deleting a lock pathname can let another process lock a
+            // different inode during a concurrent operation.
+            retained.push(RetainedArtifact {
+                path: layout.lock.display().to_string(),
+                reason: "synchronization_lock",
+                removable_by_uninstall: false,
+            });
+        }
         let base = SkillPlan {
-            operation: SkillOperation::Install,
-            target,
+            operation: request.operation,
+            target: request.target,
+            scope: request.scope,
             destination: layout.destination.display().to_string(),
+            state: "absent".into(),
+            package_version: None,
+            embedded_version: self.version.to_string(),
             backup: None,
-            writes: writes.clone(),
+            writes: vec![],
             removals: vec![],
             replaced: vec![],
+            modified_paths: vec![],
+            unknown_paths: vec![],
+            retained_artifacts: retained,
+            overlapping: self.overlapping(request),
             no_change: false,
             recovery_needed,
             existing: "absent".into(),
         };
-        match inspect(&layout.destination)? {
-            Existing::Absent => Ok(base),
-            Existing::Unmanaged(entries) => Ok(SkillPlan {
-                backup: Some(next_backup(&layout.backup).display().to_string()),
-                replaced: entries,
-                existing: "unmanaged directory (backed up before replacement)".into(),
+        let existing = inspect(&layout.destination)?;
+        let plan = match existing {
+            Existing::Absent => SkillPlan {
+                existing: match &recovery {
+                    Some(txn) => format!("interrupted {} transaction awaiting recovery", txn.phase),
+                    None => "absent".into(),
+                },
+                backup: recovery
+                    .as_ref()
+                    .and_then(|t| t.backup.as_ref())
+                    .map(|b| b.display().to_string()),
                 ..base
-            }),
+            },
+            Existing::Unmanaged(entries) => SkillPlan {
+                state: "unmanaged".into(),
+                unknown_paths: entries
+                    .iter()
+                    .map(|e| layout.destination.join(e).display().to_string())
+                    .collect(),
+                existing: "unmanaged directory with no Memoria install record".into(),
+                ..base
+            },
             Existing::Managed {
                 record,
                 edited,
                 unknown,
             } => {
-                if !edited.is_empty() || !unknown.is_empty() {
-                    let mut paths = edited.clone();
-                    paths.extend(unknown.clone());
-                    return Err(SkillFailure::Conflict {
-                        message: format!(
-                            "the installed package at {} was modified locally ({} edited, {} unknown); uninstall or restore it before reinstalling",
-                            layout.destination.display(),
-                            edited.len(),
-                            unknown.len()
-                        ),
-                        paths,
-                    });
-                }
-                let current_skill =
-                    fs::read(layout.destination.join(SKILL_FILE)).unwrap_or_default();
-                if current_skill == self.skill.as_bytes()
-                    && record.package_version == self.version
-                    && record.target == target.as_str()
-                    && !recovery_needed
+                let state = if !edited.is_empty() || !unknown.is_empty() {
+                    "modified"
+                } else if record.target != request.target.as_str() {
+                    // Another target's managed package is never ours to replace.
+                    "conflict"
+                } else if record.package_version == self.version
+                    && fs::read(layout.destination.join(SKILL_FILE))
+                        .map(|bytes| bytes == self.skill.as_bytes())
+                        .unwrap_or(false)
                 {
-                    return Ok(SkillPlan {
-                        no_change: true,
-                        writes: vec![],
-                        existing: format!(
-                            "managed package version {} already installed",
-                            record.package_version
-                        ),
-                        ..base
+                    "current"
+                } else {
+                    "outdated"
+                };
+                let backup = match &record.backup {
+                    Some(recorded) => {
+                        Some(resolve_backup(&layout, recorded)?).filter(|b| b.exists())
+                    }
+                    None => None,
+                };
+                let mut retained = base.retained_artifacts.clone();
+                if let Some(backup) = &backup {
+                    retained.push(RetainedArtifact {
+                        path: backup.display().to_string(),
+                        reason: "user_backup",
+                        removable_by_uninstall: true,
                     });
                 }
-                Ok(SkillPlan {
-                    replaced: vec![SKILL_FILE.into(), RECORD_FILE.into()],
-                    backup: Some(next_backup(&layout.backup).display().to_string()),
-                    existing: format!("managed package version {}", record.package_version),
+                SkillPlan {
+                    state: state.into(),
+                    package_version: Some(record.package_version.clone()),
+                    backup: backup.map(|b| b.display().to_string()),
+                    modified_paths: edited,
+                    unknown_paths: unknown,
+                    retained_artifacts: retained,
+                    existing: format!(
+                        "managed package version {} for {} (record schema {})",
+                        record.package_version, record.target, record.schema_version
+                    ),
                     ..base
-                })
+                }
             }
+        };
+        Ok(plan)
+    }
+
+    /// Same-name packages in other scopes, reported without any mutation.
+    fn overlapping(&self, request: &SkillRequest) -> Vec<OverlappingPackage> {
+        let mut out = Vec::new();
+        for (scope, parent) in &request.other_parents {
+            let destination = PathBuf::from(parent).join(PACKAGE_NAME);
+            if !destination.exists() {
+                continue;
+            }
+            let state = match inspect(&destination) {
+                Ok(Existing::Managed { record, .. }) => {
+                    format!("managed version {}", record.package_version)
+                }
+                Ok(Existing::Unmanaged(_)) => "unmanaged".to_string(),
+                Ok(Existing::Absent) => continue,
+                Err(_) => "unreadable".to_string(),
+            };
+            let note = match scope.as_str() {
+                "global" => {
+                    "a personal skill can take precedence over a project skill with the same name"
+                        .to_string()
+                }
+                "local" => "a project skill with the same name exists".to_string(),
+                _ => "a package exists at a recognized legacy location".to_string(),
+            };
+            out.push(OverlappingPackage {
+                scope: scope.clone(),
+                destination: destination.display().to_string(),
+                state,
+                note,
+            });
+        }
+        out
+    }
+
+    /// The install plan: absent installs, current is a no-op, an older
+    /// managed package requires an explicit upgrade, and unmanaged content
+    /// requires explicit replacement.
+    fn plan_install(&self, request: &SkillRequest) -> Result<SkillPlan, SkillFailure> {
+        let layout = self.layout(&request.parent);
+        let mut plan = self.classify(request)?;
+        let writes: Vec<String> = self
+            .managed_files(request.target, request.scope, None)
+            .iter()
+            .map(|(name, _)| name.clone())
+            .collect();
+        match plan.state.as_str() {
+            "absent" => {
+                plan.writes = writes;
+                Ok(plan)
+            }
+            "current" if !plan.recovery_needed => {
+                plan.no_change = true;
+                Ok(plan)
+            }
+            "current" => {
+                plan.writes = writes;
+                Ok(plan)
+            }
+            "outdated" => Err(SkillFailure::UpgradeRequired(format!(
+                "{} holds managed package version {}; this executable installs {}. Run `memoria agent upgrade` to replace it.",
+                layout.destination.display(),
+                plan.package_version.as_deref().unwrap_or("unknown"),
+                self.version
+            ))),
+            "unmanaged" if request.replace_existing => {
+                plan.writes = writes;
+                // `replaced` names are relative to the destination, like
+                // `writes` and `removals`; `unknown_paths` stay absolute.
+                plan.replaced = plan
+                    .unknown_paths
+                    .iter()
+                    .filter_map(|path| {
+                        Path::new(path)
+                            .file_name()
+                            .map(|name| name.to_string_lossy().into_owned())
+                    })
+                    .collect();
+                plan.backup = Some(next_backup(&layout.backup).display().to_string());
+                Ok(plan)
+            }
+            "unmanaged" => Err(SkillFailure::ReplacementRequired(format!(
+                "{} already exists and Memoria did not write it. Pass --replace-existing to back it up and replace it, or choose another --path.",
+                layout.destination.display()
+            ))),
+            _ => Err(SkillFailure::Conflict {
+                message: format!(
+                    "{} was modified locally or belongs to another target; it is preserved",
+                    layout.destination.display()
+                ),
+                paths: plan
+                    .modified_paths
+                    .iter()
+                    .chain(&plan.unknown_paths)
+                    .cloned()
+                    .collect(),
+            }),
         }
     }
 
-    fn apply_install(&self, plan: &SkillPlan) -> Result<(), SkillFailure> {
+    /// The upgrade plan: only a verified managed package of this target is
+    /// replaced, and only the original user backup is retained.
+    fn plan_upgrade(&self, request: &SkillRequest) -> Result<SkillPlan, SkillFailure> {
+        let layout = self.layout(&request.parent);
+        let mut plan = self.classify(request)?;
+        match plan.state.as_str() {
+            "absent" | "unmanaged" => Err(SkillFailure::NotInstalled(
+                layout.destination.display().to_string(),
+            )),
+            "current" if !plan.recovery_needed => {
+                plan.no_change = true;
+                Ok(plan)
+            }
+            "current" | "outdated" => {
+                plan.writes = self
+                    .managed_files(request.target, request.scope, None)
+                    .iter()
+                    .map(|(name, _)| name.clone())
+                    .collect();
+                plan.replaced = vec![SKILL_FILE.into(), RECORD_FILE.into()];
+                // An upgrade keeps only the original unmanaged backup. The
+                // previous managed version is obsolete, not user content.
+                plan.backup = self.original_backup(&layout, request)?;
+                Ok(plan)
+            }
+            _ => Err(SkillFailure::Conflict {
+                message: format!(
+                    "{} was modified locally or belongs to another target; it is preserved",
+                    layout.destination.display()
+                ),
+                paths: plan
+                    .modified_paths
+                    .iter()
+                    .chain(&plan.unknown_paths)
+                    .cloned()
+                    .collect(),
+            }),
+        }
+    }
+
+    /// Follow the recorded backup chain to the original unmanaged directory.
+    ///
+    /// A backup that is itself a managed package of the same target is an
+    /// obsolete Memoria version, so the chain continues through it. Cycles,
+    /// escaped paths, changed hashes, and foreign targets are rejected
+    /// before any destructive cleanup.
+    fn original_backup(
+        &self,
+        layout: &Layout,
+        request: &SkillRequest,
+    ) -> Result<Option<String>, SkillFailure> {
+        Ok(self.backup_chain(layout, request)?.1)
+    }
+
+    /// The verified backup chain: every obsolete managed version, then the
+    /// original unmanaged directory when one survives.
+    fn backup_chain(
+        &self,
+        layout: &Layout,
+        request: &SkillRequest,
+    ) -> Result<(Vec<PathBuf>, Option<String>), SkillFailure> {
+        let mut obsolete: Vec<PathBuf> = Vec::new();
+        let mut seen: Vec<PathBuf> = Vec::new();
+        let mut current = match inspect(&layout.destination)? {
+            Existing::Managed { record, .. } => record.backup.clone(),
+            _ => None,
+        };
+        while let Some(recorded) = current {
+            let path = resolve_backup(layout, &recorded)?;
+            if seen.contains(&path) {
+                return Err(conflict(
+                    format!(
+                        "the backup chain under {} contains a cycle at {}; nothing was changed",
+                        layout.parent.display(),
+                        path.display()
+                    ),
+                    vec![path],
+                ));
+            }
+            seen.push(path.clone());
+            if !path.exists() {
+                return Ok((obsolete, None));
+            }
+            match inspect(&path)? {
+                // A previous Memoria package: obsolete, keep following.
+                Existing::Managed {
+                    record,
+                    edited,
+                    unknown,
+                } if record.target == request.target.as_str()
+                    && edited.is_empty()
+                    && unknown.is_empty() =>
+                {
+                    obsolete.push(path.clone());
+                    current = record.backup.clone();
+                }
+                Existing::Managed {
+                    edited, unknown, ..
+                } => {
+                    let mut paths: Vec<PathBuf> = edited.iter().map(PathBuf::from).collect();
+                    paths.extend(unknown.iter().map(PathBuf::from));
+                    if paths.is_empty() {
+                        paths.push(path.clone());
+                    }
+                    return Err(conflict(
+                        format!(
+                            "the backup at {} was edited or belongs to another target; it is preserved",
+                            path.display()
+                        ),
+                        paths,
+                    ));
+                }
+                // The original user content: this is the backup to retain.
+                Existing::Unmanaged(_) => {
+                    return Ok((obsolete, Some(path.display().to_string())));
+                }
+                Existing::Absent => return Ok((obsolete, None)),
+            }
+        }
+        Ok((obsolete, None))
+    }
+
+    /// The uninstall plan. An absent package is a successful no-op that
+    /// creates no directory and no lock.
+    fn plan_uninstall(&self, request: &SkillRequest) -> Result<SkillPlan, SkillFailure> {
+        let layout = self.layout(&request.parent);
+        let mut plan = self.classify(request)?;
+        match plan.state.as_str() {
+            "absent" if plan.recovery_needed => Ok(plan),
+            "absent" => {
+                plan.no_change = true;
+                Ok(plan)
+            }
+            "unmanaged" => Err(conflict(
+                format!(
+                    "{} is not a Memoria-managed package; it has no install record and stays untouched",
+                    layout.destination.display()
+                ),
+                vec![layout.destination.clone()],
+            )),
+            "current" | "outdated" => {
+                let mut removals: Vec<String> = match inspect(&layout.destination)? {
+                    Existing::Managed { record, .. } => record.hashes.keys().cloned().collect(),
+                    _ => vec![SKILL_FILE.into()],
+                };
+                removals.push(RECORD_FILE.into());
+                plan.removals = removals;
+                // Uninstall restores the original unmanaged directory once.
+                // It never restores an obsolete Memoria package.
+                plan.backup = self.original_backup(&layout, request)?;
+                Ok(plan)
+            }
+            _ => Err(SkillFailure::Conflict {
+                message: format!(
+                    "the installed package at {} was modified locally or belongs to another target; the package and any backup are preserved",
+                    layout.destination.display()
+                ),
+                paths: plan
+                    .modified_paths
+                    .iter()
+                    .chain(&plan.unknown_paths)
+                    .cloned()
+                    .collect(),
+            }),
+        }
+    }
+
+    fn apply_install(&self, request: &SkillRequest, plan: &SkillPlan) -> Result<(), SkillFailure> {
         let destination = PathBuf::from(&plan.destination);
         let parent = destination
             .parent()
             .expect("destination has a parent")
             .to_path_buf();
         let layout = self.layout(&parent.display().to_string());
+        // The plan names the destination; a plan built for one parent is
+        // applied to that parent, never to the request's default.
+        let request = &SkillRequest {
+            parent: layout.parent.display().to_string(),
+            ..request.clone()
+        };
         let _guard = self.lock(&layout)?;
         self.recover(&layout)?;
-        // Re-inspect under the lock, after recovery.
-        let fresh = self.plan_install(plan.target, &layout.parent.display().to_string())?;
+        // Re-run the operation's own eligibility check under the lock, not
+        // just a classification. An install that became an upgrade, or a
+        // package that gained unknown content, must fail here rather than
+        // proceed on a stale plan.
+        let fresh = match request.operation {
+            SkillOperation::Upgrade => self.plan_upgrade(request)?,
+            _ => self.plan_install(request)?,
+        };
         if fresh.no_change {
             return Ok(());
+        }
+        // Recovery deliberately changes the destination, so a plan that
+        // asked for recovery is compared against nothing: the fresh plan is
+        // authoritative from here. Every other plan must still describe the
+        // destination it is about to change.
+        if !plan.recovery_needed {
+            agrees_with_plan(plan, &fresh)?;
         }
         let backup_path = if layout.destination.exists() {
             Some(next_backup(&layout.backup))
         } else {
             None
         };
-        let files = self.managed_files(
-            plan.target,
+        // An upgrade retains only the original user backup reference. The
+        // previous managed version is moved aside for the swap and removed
+        // once the new package is durable, so the chain never grows.
+        let original = if request.operation == SkillOperation::Upgrade {
+            self.backup_chain(&layout, request)?.1.and_then(|path| {
+                PathBuf::from(path)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+            })
+        } else {
             backup_path
                 .as_ref()
                 .and_then(|p| p.file_name())
-                .map(|n| n.to_string_lossy().into_owned()),
-        );
+                .map(|n| n.to_string_lossy().into_owned())
+        };
+        let files = self.managed_files(plan.target, plan.scope, original);
 
         // Stage a complete package, then record the transaction.
         fs::create_dir(&layout.staging)
@@ -834,100 +1201,55 @@ impl SkillPackageStore for FsSkillStore<'_> {
                 ),
             )));
         }
-        self.remove_txn(&layout)
-    }
-
-    fn plan_uninstall(&self, target: AgentTarget, parent: &str) -> Result<SkillPlan, SkillFailure> {
-        let layout = self.layout(parent);
-        let recovery = self.recovery_state(&layout)?;
-        let recovery_needed = recovery.is_some();
-        let base = SkillPlan {
-            operation: SkillOperation::Uninstall,
-            target,
-            destination: layout.destination.display().to_string(),
-            backup: None,
-            writes: vec![],
-            removals: vec![],
-            replaced: vec![],
-            no_change: false,
-            recovery_needed,
-            existing: "absent".into(),
-        };
-        match inspect(&layout.destination)? {
-            Existing::Absent => match recovery {
-                // An interrupted transaction is actionable even without an
-                // active destination: apply recovers it under the lock first.
-                Some(txn) => Ok(SkillPlan {
-                    backup: txn.backup.map(|b| b.display().to_string()),
-                    existing: format!("interrupted {} transaction awaiting recovery", txn.phase),
-                    ..base
-                }),
-                None => Err(SkillFailure::NotInstalled(
-                    layout.destination.display().to_string(),
-                )),
-            },
-            Existing::Unmanaged(_) => Err(conflict(
-                format!(
-                    "{} is not a Memoria-managed package; it has no install record and stays untouched",
-                    layout.destination.display()
-                ),
-                vec![layout.destination.clone()],
-            )),
-            Existing::Managed {
-                record,
-                edited,
-                unknown,
-            } => {
-                if !edited.is_empty() || !unknown.is_empty() {
-                    let mut paths = edited.clone();
-                    paths.extend(unknown.clone());
-                    return Err(SkillFailure::Conflict {
-                        message: format!(
-                            "the installed package at {} was modified locally ({} edited, {} unknown); the package and any backup are preserved",
-                            layout.destination.display(),
-                            edited.len(),
-                            unknown.len()
-                        ),
-                        paths,
-                    });
-                }
-                let backup = match &record.backup {
-                    Some(recorded) => {
-                        Some(resolve_backup(&layout, recorded)?).filter(|b| b.exists())
-                    }
-                    None => None,
-                }
-                .map(|b| b.display().to_string());
-                let mut removals: Vec<String> = record.hashes.keys().cloned().collect();
-                removals.push(RECORD_FILE.into());
-                Ok(SkillPlan {
-                    backup,
-                    removals,
-                    existing: format!("managed package version {}", record.package_version),
-                    ..base
-                })
-            }
+        self.remove_txn(&layout)?;
+        // An upgrade retains only the original user backup. The previous
+        // managed version is obsolete once the new package is durable, and
+        // it is removed only after verified ownership.
+        if request.operation == SkillOperation::Upgrade
+            && let Some(previous) = &backup_path
+            && previous.exists()
+            && validate_owned(previous).is_ok()
+        {
+            let _ = fs::remove_dir_all(previous);
+            let _ = sync_dir(&layout.parent);
         }
+        Ok(())
     }
 
-    fn apply_uninstall(&self, plan: &SkillPlan) -> Result<(), SkillFailure> {
+    fn apply_uninstall(
+        &self,
+        request: &SkillRequest,
+        plan: &SkillPlan,
+    ) -> Result<(), SkillFailure> {
         let destination = PathBuf::from(&plan.destination);
         let parent = destination
             .parent()
             .expect("destination has a parent")
             .to_path_buf();
         let layout = self.layout(&parent.display().to_string());
+        let request = &SkillRequest {
+            parent: layout.parent.display().to_string(),
+            ..request.clone()
+        };
         let _guard = self.lock(&layout)?;
         if self.recover(&layout)?.as_deref() == Some("removing") {
             // The interrupted removal is now complete; nothing else to remove.
             return Ok(());
         }
-        let fresh = match self.plan_uninstall(plan.target, &layout.parent.display().to_string()) {
+        // The eligibility check runs again under the retained lock, and its
+        // result is honored. A file added between planning and application
+        // makes the package unknown content, which must survive.
+        let fresh = match self.plan_uninstall(request) {
+            Ok(fresh) if fresh.state == "absent" && !fresh.recovery_needed => return Ok(()),
             Ok(fresh) => fresh,
             Err(SkillFailure::NotInstalled(_)) if plan.recovery_needed => return Ok(()),
             Err(err) => return Err(err),
         };
-        let backup = fresh.backup.as_ref().map(PathBuf::from);
+        if !plan.recovery_needed {
+            agrees_with_plan(plan, &fresh)?;
+        }
+        let (obsolete, original) = self.backup_chain(&layout, request)?;
+        let backup = original.as_ref().map(PathBuf::from);
         self.write_txn(
             &layout,
             &Transaction {
@@ -986,8 +1308,95 @@ impl SkillPackageStore for FsSkillStore<'_> {
                 ),
             )));
         }
+        // Obsolete managed versions no longer serve a recovery purpose. The
+        // original user backup, if any, has already been restored.
+        for path in obsolete {
+            if path.exists() && validate_owned(&path).is_ok() {
+                let _ = fs::remove_dir_all(&path);
+            }
+        }
+        let _ = sync_dir(&layout.parent);
         self.remove_txn(&layout)
     }
+}
+
+impl SkillPackageStore for FsSkillStore<'_> {
+    fn directory_exists(&self, relative: &str) -> bool {
+        self.root.join(relative).is_dir()
+    }
+
+    fn is_managed_package(&self, relative: &str) -> bool {
+        matches!(
+            inspect(&self.root.join(relative)),
+            Ok(Existing::Managed { .. })
+        )
+    }
+
+    fn plan(&self, request: &SkillRequest) -> Result<SkillPlan, SkillFailure> {
+        match request.operation {
+            SkillOperation::Status => self.classify(request),
+            SkillOperation::Install => self.plan_install(request),
+            SkillOperation::Upgrade => self.plan_upgrade(request),
+            SkillOperation::Uninstall => self.plan_uninstall(request),
+        }
+    }
+
+    fn apply(&self, request: &SkillRequest, plan: &SkillPlan) -> Result<(), SkillFailure> {
+        match request.operation {
+            // Status never writes.
+            SkillOperation::Status => Ok(()),
+            SkillOperation::Install | SkillOperation::Upgrade => self.apply_install(request, plan),
+            SkillOperation::Uninstall => self.apply_uninstall(request, plan),
+        }
+    }
+}
+
+/// Refuse to apply a plan that no longer describes the destination.
+///
+/// Planning and application are separate commands' worth of work, and the
+/// lock is taken between them. If the package identity, its state, or its
+/// unknown content changed in that window, the plan is stale and applying
+/// it could destroy content nobody reviewed.
+fn agrees_with_plan(plan: &SkillPlan, fresh: &SkillPlan) -> Result<(), SkillFailure> {
+    let mut differences = Vec::new();
+    if plan.destination != fresh.destination {
+        differences.push(format!(
+            "destination {} became {}",
+            plan.destination, fresh.destination
+        ));
+    }
+    if plan.state != fresh.state {
+        differences.push(format!("state {} became {}", plan.state, fresh.state));
+    }
+    if plan.package_version != fresh.package_version {
+        differences.push(format!(
+            "installed version {} became {}",
+            plan.package_version.as_deref().unwrap_or("none"),
+            fresh.package_version.as_deref().unwrap_or("none")
+        ));
+    }
+    if plan.unknown_paths != fresh.unknown_paths {
+        differences.push("the package gained or lost unknown content".to_string());
+    }
+    if plan.modified_paths != fresh.modified_paths {
+        differences.push("the package gained or lost local edits".to_string());
+    }
+    if differences.is_empty() {
+        return Ok(());
+    }
+    let mut paths = fresh.unknown_paths.clone();
+    paths.extend(fresh.modified_paths.clone());
+    if paths.is_empty() {
+        paths.push(fresh.destination.clone());
+    }
+    Err(SkillFailure::Conflict {
+        message: format!(
+            "{} changed after the plan was made ({}); every file is preserved. Run the command again.",
+            fresh.destination,
+            differences.join("; ")
+        ),
+        paths,
+    })
 }
 
 fn failure_text(failure: &SkillFailure) -> String {
@@ -995,6 +1404,9 @@ fn failure_text(failure: &SkillFailure) -> String {
         SkillFailure::Conflict { message, .. } => message.clone(),
         SkillFailure::Io(err) => err.to_string(),
         SkillFailure::NotInstalled(path) => format!("no package at {path}"),
+        SkillFailure::UpgradeRequired(message) | SkillFailure::ReplacementRequired(message) => {
+            message.clone()
+        }
     }
 }
 
@@ -1012,9 +1424,28 @@ mod tests {
         (parent, text)
     }
 
+    fn request(operation: SkillOperation, parent: &str) -> SkillRequest {
+        SkillRequest {
+            operation,
+            target: AgentTarget::Codex,
+            scope: AgentScope::Local,
+            parent: parent.to_string(),
+            replace_existing: true,
+            other_parents: vec![],
+        }
+    }
+
     fn install(store: &FsSkillStore<'_>, parent: &str) -> Result<(), SkillFailure> {
-        let plan = store.plan_install(AgentTarget::Codex, parent)?;
-        store.apply_install(&plan)
+        let request = request(SkillOperation::Install, parent);
+        let plan = store.plan(&request)?;
+        store.apply(&request, &plan)
+    }
+
+    #[allow(dead_code)]
+    fn uninstall(store: &FsSkillStore<'_>, parent: &str) -> Result<(), SkillFailure> {
+        let request = request(SkillOperation::Uninstall, parent);
+        let plan = store.plan(&request)?;
+        store.apply(&request, &plan)
     }
 
     fn assert_installed(parent: &Path) {
@@ -1040,14 +1471,18 @@ mod tests {
         assert_installed(&parent);
         assert!(
             store
-                .plan_install(AgentTarget::Codex, &text)
+                .plan(&request(SkillOperation::Install, &text))
                 .unwrap()
                 .no_change
         );
         assert!(store.is_managed_package("skills/memoria"));
         assert!(!store.is_managed_package("skills"));
-        let plan = store.plan_uninstall(AgentTarget::Codex, &text).unwrap();
-        store.apply_uninstall(&plan).unwrap();
+        let plan = store
+            .plan(&request(SkillOperation::Uninstall, &text))
+            .unwrap();
+        store
+            .apply(&request(SkillOperation::Uninstall, &text), &plan)
+            .unwrap();
         assert!(!parent.join("memoria").exists());
         assert!(!parent.join(TXN_FILE).exists());
     }
@@ -1075,11 +1510,11 @@ mod tests {
             "still a recognized (edited) package"
         );
         assert!(matches!(
-            store.plan_uninstall(AgentTarget::Codex, &text),
+            store.plan(&request(SkillOperation::Uninstall, &text)),
             Err(SkillFailure::Conflict { .. })
         ));
         assert!(matches!(
-            store.plan_install(AgentTarget::Codex, &text),
+            store.plan(&request(SkillOperation::Install, &text)),
             Err(SkillFailure::Conflict { .. })
         ));
         fs::remove_file(parent.join("memoria/SKILL.md")).unwrap();
@@ -1091,7 +1526,9 @@ mod tests {
             parent.join("memoria/SKILL.md"),
         )
         .unwrap();
-        let err = store.plan_uninstall(AgentTarget::Codex, &text).unwrap_err();
+        let err = store
+            .plan(&request(SkillOperation::Uninstall, &text))
+            .unwrap_err();
         assert!(
             matches!(&err, SkillFailure::Conflict { paths, .. } if paths.iter().any(|p| p.ends_with("SKILL.md"))),
             "{err:?}"
@@ -1112,7 +1549,7 @@ mod tests {
         fs::rename(&record, &moved).unwrap();
         std::os::unix::fs::symlink(&moved, &record).unwrap();
         assert!(matches!(
-            store.plan_uninstall(AgentTarget::Codex, &text),
+            store.plan(&request(SkillOperation::Uninstall, &text)),
             Err(SkillFailure::Conflict { .. })
         ));
         assert!(!store.is_managed_package("skills/memoria"));
@@ -1121,7 +1558,7 @@ mod tests {
         fs::remove_file(&record).unwrap();
         fs::rename(&moved, &record).unwrap();
         fs::create_dir_all(parent.join(STAGING_DIR)).unwrap();
-        for (name, bytes) in store.managed_files(AgentTarget::Codex, None) {
+        for (name, bytes) in store.managed_files(AgentTarget::Codex, AgentScope::Local, None) {
             fs::write(parent.join(STAGING_DIR).join(&name), bytes).unwrap();
         }
         fs::remove_file(parent.join(STAGING_DIR).join("SKILL.md")).unwrap();
@@ -1132,7 +1569,7 @@ mod tests {
         .unwrap();
         write_txn(&store, &text, "staged", None);
         assert!(matches!(
-            store.plan_install(AgentTarget::Codex, &text),
+            store.plan(&request(SkillOperation::Install, &text)),
             Err(SkillFailure::Conflict { .. })
         ));
         assert!(parent.join(STAGING_DIR).join("SKILL.md").exists());
@@ -1146,7 +1583,7 @@ mod tests {
         install(&store, &text).unwrap();
         fs::write(parent.join("memoria/SKILL.md"), "edited\n").unwrap();
         assert!(matches!(
-            store.plan_uninstall(AgentTarget::Codex, &text),
+            store.plan(&request(SkillOperation::Uninstall, &text)),
             Err(SkillFailure::Conflict { .. })
         ));
         assert_eq!(
@@ -1154,7 +1591,7 @@ mod tests {
             "edited\n"
         );
         assert!(matches!(
-            store.plan_install(AgentTarget::Codex, &text),
+            store.plan(&request(SkillOperation::Install, &text)),
             Err(SkillFailure::Conflict { .. })
         ));
     }
@@ -1166,16 +1603,24 @@ mod tests {
         fs::create_dir_all(parent.join("memoria")).unwrap();
         fs::write(parent.join("memoria/notes.md"), "mine\n").unwrap();
         let store = store(dir.path());
-        let plan = store.plan_install(AgentTarget::Codex, &text).unwrap();
+        let plan = store
+            .plan(&request(SkillOperation::Install, &text))
+            .unwrap();
         assert_eq!(plan.replaced, vec!["notes.md"]);
-        store.apply_install(&plan).unwrap();
+        store
+            .apply(&request(SkillOperation::Install, &text), &plan)
+            .unwrap();
         assert_eq!(
             fs::read_to_string(parent.join("memoria.backup/notes.md")).unwrap(),
             "mine\n"
         );
-        let plan = store.plan_uninstall(AgentTarget::Codex, &text).unwrap();
+        let plan = store
+            .plan(&request(SkillOperation::Uninstall, &text))
+            .unwrap();
         assert!(plan.backup.is_some());
-        store.apply_uninstall(&plan).unwrap();
+        store
+            .apply(&request(SkillOperation::Uninstall, &text), &plan)
+            .unwrap();
         assert_eq!(
             fs::read_to_string(parent.join("memoria/notes.md")).unwrap(),
             "mine\n"
@@ -1191,23 +1636,31 @@ mod tests {
         fs::write(parent.join(STAGING_DIR).join("user.txt"), "keep this").unwrap();
         let store = store(dir.path());
         assert!(matches!(
-            store.plan_install(AgentTarget::Codex, &text),
+            store.plan(&request(SkillOperation::Install, &text)),
             Err(SkillFailure::Conflict { .. })
         ));
         let plan = SkillPlan {
             operation: SkillOperation::Install,
             target: AgentTarget::Codex,
+            scope: AgentScope::Local,
             destination: parent.join("memoria").display().to_string(),
+            state: "absent".into(),
+            package_version: None,
+            embedded_version: "0.1.0".into(),
             backup: None,
             writes: vec![],
             removals: vec![],
             replaced: vec![],
+            modified_paths: vec![],
+            unknown_paths: vec![],
+            retained_artifacts: vec![],
+            overlapping: vec![],
             no_change: false,
             recovery_needed: false,
             existing: String::new(),
         };
         assert!(matches!(
-            store.apply_install(&plan),
+            store.apply(&request(SkillOperation::Install, &text), &plan),
             Err(SkillFailure::Conflict { .. })
         ));
         assert_eq!(
@@ -1217,7 +1670,7 @@ mod tests {
         assert!(!parent.join("memoria").exists());
         fs::rename(parent.join(STAGING_DIR), parent.join(REMOVING_DIR)).unwrap();
         assert!(matches!(
-            store.plan_install(AgentTarget::Codex, &text),
+            store.plan(&request(SkillOperation::Install, &text)),
             Err(SkillFailure::Conflict { .. })
         ));
         assert_eq!(
@@ -1234,7 +1687,9 @@ mod tests {
         fs::write(parent.join(STAGING_DIR).join("SKILL.md"), "# Skill\n").unwrap();
         fs::write(parent.join(TXN_FILE), "{}").unwrap();
         let store = store(dir.path());
-        let err = store.plan_install(AgentTarget::Codex, &text).unwrap_err();
+        let err = store
+            .plan(&request(SkillOperation::Install, &text))
+            .unwrap_err();
         assert!(
             matches!(&err, SkillFailure::Conflict { message, .. } if message.contains("transaction record is invalid")),
             "{err:?}"
@@ -1242,7 +1697,7 @@ mod tests {
         // A record for a different destination is rejected too.
         fs::write(parent.join(TXN_FILE), "{\"schema_version\":1,\"phase\":\"staged\",\"destination\":\"/elsewhere/memoria\",\"staging\":\"/x\",\"removing\":\"/y\",\"backup\":null}").unwrap();
         assert!(matches!(
-            store.plan_install(AgentTarget::Codex, &text),
+            store.plan(&request(SkillOperation::Install, &text)),
             Err(SkillFailure::Conflict { .. })
         ));
         assert!(parent.join(STAGING_DIR).join("SKILL.md").exists());
@@ -1268,23 +1723,27 @@ mod tests {
         let store = store(dir.path());
         // Stage a real package the way apply_install does, then "crash".
         fs::create_dir_all(parent.join(STAGING_DIR)).unwrap();
-        for (name, bytes) in store.managed_files(AgentTarget::Codex, None) {
+        for (name, bytes) in store.managed_files(AgentTarget::Codex, AgentScope::Local, None) {
             fs::write(parent.join(STAGING_DIR).join(name), bytes).unwrap();
         }
         write_txn(&store, &text, "staged", None);
-        let plan = store.plan_install(AgentTarget::Codex, &text).unwrap();
+        let plan = store
+            .plan(&request(SkillOperation::Install, &text))
+            .unwrap();
         assert!(plan.recovery_needed);
-        store.apply_install(&plan).unwrap();
+        store
+            .apply(&request(SkillOperation::Install, &text), &plan)
+            .unwrap();
         assert_installed(&parent);
         // A staged directory with an extra file is not finished; it is preserved.
         fs::create_dir_all(parent.join(STAGING_DIR)).unwrap();
-        for (name, bytes) in store.managed_files(AgentTarget::Codex, None) {
+        for (name, bytes) in store.managed_files(AgentTarget::Codex, AgentScope::Local, None) {
             fs::write(parent.join(STAGING_DIR).join(name), bytes).unwrap();
         }
         fs::write(parent.join(STAGING_DIR).join("extra.txt"), "x").unwrap();
         write_txn(&store, &text, "staged", None);
         assert!(matches!(
-            store.plan_install(AgentTarget::Codex, &text),
+            store.plan(&request(SkillOperation::Install, &text)),
             Err(SkillFailure::Conflict { .. })
         ));
         assert!(parent.join(STAGING_DIR).join("extra.txt").exists());
@@ -1306,7 +1765,7 @@ mod tests {
             "removing",
             Some(parent.join("memoria.backup")),
         );
-        let plan = store.plan_install(AgentTarget::Codex, &text);
+        let plan = store.plan(&request(SkillOperation::Install, &text));
         assert!(plan.is_ok(), "{plan:?}");
         assert!(plan.unwrap().recovery_needed);
         install(&store, &text).unwrap();
@@ -1333,13 +1792,15 @@ mod tests {
         let copy = elsewhere.path().join("skills");
         copy_dir(&parent, &copy);
         let plan = store
-            .plan_uninstall(AgentTarget::Codex, copy.to_str().unwrap())
+            .plan(&request(SkillOperation::Uninstall, copy.to_str().unwrap()))
             .unwrap();
         assert_eq!(
             plan.backup.as_deref(),
             Some(copy.join("memoria.backup").to_str().unwrap())
         );
-        store.apply_uninstall(&plan).unwrap();
+        store
+            .apply(&request(SkillOperation::Uninstall, &text), &plan)
+            .unwrap();
         assert_eq!(
             fs::read_to_string(copy.join("memoria/user.txt")).unwrap(),
             "original\n"
@@ -1359,7 +1820,7 @@ mod tests {
         );
         fs::write(&record_path, edited).unwrap();
         assert!(matches!(
-            store.plan_uninstall(AgentTarget::Codex, &text),
+            store.plan(&request(SkillOperation::Uninstall, &text)),
             Err(SkillFailure::Conflict { .. })
         ));
         assert!(outside.path().join("keep.txt").exists());
@@ -1372,8 +1833,12 @@ mod tests {
             ),
         );
         fs::write(&record_path, edited).unwrap();
-        let plan = store.plan_uninstall(AgentTarget::Codex, &text).unwrap();
-        store.apply_uninstall(&plan).unwrap();
+        let plan = store
+            .plan(&request(SkillOperation::Uninstall, &text))
+            .unwrap();
+        store
+            .apply(&request(SkillOperation::Uninstall, &text), &plan)
+            .unwrap();
         assert_eq!(
             fs::read_to_string(parent.join("memoria/user.txt")).unwrap(),
             "original\n"
@@ -1401,21 +1866,27 @@ mod tests {
         install(&store, &text).unwrap();
         fs::rename(parent.join("memoria"), parent.join(REMOVING_DIR)).unwrap();
         write_txn(&store, &text, "removing", None);
-        let plan = store.plan_uninstall(AgentTarget::Codex, &text).unwrap();
+        let plan = store
+            .plan(&request(SkillOperation::Uninstall, &text))
+            .unwrap();
         assert!(plan.recovery_needed);
         assert!(plan.existing.contains("interrupted removing"));
         assert!(
             parent.join(REMOVING_DIR).exists(),
             "planning writes nothing"
         );
-        store.apply_uninstall(&plan).unwrap();
+        store
+            .apply(&request(SkillOperation::Uninstall, &text), &plan)
+            .unwrap();
         assert!(!parent.join(REMOVING_DIR).exists());
         assert!(!parent.join(TXN_FILE).exists());
         assert!(!parent.join("memoria").exists());
-        assert!(matches!(
-            store.plan_uninstall(AgentTarget::Codex, &text),
-            Err(SkillFailure::NotInstalled(_))
-        ));
+        // An absent package is a successful, idempotent no-op.
+        let repeated = store
+            .plan(&request(SkillOperation::Uninstall, &text))
+            .unwrap();
+        assert!(repeated.no_change);
+        assert_eq!(repeated.state, "absent");
     }
 
     /// Fail the `nth` occurrence of `step` (1-based).
@@ -1483,12 +1954,20 @@ mod tests {
         );
         assert!(parent.join("memoria.backup/user.txt").exists());
         let plain = store(dir.path());
-        let plan = plain.plan_install(AgentTarget::Codex, &text).unwrap();
+        let plan = plain
+            .plan(&request(SkillOperation::Install, &text))
+            .unwrap();
         assert!(plan.recovery_needed);
-        plain.apply_install(&plan).unwrap();
+        plain
+            .apply(&request(SkillOperation::Install, &text), &plan)
+            .unwrap();
         assert_installed(&parent);
-        let plan = plain.plan_uninstall(AgentTarget::Codex, &text).unwrap();
-        plain.apply_uninstall(&plan).unwrap();
+        let plan = plain
+            .plan(&request(SkillOperation::Uninstall, &text))
+            .unwrap();
+        plain
+            .apply(&request(SkillOperation::Uninstall, &text), &plan)
+            .unwrap();
         assert_eq!(
             fs::read_to_string(parent.join("memoria/user.txt")).unwrap(),
             "original user content\n"
@@ -1503,8 +1982,12 @@ mod tests {
         let hook = failing_nth("sync-after-rename", 1);
         let faulty =
             FsSkillStore::with_faults(dir.path().to_path_buf(), "# Skill\n", "0.1.0", &hook);
-        let plan = faulty.plan_uninstall(AgentTarget::Codex, &text).unwrap();
-        let err = faulty.apply_uninstall(&plan).unwrap_err();
+        let plan = faulty
+            .plan(&request(SkillOperation::Uninstall, &text))
+            .unwrap();
+        let err = faulty
+            .apply(&request(SkillOperation::Uninstall, &text), &plan)
+            .unwrap_err();
         let message = failure_text(&err);
         assert!(
             message.contains("retained") && message.contains("memoria.backup"),
@@ -1514,9 +1997,13 @@ mod tests {
         assert!(parent.join(TXN_FILE).exists());
         assert!(parent.join("memoria.backup/user.txt").exists());
         let plain = store(dir.path());
-        let plan = plain.plan_uninstall(AgentTarget::Codex, &text).unwrap();
+        let plan = plain
+            .plan(&request(SkillOperation::Uninstall, &text))
+            .unwrap();
         assert!(plan.recovery_needed);
-        plain.apply_uninstall(&plan).unwrap();
+        plain
+            .apply(&request(SkillOperation::Uninstall, &text), &plan)
+            .unwrap();
         assert!(!parent.join(REMOVING_DIR).exists());
         assert!(!parent.join(TXN_FILE).exists());
         assert_eq!(
@@ -1597,9 +2084,13 @@ mod tests {
                 "{step}: package complete"
             );
             let plain = store(dir.path());
-            let plan = plain.plan_install(AgentTarget::Codex, &text).unwrap();
+            let plan = plain
+                .plan(&request(SkillOperation::Install, &text))
+                .unwrap();
             assert_eq!(plan.recovery_needed, step == "txn-remove", "{step}");
-            plain.apply_install(&plan).unwrap();
+            plain
+                .apply(&request(SkillOperation::Install, &text), &plan)
+                .unwrap();
             assert_installed(&parent);
         }
     }
@@ -1613,19 +2104,33 @@ mod tests {
         let hook = failing("rename-removing");
         let faulty =
             FsSkillStore::with_faults(dir.path().to_path_buf(), "# Skill\n", "0.1.0", &hook);
-        let plan = faulty.plan_uninstall(AgentTarget::Codex, &text).unwrap();
-        assert!(faulty.apply_uninstall(&plan).is_err());
+        let plan = faulty
+            .plan(&request(SkillOperation::Uninstall, &text))
+            .unwrap();
+        assert!(
+            faulty
+                .apply(&request(SkillOperation::Uninstall, &text), &plan)
+                .is_err()
+        );
         assert_installed(&parent);
         // remove-removing: the package sits in memoria.removing with its transaction; recovery finishes.
         let hook = failing("remove-removing");
         let faulty =
             FsSkillStore::with_faults(dir.path().to_path_buf(), "# Skill\n", "0.1.0", &hook);
-        let plan = faulty.plan_uninstall(AgentTarget::Codex, &text).unwrap();
-        assert!(faulty.apply_uninstall(&plan).is_err());
+        let plan = faulty
+            .plan(&request(SkillOperation::Uninstall, &text))
+            .unwrap();
+        assert!(
+            faulty
+                .apply(&request(SkillOperation::Uninstall, &text), &plan)
+                .is_err()
+        );
         assert!(parent.join(REMOVING_DIR).exists());
         assert!(parent.join(TXN_FILE).exists());
         let plain = store(dir.path());
-        let recovery = plain.plan_uninstall(AgentTarget::Codex, &text).unwrap();
+        let recovery = plain
+            .plan(&request(SkillOperation::Uninstall, &text))
+            .unwrap();
         assert!(
             recovery.recovery_needed,
             "the interrupted removal is actionable"
@@ -1647,17 +2152,27 @@ mod tests {
         let hook = failing("restore-backup");
         let faulty =
             FsSkillStore::with_faults(dir.path().to_path_buf(), "# Skill\n", "0.1.0", &hook);
-        let plan = faulty.plan_uninstall(AgentTarget::Codex, &text).unwrap();
+        let plan = faulty
+            .plan(&request(SkillOperation::Uninstall, &text))
+            .unwrap();
         assert!(plan.backup.is_some());
-        assert!(faulty.apply_uninstall(&plan).is_err());
+        assert!(
+            faulty
+                .apply(&request(SkillOperation::Uninstall, &text), &plan)
+                .is_err()
+        );
         assert!(parent.join(TXN_FILE).exists());
         assert_eq!(
             fs::read_to_string(parent.join("memoria.backup/notes.md")).unwrap(),
             "mine\n"
         );
-        let plan = plain.plan_install(AgentTarget::Codex, &text).unwrap();
+        let plan = plain
+            .plan(&request(SkillOperation::Install, &text))
+            .unwrap();
         assert!(plan.recovery_needed);
-        plain.apply_install(&plan).unwrap();
+        plain
+            .apply(&request(SkillOperation::Install, &text), &plan)
+            .unwrap();
         assert_installed(&parent);
     }
 }

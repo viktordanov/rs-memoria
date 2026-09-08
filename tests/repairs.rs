@@ -98,7 +98,7 @@ fn symlink_ancestors_cannot_read_or_write_outside_the_project() {
     std::os::unix::fs::symlink(outside.path(), project.root.join(".agents")).unwrap();
     let (code, lint) = project.json(&["lint"]);
     assert_eq!(code, 1);
-    assert!(diagnostic_codes(&lint).contains(&"instruction_file_invalid".to_string()));
+    assert!(diagnostic_codes(&lint).contains(&"guidance_file_invalid".to_string()));
     let project = Project::seed();
     project.baseline();
     let outside = tempfile::tempdir().unwrap();
@@ -122,7 +122,7 @@ fn symlink_ancestors_cannot_read_or_write_outside_the_project() {
     let project = Project::seed();
     let outside = tempfile::tempdir().unwrap();
     std::os::unix::fs::symlink(outside.path(), project.root.join(".memoria")).unwrap();
-    let (code, init) = project.json(&["init"]);
+    let (code, init) = project.json(&["init", "--apply"]);
     assert_eq!(code, 4);
     assert!(
         diagnostic_codes(&init)
@@ -292,13 +292,7 @@ fn nested_repositories_stay_opaque_even_when_the_parent_tracks_their_files() {
     project.write("child/a.rs", "one\n");
     project.commit_all("child");
     project.baseline();
-    let nested = Command::new("git")
-        .arg("-C")
-        .arg(project.root.join("child"))
-        .args(["init", "-q"])
-        .output()
-        .unwrap();
-    assert!(nested.status.success());
+    project.git_in(&project.root.join("child"), &["init", "-q"]);
     let (code, status) = project.json(&["status"]);
     assert_eq!(code, 0);
     assert_eq!(
@@ -318,65 +312,35 @@ fn nested_repositories_stay_opaque_even_when_the_parent_tracks_their_files() {
     // child/a.rs belonged to the child README, so no remaining owner changed; the dormant child review stays in state.
     assert_eq!(project.cause_codes("README.md"), Vec::<String>::new());
     assert_eq!(project.json(&["check"]).0, 0);
-    assert!(
-        project
-            .read_string(".memoria/state.json")
-            .contains("child/README.md")
-    );
+    assert!(project.state_text().contains("child/README.md"));
 
     // An initialized submodule is a boundary too.
     let project = Project::seed();
     project.baseline();
     let module = tempfile::tempdir().unwrap();
+    // The nested repository uses the fixture's isolated Git environment,
+    // so a host commit-signing setting cannot fail this seed.
     for args in [
         vec!["init", "-q"],
         vec!["config", "user.email", "m@example.com"],
         vec!["config", "user.name", "M"],
         vec!["config", "commit.gpgsign", "false"],
     ] {
-        assert!(
-            Command::new("git")
-                .arg("-C")
-                .arg(module.path())
-                .args(&args)
-                .output()
-                .unwrap()
-                .status
-                .success()
-        );
+        project.git_in(module.path(), &args);
     }
     fs::write(module.path().join("lib.rs"), "pub fn m() {}\n").unwrap();
     for args in [vec!["add", "-A"], vec!["commit", "-qm", "m"]] {
-        assert!(
-            Command::new("git")
-                .arg("-C")
-                .arg(module.path())
-                .args(&args)
-                .output()
-                .unwrap()
-                .status
-                .success()
-        );
+        project.git_in(module.path(), &args);
     }
-    let added = Command::new("git")
-        .arg("-C")
-        .arg(&project.root)
-        .args([
-            "-c",
-            "protocol.file.allow=always",
-            "submodule",
-            "add",
-            "-q",
-            module.path().to_str().unwrap(),
-            "vendor/module",
-        ])
-        .output()
-        .unwrap();
-    assert!(
-        added.status.success(),
-        "{}",
-        String::from_utf8_lossy(&added.stderr)
-    );
+    project.git(&[
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        "-q",
+        module.path().to_str().unwrap(),
+        "vendor/module",
+    ]);
     let (code, status) = project.json(&["status"]);
     assert_eq!(code, 0);
     assert_eq!(
@@ -500,7 +464,7 @@ fn relative_global_excludes_resolve_from_the_worktree_root() {
     let elsewhere = tempfile::tempdir().unwrap();
     let root = project.root.to_str().unwrap().to_string();
     // Baseline through --root from an unrelated directory.
-    let output = project.run_in(elsewhere.path(), &["--root", &root, "init"]);
+    let output = project.run_in(elsewhere.path(), &["--root", &root, "init", "--apply"]);
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(
         project
@@ -559,20 +523,43 @@ fn relative_global_excludes_resolve_from_the_worktree_root() {
         );
     }
     assert_eq!(project.run_in(&subdir, &["check"]).status.code(), Some(0));
+    // A host rule that changes no selected file changes no review state.
+    // Host settings decide Git eligibility; they never enter repository
+    // policy, so this project stays current from every working directory.
+    let state_before = project.state();
     project.write(".git/local-excludes", "future-two/\n");
     for cwd in [elsewhere.path(), project.root.as_path(), subdir.as_path()] {
         let output = project.run_in(cwd, &["--root", &root, "check", "--format", "json"]);
-        assert_eq!(output.status.code(), Some(1), "{}", cwd.display());
-        assert!(
-            diagnostic_codes(&parse_json(&output.stdout)).contains(&"review_pending".to_string())
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{}: {}",
+            cwd.display(),
+            stdout(&output)
         );
     }
-    // Policy identities never embed the absolute exclude path: an identical project elsewhere hashes the same policy.
+    assert_eq!(project.state(), state_before, "no state was rewritten");
+    // A host rule that exposes or removes an untracked selected file does
+    // change the owning manifest: actual eligibility still follows the host.
+    project.write(".git/local-excludes", "future-one/\n");
+    project.write("future-two/note.md", "not tracked\n");
+    assert_eq!(project.cause_codes("README.md"), vec!["input_changed"]);
+    project.ack_ok("README.md");
+    assert_eq!(project.json(&["check"]).0, 0);
+    project.write(".git/local-excludes", "future-two/\n");
+    assert_eq!(project.cause_codes("README.md"), vec!["input_changed"]);
+    project.ack_ok("README.md");
+    std::fs::remove_dir_all(project.root.join("future-two")).unwrap();
+    assert_eq!(project.json(&["check"]).0, 0);
+    // Policy identities never embed a host exclude path or its contents:
+    // an identical project with different host settings hashes the same
+    // policy for the same document.
+    project.append("src/corpus/types.rs", "// pending\n");
     let (packet_a, _) = project.review_packet("src/corpus/README.md");
     let twin = Project::seed();
-    twin.write(".git/local-excludes", "future-two/\n");
+    twin.write(".git/local-excludes", "unrelated-name/\n");
     twin.git(&["config", "core.excludesFile", ".git/local-excludes"]);
-    assert_eq!(twin.run(&["init"]).status.code(), Some(0));
+    assert_eq!(twin.run(&["init", "--apply"]).status.code(), Some(0));
     assert_eq!(twin.run(&["render"]).status.code(), Some(0));
     let (packet_b, _) = twin.review_packet("src/corpus/README.md");
     let hash_of = |packet: &Path| {
@@ -628,11 +615,7 @@ fn custom_in_project_skill_packages_are_guidance_not_sources() {
         "selected"
     );
     // Review state and installation state stay separate.
-    assert!(
-        !project
-            .read_string(".memoria/state.json")
-            .contains("custom-skills")
-    );
+    assert!(!project.state_text().contains("custom-skills"));
 }
 
 // MEM-011
@@ -640,30 +623,30 @@ fn custom_in_project_skill_packages_are_guidance_not_sources() {
 fn impossible_counters_are_rejected_before_any_write() {
     let project = Project::seed();
     project.baseline();
-    let good = project.read_string(".memoria/state.json");
-    let cases = [
-        (
-            "zero",
-            good.replace("\"next_invalidation_id\": 1", "\"next_invalidation_id\": 0"),
-        ),
-        (
-            "exhausted",
-            good.replace(
-                "\"next_invalidation_id\": 1",
-                "\"next_invalidation_id\": 18446744073709551615",
-            ),
-        ),
-        (
-            "revision",
-            good.replace(
-                "\"revision\": 6,\n  \"schema_version\"",
-                "\"revision\": 0,\n  \"schema_version\"",
-            ),
-        ),
+    let good = project.state();
+    let decoded = project.decoded_state();
+    // Each fixture keeps valid framing and a valid checksum, so the decoder
+    // reaches its semantic invariants instead of stopping at the frame.
+    let cases: Vec<(&str, memoria_domain::ReviewState)> = vec![
+        ("zero", {
+            let mut state = decoded.clone();
+            state.next_invalidation_id = 0;
+            state
+        }),
+        ("exhausted", {
+            let mut state = decoded.clone();
+            state.next_invalidation_id = u64::MAX;
+            state
+        }),
+        ("revision", {
+            let mut state = decoded.clone();
+            state.revision = 0;
+            state
+        }),
     ];
-    for (name, bytes) in cases {
+    for (name, state) in cases {
+        let bytes = project.write_state(&state);
         assert_ne!(bytes, good, "{name}: fixture must change the state");
-        project.write(".memoria/state.json", &bytes);
         let (code, status) = project.json(&["status"]);
         assert_eq!(code, 4, "{name}: {status:?}");
         assert_eq!(diagnostic_codes(&status), vec!["state_corrupt"], "{name}");
@@ -674,13 +657,9 @@ fn impossible_counters_are_rejected_before_any_write() {
             "Should be refused before writing.",
         ]);
         assert_eq!(code, 4, "{name}");
-        assert_eq!(
-            project.read_string(".memoria/state.json"),
-            bytes,
-            "{name}: bytes untouched"
-        );
+        assert_eq!(project.state(), bytes, "{name}: bytes untouched");
     }
-    project.write(".memoria/state.json", &good);
+    project.write("memoria.lock", &good);
     assert_eq!(project.json(&["check"]).0, 0);
 }
 
@@ -887,7 +866,9 @@ fn usage_errors_honor_requested_json_output() {
         let output = project.run(&args);
         assert_eq!(output.status.code(), Some(2), "{args:?}");
         let value = parse_json(&output.stdout);
-        assert_eq!(get_u64(&value, &["schema_version"]), 1);
+        // Usage errors use the same schema 2 envelope as every other
+        // machine response.
+        assert_eq!(get_u64(&value, &["schema_version"]), 2, "{args:?}");
         assert_eq!(get_str(&value, &["command"]), command, "{args:?}");
         assert!(!get_bool(&value, &["ok"]));
         assert_eq!(diagnostic_codes(&value), vec!["usage_error"], "{args:?}");
@@ -1067,8 +1048,8 @@ fn stale_policy_and_file_set_snapshots_are_rejected_with_exact_entries() {
     project.write(
         "memoria.toml",
         project.read_string("memoria.toml").replace(
-            "version = 1\n",
-            "version = 1\ninclude = [\n    \"nothing/**\",\n]\n",
+            "version = 2\n",
+            "version = 2\ninclude = [\n    \"nothing/**\",\n]\n",
         ),
     );
     let output = ack_json(&project, "src/execution/README.md", &packet, &token);

@@ -28,7 +28,7 @@ impl Isolated {
             project,
             xdg: xdg.to_path_buf(),
         };
-        assert_eq!(isolated.run(&["init"]).status.code(), Some(0));
+        assert_eq!(isolated.run(&["init", "--apply"]).status.code(), Some(0));
         isolated
     }
 
@@ -128,7 +128,7 @@ impl Isolated {
 
 // MEM-047
 #[test]
-fn empty_global_excludes_setting_disables_the_source_like_git() {
+fn empty_host_excludes_setting_disables_the_source_like_git() {
     let external = tempfile::tempdir().unwrap();
     let populated = external.path().join("xdg-populated");
     fs::create_dir_all(populated.join("git")).unwrap();
@@ -180,19 +180,11 @@ fn empty_global_excludes_setting_disables_the_source_like_git() {
         }
     }
     let (packet, token, _) = empty.packet();
-    let state = empty.project.state();
-    // A genuine effective-rule change still rejects the older packet.
+    // A host rule that matches no project input changes nothing: the packet
+    // still acknowledges, because host settings never enter policy.
     let rules = external.path().join("real-rules");
     fs::write(&rules, "nothing-here/\n").unwrap();
     empty.set_excludes(rules.to_str().unwrap());
-    let output = empty.ack(&packet, &token, "json");
-    assert_eq!(output.status.code(), Some(3), "{}", stdout(&output));
-    assert_eq!(
-        diagnostic_codes(&parse_json(&output.stdout)),
-        vec!["snapshot_changed"]
-    );
-    assert_eq!(empty.project.state(), state, "state preserved");
-    empty.set_excludes("");
     let output = empty.ack(&packet, &token, "human");
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
     for format in ["json", "human"] {
@@ -222,7 +214,12 @@ fn empty_global_excludes_setting_disables_the_source_like_git() {
     assert_eq!(hash_empty, hash_named_empty);
     assert_eq!(hash_empty, hash_unset_isolated);
     assert_eq!(hash_empty, hash_space_name);
-    assert_ne!(hash_empty, hash_absent, "the XDG rules are real policy");
+    // Host rules decide eligibility, never policy: an applied XDG rule set
+    // hashes exactly like no host source at all.
+    assert_eq!(
+        hash_empty, hash_absent,
+        "host ignore rules must never enter the policy hash"
+    );
 
     // A whitespace-bearing filename with rules keeps its policy (MEM-042).
     let spaced = external.path().join("ws ignore ");
@@ -235,6 +232,6 @@ fn empty_global_excludes_setting_disables_the_source_like_git() {
     assert_eq!(
         whitespace.policy_hash(),
         hash_absent,
-        "the same rule bytes are the same logical policy"
+        "every host rule profile shares one repository policy"
     );
 }

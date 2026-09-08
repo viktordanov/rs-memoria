@@ -1,0 +1,5 @@
+{
+  "hook_event_name": "Stop",
+  "cwd": "REPLACED_BY_TEST",
+  "stop_hook_active": false
+}

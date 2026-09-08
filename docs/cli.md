@@ -59,8 +59,13 @@ The [CLI grammar](../src/presentation/cli.rs#L13) defines the command arguments.
 | `memoria.toml` | The root configuration defines project rules. |
 | `README.md` | Each README defines a documentation boundary. |
 | `README.memoria.toml` | An optional sidecar defines local rules beside a README. |
-| `.memoria/state.json` | The state contains the latest review for each README and active invalidations. |
-| `.memoria/write.lock` | This file supports the advisory lock for project mutations. |
+| `memoria.lock` | This generated file contains the latest review for each README and the active invalidations. |
+| `.gitattributes` | The rule `/memoria.lock binary` prevents text merging and newline conversion. |
+
+Commit `memoria.toml` and `memoria.lock` together.
+Memoria owns the bytes of `memoria.lock`; do not edit it.
+The write lock is not in the worktree.
+It uses the path that `git rev-parse --git-path memoria/write.lock` returns, so linked worktrees receive separate locks.
 
 The nearest README owns each selected file.
 A child README creates a new boundary.
@@ -70,13 +75,13 @@ Declared imports carry the relevant export content into consumer inputs.
 The root configuration supports these defaults:
 
 ```toml
-version = 1
+version = 2
 ignore = []
 include = []
 
 [documentation]
-instructions = []
-instruction_files = []
+guidance = []
+guidance_files = []
 
 [fingerprints]
 default = "raw"
@@ -87,10 +92,21 @@ missing_import_hint = true
 ```
 
 The supported sidecar fields are `ignore`, `include`, and `documentation`.
-Writing instructions enter packet context without changing fingerprints.
-A sidecar with only instructions does not add a selection scope to the fingerprint policy.
+Documentation guidance enters packet context without changing fingerprints.
+A sidecar with only guidance does not add a selection scope to the fingerprint policy.
 This rule also applies to a sidecar beside the root README.
-An explicit invalidation requests review after a writing-policy change.
+An explicit invalidation requests review after a guidance change.
+
+Guidance appends from the root scope toward the document scope.
+Within each scope, inline entries come before file entries, and each list keeps its authored order.
+Memoria does not override, deduplicate, or rank conflicting prose.
+
+A `guidance_files` entry resolves relative to its declaring configuration file.
+The destination must stay inside the project and hold a regular UTF-8 file.
+These destinations are invalid: a symlink, a missing file, Git metadata, a state artifact, a configuration file, and a README boundary file.
+
+The retired keys `instructions` and `instruction_files` fail with the exact replacement name.
+A configuration that holds both spellings fails; Memoria never selects one silently.
 
 Source evidence: [configuration reader](../crates/memoria-infrastructure/src/config.rs#L104) and [effective policy](../crates/memoria-application/src/snapshot.rs#L1193).
 
@@ -133,7 +149,9 @@ Unowned selected files cause lint and check errors.
 <details>
 <summary>Reserved inputs and repository boundaries</summary>
 
-Reserved source inputs include configuration files, READMEs, sidecars, `.gitignore` files, referenced instruction files, and `.memoria/**`.
+Reserved source inputs include configuration files, READMEs, sidecars, `.gitignore` files, referenced guidance files, `memoria.lock`, `.memoria.lock.tmp.<32 hex>`, and `.memoria/**`.
+The agent integration files are also reserved, whether installed or absent: `.codex/hooks.json`, `.codex/config.toml`, `.codex/memoria-hook.json`, `.claude/settings.local.json`, and `.claude/memoria-hook.json`.
+Unrelated files in those directories stay ordinary inputs.
 Managed Memoria packages and their transaction artifacts are also reserved.
 The tool discovers neither sources nor documentation boundaries within its reserved trees.
 
@@ -203,11 +221,17 @@ Source evidence: [Git command construction](../crates/memoria-infrastructure/src
 
 | Command | Result |
 | --- | --- |
-| `memoria status [--explain <path>]` | It shows ownership, selected bytes, review state, and exclusions. |
+| `memoria status [--explain <path>]` | It shows ownership, selected bytes, review state, guidance counts, and exclusions. |
+| `memoria status --summary` | It emits bounded counts only. |
+| `memoria guidance [<README.md>]` | It shows the documentation guidance that applies to a boundary. |
 | `memoria lint` | It examines configuration, coverage, markers, exports, imports, cycles, and navigation. |
 | `memoria review` | It shows pending documents in dependency order and the next action. |
 | `memoria check` | It requires valid structure, current reviews, and current import copies. |
 | `memoria graph` | It shows README ownership, import, and navigation edges with review state. |
+| `memoria state inspect [--file <path>]` | It decodes committed state and shows its framing. |
+
+Every command in this table is read-only.
+None of them creates a lock, a temporary file, or a directory.
 
 `status` also shows active invalidations, unowned files, disconnected READMEs, and repository boundaries.
 Its explanation names the rule chain for one path.
@@ -220,6 +244,41 @@ Its `imports_outdated` and `navigation_disconnected` warnings do not fail lint.
 Its `missing_import_hint` diagnostics remain optional hints.
 The configuration key `lint.missing_import_hint: false` suppresses those hints.
 `check` treats outdated imports as errors and fails for pending reviews.
+A changed-guidance count is a hint in `check`, and it never fails the command.
+
+### `memoria status --summary`
+
+Summary mode uses the same snapshot and freshness logic as ordinary status.
+It emits counts without per-document manifests, source content, full guidance, or exclusion explanations.
+It rejects `--explain` as a usage error.
+
+Its `data` object holds `readmes`, `selected_files`, `selected_bytes`, the four review counts, guidance counts, unowned and disconnected counts, invalidation counts, and diagnostic counts.
+Waiting can overlap current, pending, or never-reviewed status.
+These counters are not disjoint categories.
+
+### `memoria guidance [<README.md>]`
+
+Without a path, the command shows the effective guidance of the root README.
+It also lists each scope that adds guidance, with the command that inspects that scope.
+With a path, it shows that boundary's entries, exact sources, digest, and applicable scope.
+
+The command works for current documents.
+It needs no review packet, and it changes no state.
+
+Its `data` object holds `document`, `digest`, `entries`, `sources`, `scopes`, `reviewed_digest`, and `changed_since_review`.
+Each entry holds `scope`, `source`, `kind`, and `text`.
+The empty scope string is the repository root.
+Entry kinds are exactly `inline` and `file`.
+
+### `memoria state inspect [--file <path>]`
+
+Without `--file`, the command inspects `memoria.lock` in the selected project.
+A missing file returns `state_missing` with exit 4.
+With `--file`, it resolves the path against the invocation directory, works outside Git, and needs no configuration.
+
+Inspection decodes stored bytes.
+It makes no freshness claim, and it offers no export, import, reset, or migration.
+The [state guide](state.md) describes the format, the limits, and the recovery procedure.
 
 The review plan orders providers before consumers, with path order for ties.
 `data.next_ready` names the first ready document.
@@ -236,11 +295,31 @@ memoria review <README.md> [--max-bytes <n>] --format json
 ```
 
 A focused review requires a pending document whose providers permit review and whose import copies are current.
-The packet contains the document, every owned file, imported exports, previous review, writing instructions, and covered invalidations.
+The packet contains the document, every owned file, imported exports, previous review, documentation guidance, and covered invalidations.
 It also identifies changed inputs, exports, consumers, and available diffs.
 Text content uses UTF-8, and other content uses base64.
 
-The token contains 21 bytes with the form `mrv1.<16 hex>`.
+The guidance shape is `data.context.guidance`:
+
+```json
+{
+  "guidance": {
+    "digest": "0123456789abcdef",
+    "entries": [
+      {
+        "scope": "",
+        "source": "memoria.toml",
+        "kind": "inline",
+        "text": "Explain the operational workflow before implementation details."
+      }
+    ]
+  }
+}
+```
+
+The packet uses schema version 2.
+Memoria rejects a version 1 packet before acknowledgement.
+The token contains 21 bytes with the form `mrv2.<16 hex>`.
 A JSON packet supports acknowledgement from a file or stdin.
 Human output supports reading only.
 The [workflow](workflow.md#2-capture-the-packet) stores the packet outside the project.
@@ -254,7 +333,9 @@ The [workflow](workflow.md#2-capture-the-packet) stores the packet outside the p
 | Array elements and nesting | 100,000 elements and 32 containers |
 
 Raw inputs contain the README, selected files, and imported export bodies.
-Decoded content also counts instruction text, available old content, and generated diff text.
+Decoded content also counts guidance text, available old content, and generated diff text.
+Large guidance produces an explicit limit error.
+It never disappears from the packet through silent truncation.
 `size.record_count` counts array elements across the entire envelope and its diagnostics.
 The producer encodes the packet before either output format can use it.
 Acknowledgement recomputes the counts and rejects inconsistent values.
@@ -282,13 +363,27 @@ Source evidence: [packet construction](../crates/memoria-application/src/usecase
 
 A mutation changes stored files or saved review state.
 
-### `memoria init`
+### `memoria init [--apply]`
 
-The command creates missing root configuration, root README, and empty state files.
-It validates existing files before writes.
+Without `--apply`, the command is a read-only preview.
+It explains the documentation model, gives three example strategies, and lists the two committed files.
+It reports a missing root README without failing.
+It writes nothing, not even in an empty project.
+
+With `--apply`, the command creates the missing `memoria.toml` and `memoria.lock` files.
+It requires an existing root `README.md`, and it returns `root_readme_missing` with exit 1 before any write when that file is absent.
+It never creates README prose, exports, imports, or nested boundaries.
+
+Apply validates existing files first.
 An invalid existing configuration, README, or state prevents initialization.
-Unresolved imports and coverage gaps remain lint concerns.
-The printed checklist identifies generated output, snapshots, tests, and fixtures for scope decisions.
+An existing valid installation produces no changes, and existing files keep their bytes and modes.
+A partial write failure still reports exactly which files reached disk.
+
+CAUTION: An existing unrelated `memoria.lock` is a conflict to resolve by hand.
+Initialization never overwrites a file because its name matches.
+
+The generated configuration holds an empty guidance list and useful comments.
+It imposes no writing standard on your project.
 
 ### `memoria render [<README.md>] [--dry-run]`
 
@@ -331,6 +426,10 @@ Acknowledgement has five stages:
 4. The domain compares the review revision and covered invalidations.
 5. A final snapshot comparison precedes the atomic state save.
 
+Changed documentation guidance causes `guidance_changed` with exit 3.
+That conflict writes no review state and does not make a current document stale.
+The application compares the guidance during the initial packet validation and again under the write lock.
+
 A changed manifest causes `snapshot_changed` with exit 3 and exact differences.
 A deleted packet document in an otherwise valid project causes the same conflict.
 A later document revision causes `revision_conflict` with exit 3.
@@ -347,20 +446,35 @@ Source evidence: [acknowledgement](../crates/memoria-application/src/usecases/ac
 ## Agent packages
 
 ```sh
-memoria agent install|uninstall [--target codex|claude] [--path <skills-directory>] [--dry-run]
+memoria agent install|status|upgrade|uninstall [--target codex|claude] [--scope local|global] [--path <skills-directory>] [--replace-existing] [--dry-run]
+memoria agent hook install|status|uninstall --target codex|claude [--dry-run]
+memoria agent hook run --target codex|claude --protocol 1 --configuration-root <directory>
 ```
 
 The binary embeds `skills/memoria/SKILL.md` at build time.
-The default destination is `.agents/skills/memoria` for Codex or `.claude/skills/memoria` for Claude.
+The default scope is `local`, inside the selected worktree.
+The local destination is `.agents/skills/memoria` for Codex or `.claude/skills/memoria` for Claude.
 Without `--target`, exactly one of `.agents` and `.claude` must exist.
-A custom `--path` requires `--target` and names the package parent.
-The dry run makes no changes.
 
-The package contains `SKILL.md` and `.memoria-install.json`.
-The installer preserves a backup before replacement.
-Identical installed content requires no change.
-Locally edited managed content causes a conflict with exit 3.
+A global operation requires `--scope global` and an explicit `--target`.
+It works outside Git and without `memoria.toml`, and it rejects `--root`.
+A custom `--path` requires `--target` and names the package parent.
+A local custom path must stay inside the worktree, and a global custom path must be absolute.
+A path outside the worktree never implies a global installation.
+
+The dry run makes no changes.
+`status` never writes and exits 0 for any readable inspection.
+
+The package contains `SKILL.md` and `.memoria-install.json`, at record schema 2.
+An older managed package returns `skill_upgrade_required` with exit 1, so replacement is explicit.
+An unmanaged package needs `--replace-existing`, which creates a verified sibling backup first.
+Locally edited managed content causes `skill_conflict` with exit 3.
 Changed file kinds also cause conflicts without content access through symlinks or special files.
+
+Uninstall of an absent package exits 0 with `no_change`.
+It creates no directory and no lock.
+The zero-byte parent lock stays in place, reported as `synchronization_lock`.
+The [agent integrations guide](agents.md) explains the scopes, the backups, and the hook contract.
 
 <details>
 <summary>Installation transactions and recovery</summary>
@@ -396,8 +510,11 @@ Source evidence: [skill adapter](../crates/memoria-infrastructure/src/skill.rs#L
 Every JSON response uses this envelope:
 
 ```json
-{"schema_version": 1, "command": "status", "ok": true, "data": {}, "diagnostics": []}
+{"schema_version": 2, "command": "status", "ok": true, "data": {}, "diagnostics": []}
 ```
+
+The native hook runner is the one exception.
+It speaks native hook JSON on stdin and stdout, and it does not accept `--format`.
 
 Diagnostics contain a code, severity, message, and structured details.
 Optional `path`, `line`, and `column` fields identify a location.
@@ -431,19 +548,25 @@ These identifiers appear in the command contract:
 
 ```text
 usage_error configuration_missing configuration_invalid sidecar_invalid sidecar_orphan
-instruction_file_missing instruction_file_invalid path_invalid path_unsupported
+guidance_file_missing guidance_file_invalid guidance_changed path_invalid path_unsupported
 root_readme_missing coverage_unowned markdown_invalid marker_malformed marker_nested
 marker_mismatch marker_unclosed export_invalid export_duplicate import_invalid
 import_missing_document import_missing_export import_self import_duplicate import_cycle
 imports_outdated navigation_disconnected missing_import_hint review_pending
 review_not_pending dependencies_pending document_not_found packet_too_large max_bytes_invalid
-token_invalid token_mismatch reviewer_invalid result_invalid note_invalid packet_unreadable
-packet_source_invalid packet_limit_exceeded packet_schema_invalid packet_integrity_failed
-packet_token_mismatch packet_content_mismatch packet_document_mismatch snapshot_changed
-revision_conflict invalidation_not_active invalidation_reason_mismatch scope_invalid
-scope_empty reason_invalid state_busy state_conflict state_corrupt state_unreadable
-git_unavailable git_unsupported root_mismatch io_error render_incomplete target_required
-target_ambiguous skill_conflict skill_not_installed
+summary_invalid token_invalid token_mismatch reviewer_invalid result_invalid note_invalid
+packet_unreadable packet_source_invalid packet_limit_exceeded packet_schema_invalid
+packet_integrity_failed packet_token_mismatch packet_content_mismatch
+packet_document_mismatch snapshot_changed revision_conflict invalidation_not_active
+invalidation_reason_mismatch scope_invalid scope_empty reason_invalid state_busy
+state_conflict state_corrupt state_unreadable state_missing state_legacy state_ambiguous
+state_limit_exceeded state_unsupported_schema state_unsupported_codec
+state_inspection_limit_exceeded git_unavailable git_unsupported root_mismatch root_invalid
+io_error render_incomplete target_required target_ambiguous home_unset worktree_required
+path_not_absolute path_outside_worktree claude_config_dir_relative skill_conflict
+skill_not_installed skill_upgrade_required skill_replace_required hook_client_unsupported
+hook_conflict hook_unmanaged hook_configuration_ambiguous hook_configuration_invalid
+hook_configuration_too_large hook_configuration_outside_worktree hook_location_unsupported
 ```
 
 </details>
@@ -451,16 +574,26 @@ target_ambiguous skill_conflict skill_not_installed
 ## Fingerprints and limits of the result
 
 Hashes use XXH3-64 with the default secret, seed zero, and 16 lowercase hexadecimal digits.
+The `memoria.lock` frame checksum uses XXH3-128.
 Canonical byte encodings use fixed schemas and big-endian lengths.
-The token covers the document path, document revision, manifest, and covered invalidations.
-Timestamps, commits, worktree locations, writing instructions, and unrelated reviews do not affect the token.
+
+The canonical domains are `memoria.policy.v2`, `memoria.inputs.v2`, `memoria.review-token.v2`, `memoria.packet.v2`, and `memoria.guidance.v1`.
+The selection tag is `git-worktree-v2`, and the repository ignore inventory is `repository-ignore-v1`.
+
+The token covers the document path, document revision, manifest, guidance digest, and covered invalidations.
+Timestamps, commits, worktree locations, host ignore settings, and unrelated reviews do not affect the token.
 The token detects accidental change and does not authenticate a reviewer.
 
-This release requires Git worktrees and Linux local filesystems.
+Host ignore settings decide which files Git reports as eligible.
+They never enter the policy hash.
+Two hosts with equal selected inputs and equal repository rules produce equal freshness.
+The policy inventory uses fixed case-sensitive matching, so it does not normalize case-only paths, Unicode filenames, or line endings.
+
+This release requires Git worktrees and Linux or macOS local filesystems.
 It rejects bare repositories, sparse checkouts, and unmerged index entries.
 It does not support language filters or hostile concurrent writers.
 Raw fingerprints include whitespace, comments, and exact newlines.
-Corrupt review state requires recovery from a known valid copy.
+Corrupt review state requires recovery from a known valid copy, as the [state guide](state.md#6-errors-and-recovery) describes.
 
 <details>
 <summary>Export syntax limits</summary>

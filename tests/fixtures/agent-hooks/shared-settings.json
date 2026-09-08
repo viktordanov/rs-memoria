@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": ["Bash(ls:*)"]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "echo pre", "timeout": 3 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "echo user stop", "timeout": 10 }
+        ]
+      }
+    ]
+  },
+  "exactNumbers": {
+    "big": 123456789012345678901234567890,
+    "negative": -2.5e-8,
+    "zero": 0.0
+  }
+}

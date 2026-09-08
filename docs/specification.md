@@ -2,17 +2,44 @@
 
 ## Specification status
 
-**Status:** Scoping draft. No implementation is assumed.
+**Status:** Approved contract for release 0.2.0. The implementation follows it.
 
-**Name:** Memoria is the working name.
+**Purpose:** Memoria tracks documentation freshness across machines.
 
-**Purpose:** Keep a project's documented mental model connected to its code.
-
-The main product decisions come from the project brief and design discussion.
-Items marked **Proposed** add a detail that still needs agreement.
-File names, command names, and configuration keys are proposed, not final.
+File names, command names, and configuration keys in this document are the released names.
+The [command reference](cli.md) gives the exact arguments and diagnostics.
 
 In this document, **must** means required. **Should** means preferred. **May** means optional.
+
+### Portability contract
+
+Two mechanisms decide different questions, and this separation is the core of the release:
+
+| Mechanism | Authority | Host settings |
+| --- | --- | --- |
+| Actual file eligibility | The Git CLI adapter | Apply normally. |
+| Repository policy inventory | Repository `.gitignore` bytes only | Do not read or apply. |
+
+Equal selected inputs and equal repository policy produce equal freshness across hosts.
+The guarantee needs equal selected paths, equal bytes, equal document boundaries, and equal repository rules.
+It does not normalize case-only paths, Unicode filenames, or line endings.
+
+This table gives the required result for each change:
+
+| Change | Required result |
+| --- | --- |
+| A host rule changes without changing selected files or bytes | No policy change and no new pending review. |
+| A host rule removes an untracked selected file | The owning manifest loses that file, and the owner requires review. |
+| A host rule exposes an untracked file | The new owner gains that file and requires review. |
+| A host rule matches a tracked file | The file stays selected, and its byte changes still require review. |
+| A repository `.gitignore` rule changes | Applicable repository policy changes, even without a selected-file change. |
+| A Memoria selection rule changes | Applicable Memoria policy changes. |
+| Selected content changes with an identical size or timestamp | Its raw byte hash changes, and the owning document requires review. |
+
+The repository policy inventory uses `gix-ignore` inside the infrastructure boundary.
+It starts with an empty search, adds only the supplied repository rule buffers, and uses fixed case-sensitive matching.
+It never loads host-local exclusions.
+Fixed case behavior makes the inventory portable; actual eligibility still follows the host Git behavior.
 
 ## On this page
 
@@ -76,14 +103,14 @@ The graph shows the **documented project model**. It does not claim to discover 
 
 ### 2.1 Project files
 
-**Proposed layout:**
+**Layout:**
 
 ```text
 project/
 ├── memoria.toml              # Root configuration
+├── memoria.lock              # Latest review records, generated
+├── .gitattributes            # Contains: /memoria.lock binary
 ├── README.md                 # Project overview
-├── .memoria/
-│   └── state.json            # Latest review records
 └── src/
     └── retrieval/
         ├── README.md         # Local explanation
@@ -99,7 +126,7 @@ Use an optional sidecar file for local settings. Use short HTML comments for doc
 
 ### 2.2 Find the project
 
-**Proposed default:** Find the Git root from the current directory. Read the root configuration there.
+**Default:** Find the Git root from the current directory. Read the root configuration there.
 
 Commands should work from any directory inside that project.
 An explicit root option must be available when discovery is not suitable.
@@ -111,7 +138,7 @@ Support for repositories without Git is an open scope decision.
 Memoria must respect repository Git ignore rules, including rules in subdirectories.
 Memoria-specific ignores must also support glob patterns.
 
-**Proposed selection rule:** Start with tracked files and untracked files that Git does not ignore.
+**Selection rule:** Start with tracked files and untracked files that Git does not ignore.
 Then apply Memoria rules.
 
 Under this rule, a tracked file stays eligible even when it matches a Git ignore pattern.
@@ -126,7 +153,7 @@ Some tests or fixtures may be important inputs to a README.
 
 Root rules apply across the project. Local rules apply within their scope and pass down to child scopes.
 
-**Proposed precedence:** A more specific local rule overrides an inherited Memoria rule.
+**Precedence:** A more specific local rule overrides an inherited Memoria rule.
 A local `include` can restore a file excluded by Memoria.
 It does not restore a file excluded by the Git selection step.
 
@@ -165,25 +192,25 @@ Changes in its text propagate through declared imports, not through recursive fi
 Adding, moving, or deleting a README must recalculate ownership.
 Changes to an owner's selected file set must invalidate its previous review.
 
-**Proposed default:** Recognize `README.md`. Report selected files that have no owner as coverage errors.
+**Default:** Recognize `README.md`. Report selected files that have no owner as coverage errors.
 A root README normally prevents these gaps.
 Do not follow paths outside the project or enter nested repositories automatically.
 
 ### 2.6 Root configuration
 
-**Proposed example:**
+**Example:**
 
 ```toml
-version = 1
+version = 2
 ignore = ["**/generated/**", "**/*.snap"]
 
 [documentation]
-instructions = [
+guidance = [
     "Use Simplified English.",
     "Keep sections short.",
     "Explain each part before its details.",
 ]
-instruction_files = [
+guidance_files = [
     ".agents/simplified-english.md",
     ".agents/adhd-writing.md",
 ]
@@ -196,7 +223,7 @@ languages = {}
 An empty `languages` map means that no language-specific filter is enabled.
 Instruction paths above are examples. Each project supplies its own files.
 
-**Proposed local exception:**
+**Local exception:**
 
 ```toml
 # compiler/README.memoria.toml
@@ -220,7 +247,7 @@ A parent should consume a short child summary, not repeat the child's full expla
 An **export** is a marked section that another README can use.
 Its identifier must stay separate from its visible heading.
 
-**Proposed syntax in `retrieval/README.md`:**
+**Syntax in `retrieval/README.md`:**
 
 ```markdown
 <!-- memoria:export id="summary" -->
@@ -237,7 +264,7 @@ Identifiers must be unique within a document.
 
 An **import** declares a dependency and marks where Memoria writes a copy.
 
-**Proposed syntax in the root README:**
+**Syntax in the root README:**
 
 ```markdown
 <!-- memoria:import src="retrieval/README.md#summary" -->
@@ -261,7 +288,7 @@ Running it twice with the same inputs must produce the same file.
 Missing exports, duplicate identifiers, and malformed blocks must produce clear errors.
 Markers shown inside fenced code examples must not act as declarations.
 
-**Proposed first-release limit:** Blocks cannot overlap or nest.
+**Limit:** Blocks cannot overlap or nest.
 Parents write their own exported summaries outside imported blocks.
 
 Links and images must remain valid when copied into another directory.
@@ -295,7 +322,7 @@ No custom categories such as “core,” “useful,” or “optional” are req
 
 Automatic ownership does not guarantee that a reader can find a README.
 
-**Proposed orphan rule:** A README is disconnected when no path from the root README reaches it through local links or imports.
+**Orphan rule:** A README is disconnected when no path from the root README reaches it through local links or imports.
 This is a navigation warning, not an ownership failure.
 
 The graph must still show disconnected READMEs. It must not hide them.
@@ -340,12 +367,21 @@ A broad AST framework is not required for the core pilot.
 Ownership changes, ignore changes, and filter changes can change what a review covers.
 Memoria must detect changes to the effective review inputs and policy.
 
-Documentation-writing instructions are review context only.
-Changing a style rule or instruction file must not automatically make documentation stale.
+Project documentation guidance is review context only.
+Changing a guidance entry or a guidance file must not automatically make documentation stale.
 Memoria cannot deterministically prove that existing prose follows a semantic writing rule.
 
-Do not hash review timestamps, writing instructions, or the state file as source inputs.
+Do not hash review timestamps, documentation guidance, host ignore rules, or the state file as source inputs.
 Otherwise, recording a review or changing review guidance could trigger unrelated source-based reviews.
+
+Each review stores the guidance digest that its reviewer saw.
+Status, the review plan, and `check` report a changed digest as an advisory.
+The advisory persists until a real review acknowledges the new guidance.
+No command manufactures a review record to dismiss it.
+
+The guidance digest uses XXH3-64 with seed 0 and the canonical domain `memoria.guidance.v1`.
+The encoding starts with that domain and the entry count, and then each entry's four length-prefixed UTF-8 fields.
+It stays outside the policy hash, the input manifest, the review schedule, and the import propagation rules.
 
 ### 4.4 Explicitly invalidate documentation
 
@@ -359,7 +395,7 @@ Examples include:
 - Review a subsystem after an architecture decision.
 - Add failure-mode explanations across a documentation tree.
 
-**Proposed command:**
+The command is:
 
 ```sh
 memoria invalidate <scope> --reason "<reason>"
@@ -391,8 +427,24 @@ The review packet must present all active reasons together.
 
 ### 4.5 Store the latest review
 
-Use one versioned state file, such as `.memoria/state.json`.
+Use one versioned state file: `memoria.lock`, beside `memoria.toml` at the worktree root.
+It is generated, machine-owned binary state, at format version 2.
 Keep the latest review for each README. Do not append an endless journal to the README.
+
+The artifact must be deterministic, portable, bounded, atomic, corruption-detecting, and safe to commit.
+One logical state must produce one byte sequence.
+It must hold only the information that the review, acknowledgement, invalidation, Git, and migration contracts need.
+Historical event logging is outside this release.
+
+The frame is a magic value, a format version, a codec, a decoded length, a body, and an XXH3-128 checksum.
+The payload normalizes records into canonical tables of strings, paths, repeated content descriptors, guidance digests, Git contexts, and integer vectors.
+The [state guide](state.md) gives the exact layout, the limits, and the measured sizes.
+
+The release has one clean cutover.
+It does not support simultaneous old and new state formats.
+The legacy path is `.memoria/state.json` and the current path is `memoria.lock`.
+A lone `.memoria/state.json` produces `state_legacy`; both files together produce `state_ambiguous`.
+There is no automatic migration and no reserved alias.
 
 Git history can retain older committed records. Uncommitted replacements are not a full audit history.
 
@@ -403,7 +455,7 @@ Those Git fields provide context only.
 A result must distinguish between **documentation updated** and **reviewed; no update needed**.
 Both outcomes can make a review current.
 
-**Proposed state details:** Retain per-file and per-import hashes so the tool can explain changed inputs.
+**State details:** Retain per-file and per-import hashes so the tool can explain changed inputs.
 Also record the reviewed README content, excluding tool-owned metadata.
 Later document edits can then invalidate that review without affecting unrelated consumers.
 
@@ -416,7 +468,7 @@ Each task must explain the cause and provide the relevant context:
 
 - Owned files, changed paths, and available diffs.
 - Imported sections, exports, and affected consumers.
-- The previous review and applicable writing instructions.
+- The previous review and applicable documentation guidance.
 
 Show input size before asking an agent to consume a large packet.
 Prefer a change summary and focused content over dumping the whole repository.
@@ -431,7 +483,7 @@ Do not present a diff from a different snapshot as the reviewed diff.
 The CLI must identify the exact input snapshot that a reviewer receives.
 Acknowledgement must name that snapshot, not whatever happens to be current later.
 
-**Proposed interface:** Return a review token with the packet. Require the same token when recording the result.
+**Interface:** Return a review token with the packet. Require the same token when recording the result.
 
 Before writing the record, the CLI must check the inputs again.
 If they changed during review, it must reject the acknowledgement and explain the difference.
@@ -536,7 +588,7 @@ It must teach agents to use CLI results instead of reconstructing the dependency
 
 Installation must detect supported skill locations and allow a custom path.
 
-**Proposed commands:**
+**Commands:**
 
 ```sh
 memoria agent install
@@ -551,7 +603,7 @@ This specification does not freeze vendor-specific directory paths.
 Before writing, display the target agent, destination, and file changes.
 Back up existing files that will be replaced. Provide a dry-run mode.
 
-Prefer a dedicated Memoria skill directory. Never replace shared agent instructions wholesale.
+Prefer a dedicated Memoria skill directory. Never replace shared agent configuration wholesale.
 Installation must not grant new agent permissions or execute project-supplied code.
 
 Keep an installation record with managed paths, versions, backups, and installed content hashes.
@@ -562,14 +614,14 @@ Uninstall must remove only Memoria-managed content and restore replaced content 
 If the user edited an installed file, preserve it and report the conflict.
 Never silently overwrite those edits with a backup.
 
-### 5.6 Add project writing instructions
+### 5.6 Add project documentation guidance
 
-The root configuration may contain short writing rules and references to instruction files.
-Memoria must include applicable instructions in each focused review packet.
-These instructions guide the reviewer. They do not automatically change fingerprints or staleness.
+The root configuration may contain short writing rules and references to guidance files.
+Memoria must include the applicable guidance in each focused review packet.
+That guidance informs the reviewer. It does not change fingerprints or staleness.
 When a project wants existing documentation reviewed against a new rule, it should create an explicit invalidation with a reason.
 
-A missing instruction file must produce a clear error. Do not silently skip it.
+A missing guidance file must produce a clear error. Do not silently skip it.
 The canonical skill must tell the agent to read these project rules.
 
 Simplified English and ADHD-friendly structure are project preferences, not hard-coded rules for every user.
@@ -623,7 +675,7 @@ DIA-specific knowledge belongs in DIA, not in Memoria.
 ### 6.2 First-release additions
 
 Add the footprint view, graph display, navigation warnings, and missing-import hints.
-Add project writing instructions and the safe Codex and Claude skill installers.
+Add project documentation guidance and the safe Codex and Claude skill installers.
 
 Local override details and any first language filter must be tested before release.
 A filter must not delay the core pilot or become a prerequisite for using Memoria.
@@ -648,7 +700,7 @@ The internal document model may support other Markdown documents later. READMEs 
 | A tested filter sees a supported formatting-only edit. | The documentation fingerprint stays unchanged. |
 | A filter fails or sees unsupported syntax. | Raw hashing is used and the fallback is visible. |
 | A reviewer finds no documentation change necessary. | A note records the review without forcing prose edits. |
-| A writing instruction changes. | Existing READMEs do not become stale automatically. The new instruction appears in future review context. |
+| A guidance entry changes. | Existing READMEs do not become stale automatically. The new entry appears in future review context, and status reports an advisory. |
 | The whole project is explicitly invalidated with a reason. | Every README in scope becomes pending and receives the same semantic review reason. |
 | Only one subtree is explicitly invalidated. | READMEs outside that scope remain current unless another rule affects them. |
 | A README is reviewed against an explicit invalidation. | Acknowledgement clears that invalidation for that README without requiring a source change. |
@@ -664,15 +716,21 @@ The internal document model may support other Markdown documents later. READMEs 
 | An installed skill was edited locally. | Uninstall preserves the edit and reports a conflict. |
 | The workflow has no unresolved required work. | The deterministic CI check passes without an LLM. |
 
-### 6.5 Decisions still open
+### 6.5 Deferred scope
 
-Choose the implementation language, distribution method, and final command and file names.
+These items are outside this release:
 
-Confirm the proposed ignore precedence, coverage errors, orphan rule, review token, and reviewed-document fingerprint.
-Choose the first supported language filter, or ship without one.
+- The README graph explorer and its localhost server.
+- Automatic documentation authorship and automatic semantic invalidation from guidance text.
+- Historical event logs, trained compression dictionaries, and custom Git merge drivers.
+- Automatic migration of version 1 review state and alternate fingerprint algorithms.
+- Global hooks, other hook events, other agents, and isolated Claude hooks for linked worktrees.
 
-Set the initial Markdown rendering limits, especially links and images inside exports.
-Decide whether old review content needs a local cache when Git cannot supply it.
+These platform items are also outside this release:
+
+- Windows support, network filesystem durability, and Unicode or case normalization of paths.
+- Automatic client trust, permission changes, and plugin installation.
+- Automatic cleanup of persistent installation locks or legacy skill directories.
 
 Keep these choices separate from the main invariant:
 

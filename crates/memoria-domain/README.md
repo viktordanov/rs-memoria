@@ -60,7 +60,11 @@ The canonical encoder gives these values a stable byte representation.
 The application requests hashes from its hasher port.
 The domain itself does not calculate XXH3-64 hashes.
 
-Source evidence: [manifest.rs:73](src/manifest.rs#L73) and [canonical.rs:110](src/canonical.rs#L110).
+The policy scopes hold repository `.gitignore` paths only.
+Host ignore sources have no identity here, so they cannot enter a policy hash.
+The encoder names the algorithms it assumes: `git-worktree-v2`, `repository-ignore-v1`, and `nearest-readme-v1`.
+
+Source evidence: [manifest.rs](src/manifest.rs#L73), [policy.rs](src/policy.rs#L1), and [canonical.rs](src/canonical.rs#L1).
 
 ## Pending and waiting describe different states
 
@@ -80,11 +84,15 @@ An acknowledgement records the reviewer, result, and reason that the explanation
 A revision is the counter that increases after each acknowledgement for that README.
 
 `ReviewState::acknowledge` compares the manifests, document revision, and covered invalidations before it changes the state value.
-It increments the document revision and records the reviewer, result, and note.
+It increments the document revision and records the reviewer, result, note, and guidance digest.
 It clears only the covered invalidations for that document.
 The application owns the lock, readiness validation, and durable save.
 
-Source evidence: [schedule.rs:38](src/schedule.rs#L38) and [review.rs:645](src/review.rs#L645).
+The record stores the guidance digest as a value.
+The domain does not decide whether that guidance is good or compatible.
+The application compares the packet context with the current context before it calls the aggregate.
+
+Source evidence: [schedule.rs](src/schedule.rs#L38) and [review.rs](src/review.rs#L1).
 
 ## Boundaries and errors
 
@@ -99,6 +107,7 @@ The application maps these errors to diagnostics and exit classes.
 | `selection`, `ownership`, `policy` | Selected inputs and their owners |
 | `graph`, `schedule` | Dependencies, navigation, and review order |
 | `manifest`, `canonical` | Input comparisons and stable byte encodings |
+| `guidance` | The guidance digest value type and its entry kinds |
 | `review` | Review records and invalidation transitions |
 
 The [crate manifest](Cargo.toml) declares no runtime dependencies.

@@ -68,28 +68,35 @@ fn no_git_missing_config_and_unborn_head() {
     let (code, status) = project.json(&["status"]);
     assert_eq!(code, 1);
     assert_eq!(diagnostic_codes(&status), vec!["configuration_missing"]);
-    // init on an unborn HEAD creates everything and produces a working project.
-    let (code, init) = project.json(&["init"]);
-    assert_eq!(code, 0);
+    // Apply refuses before any write while the root README is missing.
+    let (code, refused) = project.json(&["init", "--apply"]);
+    assert_eq!(code, 1, "{refused:?}");
+    assert_eq!(diagnostic_codes(&refused), vec!["root_readme_missing"]);
+    assert!(!project.exists("memoria.toml"));
+    assert!(!project.exists("memoria.lock"));
+    // With an authored root README, apply creates only the two committed files.
+    project.write("README.md", "# Root\n\nAuthored before Memoria writes.\n");
+    let (code, init) = project.json(&["init", "--apply"]);
+    assert_eq!(code, 0, "{init:?}");
     assert_eq!(
         strings(get(&init, &["data", "created"])),
-        vec!["memoria.toml", "README.md", ".memoria/state.json"]
+        vec!["memoria.toml", "memoria.lock"]
     );
     let (code, _) = project.json(&["lint"]);
     assert_eq!(code, 0);
     project.ack_ok("README.md");
-    let state = parse_json(&project.state());
+    let state = project.inspect_state();
     assert!(matches!(
         get(&state, &["reviews", "README.md", "git", "base_commit"]),
         Json::Null
     ));
     assert_eq!(project.json(&["check"]).0, 0);
-    // init is idempotent and does not repair invalid configuration silently.
-    let (code, again) = project.json(&["init"]);
+    // Apply is idempotent and does not repair invalid configuration silently.
+    let (code, again) = project.json(&["init", "--apply"]);
     assert_eq!(code, 0);
     assert!(strings(get(&again, &["data", "created"])).is_empty());
     project.write("memoria.toml", "version = 3\n");
-    let (code, bad) = project.json(&["init"]);
+    let (code, bad) = project.json(&["init", "--apply"]);
     assert_eq!(code, 1);
     assert_eq!(diagnostic_codes(&bad), vec!["configuration_invalid"]);
 }
@@ -107,13 +114,7 @@ fn sparse_checkout_and_nested_repositories() {
     // A nested repository is an opaque boundary.
     fs::create_dir_all(project.root.join("vendor/lib")).unwrap();
     fs::write(project.root.join("vendor/lib/code.rs"), "fn x() {}\n").unwrap();
-    let nested = std::process::Command::new("git")
-        .arg("-C")
-        .arg(project.root.join("vendor/lib"))
-        .args(["init", "-q"])
-        .output()
-        .unwrap();
-    assert!(nested.status.success());
+    project.git_in(&project.root.join("vendor/lib"), &["init", "-q"]);
     let (code, status) = project.json(&["status"]);
     assert_eq!(code, 0);
     assert_eq!(
@@ -156,7 +157,7 @@ fn tracked_ignored_files_stay_eligible_and_untracked_ignored_do_not() {
         "memoria.toml",
         project
             .read_string("memoria.toml")
-            .replace("version = 1\n", "version = 1\ninclude = []\n"),
+            .replace("version = 2\n", "version = 2\ninclude = []\n"),
     );
     project.write(
         "memoria.toml",
@@ -275,35 +276,47 @@ fn state_corruption_is_never_reset() {
     let project = Project::seed();
     project.baseline();
     let good = project.state();
-    let cases: Vec<(&str, Vec<u8>)> = vec![
-        ("malformed", b"{".to_vec()),
-        ("duplicate", b"{\"schema_version\":1,\"schema_version\":1,\"revision\":0,\"next_invalidation_id\":1,\"reviews\":{},\"invalidations\":[]}".to_vec()),
-        ("future", b"{\"schema_version\":2,\"revision\":0,\"next_invalidation_id\":1,\"reviews\":{},\"invalidations\":[]}".to_vec()),
-        ("counter", b"{\"schema_version\":1,\"revision\":0,\"next_invalidation_id\":1,\"reviews\":{},\"invalidations\":[{\"id\":5,\"scope\":\"all\",\"reason\":\"x y z w\",\"created_at\":\"t\",\"targets\":[\"README.md\"],\"pending_documents\":[]}]}".to_vec()),
-        ("fingerprint", String::from_utf8(good.clone()).unwrap().replacen("\"input_fingerprint\": \"", "\"input_fingerprint\": \"0000", 1).replacen("0000", "", 0).into_bytes()),
+    let flip = |source: &[u8], index: usize| -> Vec<u8> {
+        let mut bytes = source.to_vec();
+        bytes[index] ^= 0x01;
+        bytes
+    };
+    let cases: Vec<(&str, Vec<u8>, &str)> = vec![
+        ("empty", Vec::new(), "state_corrupt"),
+        ("text", b"not a lock file".to_vec(), "state_corrupt"),
+        ("magic", flip(&good, 1), "state_corrupt"),
+        (
+            "version",
+            {
+                let mut bytes = good.clone();
+                bytes[4] = 9;
+                bytes
+            },
+            "state_unsupported_schema",
+        ),
+        (
+            "codec",
+            {
+                let mut bytes = good.clone();
+                bytes[5] = 7;
+                bytes
+            },
+            "state_unsupported_codec",
+        ),
+        ("body", flip(&good, good.len() / 2), "state_corrupt"),
+        ("checksum", flip(&good, good.len() - 1), "state_corrupt"),
+        (
+            "truncated",
+            good[..good.len() - 1].to_vec(),
+            "state_corrupt",
+        ),
     ];
-    for (name, bytes) in cases {
-        let bytes = if name == "fingerprint" {
-            // Corrupt one stored fingerprint while keeping valid hex.
-            let text = String::from_utf8(good.clone()).unwrap();
-            let start =
-                text.find("\"input_fingerprint\": \"").unwrap() + "\"input_fingerprint\": \"".len();
-            let mut chars: Vec<char> = text.chars().collect();
-            chars[start] = if chars[start] == '0' { '1' } else { '0' };
-            chars.into_iter().collect::<String>().into_bytes()
-        } else {
-            bytes
-        };
-        project.write(".memoria/state.json", &bytes);
+    for (name, bytes, expected) in cases {
+        project.write("memoria.lock", &bytes);
         let (code, status) = project.json(&["status"]);
         assert_eq!(code, 4, "{name}");
         let codes = diagnostic_codes(&status);
-        assert!(
-            codes
-                .iter()
-                .all(|c| c == "state_corrupt" || c == "state_unreadable"),
-            "{name}: {codes:?}"
-        );
+        assert!(codes.iter().all(|c| c == expected), "{name}: {codes:?}");
         let (code, _) = project.json(&[
             "invalidate",
             "all",
@@ -316,11 +329,50 @@ fn state_corruption_is_never_reset() {
             bytes,
             "{name}: state must not be rewritten"
         );
-        let (code, _) = project.json(&["init"]);
+        let (code, _) = project.json(&["init", "--apply"]);
         assert_eq!(code, 4, "{name}");
         assert_eq!(project.state(), bytes);
+        // Read-only inspection reports the same diagnostic and repairs nothing.
+        let (code, inspect) = project.json(&["state", "inspect"]);
+        assert_eq!(code, 4, "{name}");
+        assert_eq!(diagnostic_codes(&inspect), vec![expected], "{name}");
+        assert_eq!(project.state(), bytes);
     }
-    project.write(".memoria/state.json", &good);
+    project.write("memoria.lock", &good);
+    assert_eq!(project.json(&["check"]).0, 0);
+}
+
+#[test]
+fn legacy_and_dual_state_paths_require_clean_cutover() {
+    let project = Project::seed();
+    project.baseline();
+    const LEGACY: &str = ".memoria/state.json";
+    let good = project.state();
+    // Both paths present: ambiguous, even before either file is decoded.
+    project.write(LEGACY, b"{\"schema_version\":1}");
+    let (code, status) = project.json(&["status"]);
+    assert_eq!(code, 4, "{status:?}");
+    assert_eq!(diagnostic_codes(&status), vec!["state_ambiguous"]);
+    // The ambiguity holds even when the legacy file is corrupt.
+    project.write(LEGACY, b"not json at all");
+    let (code, status) = project.json(&["status"]);
+    assert_eq!(code, 4, "{status:?}");
+    assert_eq!(diagnostic_codes(&status), vec!["state_ambiguous"]);
+    // A lone legacy file names the cutover, and nothing is migrated.
+    std::fs::remove_file(project.root.join("memoria.lock")).unwrap();
+    let (code, status) = project.json(&["status"]);
+    assert_eq!(code, 4, "{status:?}");
+    assert_eq!(diagnostic_codes(&status), vec!["state_legacy"]);
+    assert!(!project.exists("memoria.lock"), "no state was created");
+    // Removing the legacy file restores the ordinary missing-state behavior.
+    std::fs::remove_file(project.root.join(LEGACY)).unwrap();
+    let (code, status) = project.json(&["status"]);
+    assert_eq!(code, 0, "{status:?}");
+    assert_eq!(
+        get(&status, &["data", "reviews", "never_reviewed"]),
+        &Json::Number(6)
+    );
+    project.write("memoria.lock", &good);
     assert_eq!(project.json(&["check"]).0, 0);
 }
 
@@ -330,7 +382,11 @@ fn usage_and_exit_status_contract() {
     project.baseline();
     let output = project.run(&["--version"]);
     assert_eq!(output.status.code(), Some(0));
-    assert!(stdout(&output).starts_with("memoria 0.1.0"));
+    assert!(
+        stdout(&output).starts_with(&format!("memoria {}", env!("CARGO_PKG_VERSION"))),
+        "{}",
+        stdout(&output)
+    );
     let output = project.run(&["--help"]);
     assert_eq!(output.status.code(), Some(0));
     for command in [
@@ -371,12 +427,33 @@ fn usage_and_exit_status_contract() {
     let (code, value) = project.json(&["render", "src/nothing/README.md"]);
     assert_eq!(code, 1);
     assert_eq!(diagnostic_codes(&value), vec!["document_not_found"]);
-    // JSON envelope shape.
+    // JSON envelope shape. The release has one clean cutover, so every
+    // envelope advertises schema version 2, on success and on failure.
     let (_, value) = project.json(&["status"]);
-    assert_eq!(get_u64(&value, &["schema_version"]), 1);
+    assert_eq!(get_u64(&value, &["schema_version"]), 2);
     assert_eq!(get_str(&value, &["command"]), "status");
     assert!(get_bool(&value, &["ok"]));
     assert!(matches!(get(&value, &["diagnostics"]), Json::Array(_)));
+    let (_, failure) = project.json(&["review", "src/nothing/README.md"]);
+    assert_eq!(get_u64(&failure, &["schema_version"]), 2);
+    assert!(!get_bool(&failure, &["ok"]));
+    for command in [
+        vec!["guidance"],
+        vec!["state", "inspect"],
+        vec!["status", "--summary"],
+        vec!["lint"],
+        vec!["check"],
+        vec!["graph"],
+        vec!["review"],
+        vec!["init"],
+    ] {
+        let (_, value) = project.json(&command);
+        assert_eq!(
+            get_u64(&value, &["schema_version"]),
+            2,
+            "{command:?}: every envelope uses schema version 2"
+        );
+    }
     // Human diagnostics go to stderr; stdout stays clean for JSON.
     let output = project.run(&["lint"]);
     assert!(stderr(&output).contains("hint: missing_import_hint"));
@@ -390,7 +467,7 @@ fn state_file_permissions_and_durability() {
     let project = Project::seed();
     project.baseline();
     use std::os::unix::fs::PermissionsExt;
-    let mode = fs::metadata(project.root.join(".memoria/state.json"))
+    let mode = fs::metadata(project.root.join("memoria.lock"))
         .unwrap()
         .permissions()
         .mode()
@@ -398,7 +475,7 @@ fn state_file_permissions_and_durability() {
     assert_eq!(mode & 0o077, 0, "state is private by default: {mode:o}");
     // A custom mode is preserved across replacements.
     fs::set_permissions(
-        project.root.join(".memoria/state.json"),
+        project.root.join("memoria.lock"),
         fs::Permissions::from_mode(0o640),
     )
     .unwrap();
@@ -408,7 +485,7 @@ fn state_file_permissions_and_durability() {
         "--reason",
         "Check permissions are preserved.",
     ]);
-    let mode = fs::metadata(project.root.join(".memoria/state.json"))
+    let mode = fs::metadata(project.root.join("memoria.lock"))
         .unwrap()
         .permissions()
         .mode()
@@ -416,30 +493,22 @@ fn state_file_permissions_and_durability() {
     assert_eq!(mode, 0o640);
     // A write failure leaves the previous state intact and no temporary files.
     let before = project.state();
-    fs::set_permissions(
-        project.root.join(".memoria"),
-        fs::Permissions::from_mode(0o500),
-    )
-    .unwrap();
+    fs::set_permissions(&project.root, fs::Permissions::from_mode(0o500)).unwrap();
     let (code, value) = project.json(&[
         "invalidate",
         "all",
         "--reason",
         "This write must fail safely.",
     ]);
-    fs::set_permissions(
-        project.root.join(".memoria"),
-        fs::Permissions::from_mode(0o700),
-    )
-    .unwrap();
+    fs::set_permissions(&project.root, fs::Permissions::from_mode(0o755)).unwrap();
     if code != 0 {
         assert_eq!(code, 4);
         assert!(diagnostic_codes(&value).iter().all(|c| c == "io_error"));
         assert_eq!(project.state(), before);
-        let leftovers: Vec<String> = fs::read_dir(project.root.join(".memoria"))
+        let leftovers: Vec<String> = fs::read_dir(&project.root)
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-            .filter(|n| n.contains("tmp"))
+            .filter(|n| n.starts_with(".memoria.lock.tmp."))
             .collect();
         assert!(leftovers.is_empty(), "{leftovers:?}");
     }

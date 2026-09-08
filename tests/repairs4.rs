@@ -174,15 +174,16 @@ fn reserved_trees_never_contain_documents() {
             );
         }
         let install_parent = project.root.join(parent);
-        let (code, _) = project.json(&[
+        let (code, installed) = project.json(&[
             "agent",
             "install",
             "--target",
             "codex",
             "--path",
             install_parent.to_str().unwrap(),
+            "--replace-existing",
         ]);
-        assert_eq!(code, 0);
+        assert_eq!(code, 0, "{parent}: {installed:?}");
         assert!(install_parent.join("memoria.backup/README.md").exists());
         let (code, check) = project.json(&["check"]);
         assert_eq!(code, 0, "{parent}: {check:?}");
@@ -254,7 +255,7 @@ fn reserved_trees_never_contain_documents() {
         "memoria.toml",
         project
             .read_string("memoria.toml")
-            .replace("version = 1\n", "version = 1\ninclude = []\n"),
+            .replace("version = 2\n", "version = 2\ninclude = []\n"),
     );
     project.write(
         "memoria.toml",
@@ -327,18 +328,18 @@ fn non_utf8_arguments_are_usage_errors_not_panics() {
 
 // MEM-030
 #[test]
-fn quoted_instructions_with_colons_are_accepted_everywhere() {
+fn quoted_guidance_with_colons_are_accepted_everywhere() {
     let project = Project::seed();
-    project.write("memoria.toml", "version = 1\nignore = [\n    \"**/generated/**\",\n    \"**/fixtures/**\",\n]\n\n[documentation]\ninstructions = [\n    \"Style: use short sentences.\",\n    \"Tone: plain words.\",\n]\ninstruction_files = [\n    \".agents/writing.md\",\n]\n");
-    project.write("src/retrieval/README.memoria.toml", "include = [\n    \"fixtures/**\",\n]\n\n[documentation]\ninstructions = [\n    \"Retrieval: explain ranking first.\",\n]\n");
+    project.write("memoria.toml", "version = 2\nignore = [\n    \"**/generated/**\",\n    \"**/fixtures/**\",\n]\n\n[documentation]\nguidance = [\n    \"Style: use short sentences.\",\n    \"Tone: plain words.\",\n]\nguidance_files = [\n    \".agents/writing.md\",\n]\n");
+    project.write("src/retrieval/README.memoria.toml", "include = [\n    \"fixtures/**\",\n]\n\n[documentation]\nguidance = [\n    \"Retrieval: explain ranking first.\",\n]\n");
     project.baseline();
     project.append("src/retrieval/engine.rs", "// edit\n");
     let (packet, _) = project.review_packet("src/retrieval/README.md");
     let value = parse_json(&fs::read(packet).unwrap());
-    let Json::Array(instructions) = get(&value, &["data", "context", "instructions"]) else {
+    let Json::Array(guidance) = get(&value, &["data", "context", "guidance", "entries"]) else {
         panic!()
     };
-    let texts: Vec<&str> = instructions.iter().map(|i| get_str(i, &["text"])).collect();
+    let texts: Vec<&str> = guidance.iter().map(|i| get_str(i, &["text"])).collect();
     assert!(texts.contains(&"Style: use short sentences."), "{texts:?}");
     assert!(texts.contains(&"Tone: plain words."), "{texts:?}");
     assert!(
@@ -347,14 +348,14 @@ fn quoted_instructions_with_colons_are_accepted_everywhere() {
     );
     // The single-line array form is equivalent and does not change staleness.
     let state = project.state();
-    project.write("memoria.toml", "version = 1\nignore = [\n    \"**/generated/**\",\n    \"**/fixtures/**\",\n]\n\n[documentation]\ninstructions = [\"Style: use short sentences.\", 'Tone: plain words.']\ninstruction_files = [\n    \".agents/writing.md\",\n]\n");
+    project.write("memoria.toml", "version = 2\nignore = [\n    \"**/generated/**\",\n    \"**/fixtures/**\",\n]\n\n[documentation]\nguidance = [\"Style: use short sentences.\", 'Tone: plain words.']\nguidance_files = [\n    \".agents/writing.md\",\n]\n");
     let (packet, _) = project.review_packet("src/retrieval/README.md");
     let value = parse_json(&fs::read(packet).unwrap());
-    let Json::Array(instructions) = get(&value, &["data", "context", "instructions"]) else {
+    let Json::Array(guidance) = get(&value, &["data", "context", "guidance", "entries"]) else {
         panic!()
     };
     assert!(
-        instructions
+        guidance
             .iter()
             .any(|i| get_str(i, &["text"]) == "Style: use short sentences.")
     );
@@ -362,7 +363,7 @@ fn quoted_instructions_with_colons_are_accepted_everywhere() {
     // Table values in a string array are still rejected.
     project.write(
         "memoria.toml",
-        "version = 1\n\n[documentation]\ninstructions = [\n    { key = \"value\" },\n]\n",
+        "version = 2\n\n[documentation]\nguidance = [\n    { key = \"value\" },\n]\n",
     );
     let (code, lint) = project.json(&["lint"]);
     assert_eq!(code, 1);

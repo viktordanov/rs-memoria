@@ -14,8 +14,8 @@ use memoria_infrastructure::fs::{
     AtomicFileWriter, FsProjectFiles, LockFileCoordinator, SystemClock,
 };
 use memoria_infrastructure::{
-    FsPacketInput, FsSkillStore, GitCli, JsonPacketCodec, JsonStateStore, PulldownMarkdownCodec,
-    Xxh3Hasher,
+    EnvAgentLocations, FsHookStore, FsPacketInput, FsSkillStore, GitCli, GixRepositoryIgnore,
+    JsonPacketCodec, LockStateInspector, LockStateStore, PulldownMarkdownCodec, Xxh3Hasher,
 };
 
 struct Quiet;
@@ -42,7 +42,7 @@ fn git(root: &Path, args: &[&str]) {
 fn seed() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
-    fs::write(root.join("memoria.toml"), "version = 1\n").unwrap();
+    fs::write(root.join("memoria.toml"), "version = 2\n").unwrap();
     fs::write(
         root.join("README.md"),
         "# Root\n\n<!-- memoria:import src=\"a/README.md#s\" -->\n<!-- /memoria:import -->\n<!-- memoria:import src=\"b/README.md#s\" -->\n<!-- /memoria:import -->\n",
@@ -88,12 +88,6 @@ impl GitRepository for MutatingGit<'_> {
     fn sparse_checkout_enabled(&self) -> Result<bool, AdapterError> {
         self.inner.sparse_checkout_enabled()
     }
-    fn global_excludes(&self) -> Result<Option<Vec<u8>>, AdapterError> {
-        self.inner.global_excludes()
-    }
-    fn repository_excludes(&self) -> Result<Option<Vec<u8>>, AdapterError> {
-        self.inner.repository_excludes()
-    }
     fn head_commit(&self) -> Result<Option<String>, AdapterError> {
         self.inner.head_commit()
     }
@@ -106,8 +100,14 @@ impl GitRepository for MutatingGit<'_> {
     fn explain_ignore(&self, path: &str) -> Result<Option<String>, AdapterError> {
         self.inner.explain_ignore(path)
     }
-    fn ignored_directories(&self, directories: &[String]) -> Result<Vec<String>, AdapterError> {
-        self.inner.ignored_directories(directories)
+    fn git_dir(&self) -> Result<String, AdapterError> {
+        self.inner.git_dir()
+    }
+    fn private_path(&self, relative: &str) -> Result<String, AdapterError> {
+        self.inner.private_path(relative)
+    }
+    fn main_worktree(&self) -> Result<String, AdapterError> {
+        self.inner.main_worktree()
     }
 }
 
@@ -118,7 +118,11 @@ struct Harness<'a> {
     config: TomlConfigurationReader,
     markdown: PulldownMarkdownCodec,
     hasher: Xxh3Hasher,
-    state: JsonStateStore<'static>,
+    ignore: GixRepositoryIgnore,
+    state: LockStateStore<'static>,
+    inspector: LockStateInspector,
+    locations: EnvAgentLocations,
+    hooks: FsHookStore,
     clock: SystemClock,
     locks: LockFileCoordinator,
     writer: AtomicFileWriter<'a>,
@@ -143,9 +147,24 @@ fn harness<'a>(
         config: TomlConfigurationReader,
         markdown: PulldownMarkdownCodec,
         hasher: Xxh3Hasher,
-        state: JsonStateStore::new(root.to_path_buf()),
+        ignore: GixRepositoryIgnore,
+        state: LockStateStore::new(root.to_path_buf()),
+        inspector: LockStateInspector::new(Some(root.to_path_buf()), root.to_path_buf()),
+        locations: EnvAgentLocations::new(
+            Some(root.to_path_buf()),
+            root.to_path_buf(),
+            Some(root.join("home")),
+            None,
+        ),
+        hooks: FsHookStore::new(
+            root.to_path_buf(),
+            root.to_path_buf(),
+            root.join("memoria"),
+            root.join(".git"),
+            Box::new(memoria_infrastructure::CommandClientProbe),
+        ),
         clock: SystemClock,
-        locks: LockFileCoordinator::new(root.to_path_buf()),
+        locks: LockFileCoordinator::new(root.to_path_buf(), root.join(".git/memoria/write.lock")),
         writer: AtomicFileWriter::with_faults(root.to_path_buf(), writer_faults),
         packet_input: FsPacketInput,
         skills: FsSkillStore::new(root.to_path_buf(), "# skill\n", "0.1.0"),
@@ -158,16 +177,20 @@ impl Harness<'_> {
         Services {
             files: &self.files,
             git: &self.git,
+            ignore: &self.ignore,
             config: &self.config,
             markdown: &self.markdown,
             hasher: &self.hasher,
             state: &self.state,
+            inspector: &self.inspector,
             clock: &self.clock,
             locks: &self.locks,
             writer: &self.writer,
             packets,
             packet_input: &self.packet_input,
             skills: &self.skills,
+            locations: &self.locations,
+            hooks: &self.hooks,
             progress: &self.progress,
         }
     }
@@ -187,7 +210,7 @@ fn partial_render_failure_reports_applied_and_unapplied_documents_and_reruns_saf
     let h = harness(dir.path(), &hook, &quiet);
     let codec = JsonPacketCodec::new(&h.hasher);
     let services = h.services(&codec);
-    usecases::init::run(&services).unwrap();
+    usecases::init::run(&services, true).unwrap();
     let err = usecases::render::run(&services, None, false).unwrap_err();
     let codes: Vec<&str> = err.diagnostics.iter().map(|d| d.code.as_str()).collect();
     assert!(
@@ -281,7 +304,7 @@ fn a_change_between_scan_passes_is_retried_once_and_repeated_change_is_rejected(
         let h = harness(dir.path(), memoria_infrastructure::fs::NO_FAULTS, &quiet);
         let codec = JsonPacketCodec::new(&h.hasher);
         let services = h.services(&codec);
-        usecases::init::run(&services).unwrap();
+        usecases::init::run(&services, true).unwrap();
         usecases::render::run(&services, None, false).unwrap();
     }
     // One mutation between the first and second pass: the retry produces a stable snapshot.

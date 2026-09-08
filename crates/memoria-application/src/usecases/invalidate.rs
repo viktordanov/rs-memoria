@@ -112,13 +112,13 @@ pub fn run(
 pub(crate) fn state_error(failure: StateFailure) -> AppError {
     match failure {
         StateFailure::Io(err) => AppError::io("io_error", err.to_string()),
-        StateFailure::Corrupt(message) => AppError::new(
-            ExitClass::Io,
-            Diagnostic::error("state_corrupt", message).at_path(STATE_PATH),
-        ),
         StateFailure::Conflict => AppError::conflict(
             "state_conflict",
             "the state file changed under the write lock; retry",
+        ),
+        other => AppError::new(
+            ExitClass::Io,
+            Diagnostic::error(other.code(), other.message()).at_path(STATE_PATH),
         ),
     }
 }

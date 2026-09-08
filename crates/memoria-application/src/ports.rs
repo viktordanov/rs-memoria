@@ -67,19 +67,53 @@ pub trait GitRepository {
     /// Paths with unmerged index entries.
     fn unmerged_paths(&self) -> Result<Vec<String>, AdapterError>;
     fn sparse_checkout_enabled(&self) -> Result<bool, AdapterError>;
-    /// Contents of the global excludes file, when configured and present.
-    fn global_excludes(&self) -> Result<Option<Vec<u8>>, AdapterError>;
-    /// Contents of `<gitdir>/info/exclude`, when present.
-    fn repository_excludes(&self) -> Result<Option<Vec<u8>>, AdapterError>;
     fn head_commit(&self) -> Result<Option<String>, AdapterError>;
     fn worktree_dirty(&self) -> Result<bool, AdapterError>;
     /// Bytes of `path` at `commit`, or `None` when unavailable.
     fn read_blob(&self, commit: &str, path: &str) -> Result<Option<Vec<u8>>, AdapterError>;
-    /// Why Git ignores a path, when it does.
+    /// Why Git ignores a path, when it does. Reporting only: this answer
+    /// includes host rules and never enters deterministic policy.
     fn explain_ignore(&self, path: &str) -> Result<Option<String>, AdapterError>;
-    /// The subset of the given root-relative directories that Git's ignore
-    /// rules exclude as directories (Git never descends into them).
-    fn ignored_directories(&self, directories: &[String]) -> Result<Vec<String>, AdapterError>;
+    /// The absolute per-worktree Git metadata directory. Linked worktrees
+    /// have their own. This is the containment boundary for every private
+    /// path Memoria creates.
+    fn git_dir(&self) -> Result<String, AdapterError>;
+    /// The worktree-private path for `relative` under Git metadata.
+    ///
+    /// The path is built from [`GitRepository::git_dir`] rather than from
+    /// `git rev-parse --git-path`, which resolves symlinked components and
+    /// would hand back a location outside the metadata directory.
+    fn private_path(&self, relative: &str) -> Result<String, AdapterError>;
+    /// The absolute main-checkout worktree root of this repository family.
+    /// A linked worktree resolves to the checkout that owns the common
+    /// Git directory.
+    fn main_worktree(&self) -> Result<String, AdapterError>;
+}
+
+/// One repository ignore source: a project-relative `.gitignore` path and
+/// its exact bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IgnoreScope {
+    /// Project-relative path, for example `.gitignore` or `src/.gitignore`.
+    pub path: String,
+    pub bytes: Vec<u8>,
+}
+
+/// Repository-only ignore matching for the deterministic policy inventory.
+///
+/// This port answers with repository rule bytes alone. It reads no host
+/// configuration, no `core.excludesFile`, no XDG fallback, and no
+/// `.git/info/exclude`, so an irrelevant host rule cannot hide a nested
+/// `.gitignore` and change a project's policy hash.
+pub trait RepositoryIgnoreMatcher {
+    /// The subset of `directories` that `scopes` exclude as directories.
+    /// Paths are project-relative without a trailing slash. The adapter
+    /// performs no filesystem or Git access.
+    fn ignored_directories(
+        &self,
+        scopes: &[IgnoreScope],
+        directories: &[String],
+    ) -> Result<Vec<String>, AdapterError>;
 }
 
 /// Strict configuration parsing.
@@ -142,10 +176,54 @@ pub struct LoadedState {
 pub enum StateFailure {
     /// The file is unreadable or the directory is inaccessible.
     Io(AdapterError),
-    /// The file exists but is malformed or uses an unsupported schema.
+    /// The file exists but is malformed, truncated, or fails its checksum.
     Corrupt(String),
     /// The stored bytes differ from the expected bytes.
     Conflict,
+    /// Only the version 1 `.memoria/state.json` exists. The release has one
+    /// clean cutover and no automatic migration.
+    Legacy(String),
+    /// Both the legacy state file and `memoria.lock` exist.
+    Ambiguous(String),
+    /// A read, payload, or expansion limit would be exceeded.
+    LimitExceeded(String),
+    /// The format version is outside this release's support.
+    UnsupportedSchema(String),
+    /// The codec identifier is outside this release's support.
+    UnsupportedCodec(String),
+    /// Inspection was asked for a file that does not exist.
+    Missing(String),
+}
+
+impl StateFailure {
+    /// The stable diagnostic code for this failure.
+    pub fn code(&self) -> &'static str {
+        match self {
+            StateFailure::Io(_) => "state_unreadable",
+            StateFailure::Corrupt(_) => "state_corrupt",
+            StateFailure::Conflict => "state_conflict",
+            StateFailure::Legacy(_) => "state_legacy",
+            StateFailure::Ambiguous(_) => "state_ambiguous",
+            StateFailure::LimitExceeded(_) => "state_limit_exceeded",
+            StateFailure::UnsupportedSchema(_) => "state_unsupported_schema",
+            StateFailure::UnsupportedCodec(_) => "state_unsupported_codec",
+            StateFailure::Missing(_) => "state_missing",
+        }
+    }
+
+    pub fn message(&self) -> String {
+        match self {
+            StateFailure::Io(err) => err.to_string(),
+            StateFailure::Conflict => "state changed while loading".to_string(),
+            StateFailure::Corrupt(m)
+            | StateFailure::Legacy(m)
+            | StateFailure::Ambiguous(m)
+            | StateFailure::LimitExceeded(m)
+            | StateFailure::UnsupportedSchema(m)
+            | StateFailure::UnsupportedCodec(m)
+            | StateFailure::Missing(m) => m.clone(),
+        }
+    }
 }
 
 /// Versioned state persistence with compare-and-swap.
@@ -153,10 +231,36 @@ pub trait StateStore {
     /// Load state; `None` when the file does not exist.
     fn load(&self) -> Result<Option<LoadedState>, StateFailure>;
     /// Encode state canonically without writing it.
-    fn encode(&self, state: &ReviewState) -> Vec<u8>;
+    fn encode(&self, state: &ReviewState) -> Result<Vec<u8>, StateFailure>;
     /// Write state atomically when the stored bytes equal `expected`
     /// (`None` means the file must not exist). Returns the written bytes.
     fn save(&self, state: &ReviewState, expected: Option<&[u8]>) -> Result<Vec<u8>, StateFailure>;
+}
+
+/// Framing facts and typed state from one read-only inspection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InspectedState {
+    /// The inspected path, as the caller named or the project resolved it.
+    pub path: String,
+    pub file_bytes: u64,
+    pub payload_bytes: u64,
+    pub format_version: u64,
+    /// `raw` or `zstd-v1`.
+    pub codec: &'static str,
+    /// The XXH3-128 frame checksum, 32 lowercase hexadecimal characters.
+    pub checksum: String,
+    pub state: ReviewState,
+    /// Guidance digest recorded with each review, by document path.
+    pub guidance: Vec<(String, String)>,
+}
+
+/// Bounded, read-only decoding of a committed state artifact.
+pub trait StateInspector {
+    /// Inspect `memoria.lock` in the selected project.
+    fn inspect_project(&self) -> Result<InspectedState, StateFailure>;
+    /// Inspect an explicit path resolved against the invocation directory.
+    /// This mode works outside Git and needs no configuration.
+    fn inspect_file(&self, path: &str) -> Result<InspectedState, StateFailure>;
 }
 
 pub trait Clock {
@@ -275,16 +379,57 @@ impl AgentTarget {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkillOperation {
     Install,
+    Status,
+    Upgrade,
     Uninstall,
 }
 
-/// A planned managed-package change.
+impl SkillOperation {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SkillOperation::Install => "install",
+            SkillOperation::Status => "status",
+            SkillOperation::Upgrade => "upgrade",
+            SkillOperation::Uninstall => "uninstall",
+        }
+    }
+}
+
+/// A file the lifecycle leaves in place, with the reason it stays.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetainedArtifact {
+    pub path: String,
+    /// `synchronization_lock`, `user_backup`, or `unknown_content`.
+    pub reason: &'static str,
+    pub removable_by_uninstall: bool,
+}
+
+/// Another package with the same name, found in a different scope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OverlappingPackage {
+    /// `local`, `global`, or `legacy`.
+    pub scope: String,
+    pub destination: String,
+    pub state: String,
+    /// How the client resolves the overlap.
+    pub note: String,
+}
+
+/// What one lifecycle operation would do, or what `status` observed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillPlan {
     pub operation: SkillOperation,
     pub target: AgentTarget,
+    pub scope: AgentScope,
     /// Absolute destination package directory.
     pub destination: String,
+    /// `absent`, `current`, `outdated`, `modified`, `unmanaged`, or
+    /// `conflict`.
+    pub state: String,
+    /// The installed package version, when a record exists.
+    pub package_version: Option<String>,
+    /// The version this executable would install.
+    pub embedded_version: String,
     /// Absolute backup directory used or restored, when any.
     pub backup: Option<String>,
     /// Files created or replaced, relative to the destination.
@@ -293,6 +438,14 @@ pub struct SkillPlan {
     pub removals: Vec<String>,
     /// Files replaced whose previous content is backed up.
     pub replaced: Vec<String>,
+    /// Managed files whose bytes changed after installation.
+    pub modified_paths: Vec<String>,
+    /// Files inside the package that no record lists.
+    pub unknown_paths: Vec<String>,
+    /// Files the operation deliberately leaves in place.
+    pub retained_artifacts: Vec<RetainedArtifact>,
+    /// Same-name packages discovered in other scopes.
+    pub overlapping: Vec<OverlappingPackage>,
     /// Nothing needs to change.
     pub no_change: bool,
     /// An interrupted transaction must be recovered first.
@@ -309,7 +462,27 @@ pub enum SkillFailure {
         paths: Vec<String>,
     },
     Io(AdapterError),
+    /// `upgrade` or an explicit removal found no managed package.
     NotInstalled(String),
+    /// `install` found an older managed package. Upgrading is explicit.
+    UpgradeRequired(String),
+    /// `install` found unmanaged content and no `--replace-existing`.
+    ReplacementRequired(String),
+}
+
+/// One lifecycle request against a resolved destination.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillRequest {
+    pub operation: SkillOperation,
+    pub target: AgentTarget,
+    pub scope: AgentScope,
+    /// Absolute skills parent directory. The package sits inside it.
+    pub parent: String,
+    /// Permit replacing an unmanaged package after a verified backup.
+    pub replace_existing: bool,
+    /// Other absolute parents to report as overlapping installations,
+    /// as `(scope label, absolute parent)`.
+    pub other_parents: Vec<(String, String)>,
 }
 
 /// Managed skill package transactions.
@@ -319,10 +492,116 @@ pub trait SkillPackageStore {
     /// Whether the project-relative directory holds a package with a valid
     /// Memoria installation record.
     fn is_managed_package(&self, relative: &str) -> bool;
-    fn plan_install(&self, target: AgentTarget, parent: &str) -> Result<SkillPlan, SkillFailure>;
-    fn apply_install(&self, plan: &SkillPlan) -> Result<(), SkillFailure>;
-    fn plan_uninstall(&self, target: AgentTarget, parent: &str) -> Result<SkillPlan, SkillFailure>;
-    fn apply_uninstall(&self, plan: &SkillPlan) -> Result<(), SkillFailure>;
+    /// Inspect the destination and describe what the operation would do.
+    /// This never writes and never creates a directory or lock.
+    fn plan(&self, request: &SkillRequest) -> Result<SkillPlan, SkillFailure>;
+    /// Apply a plan that `plan` produced for the same request.
+    fn apply(&self, request: &SkillRequest, plan: &SkillPlan) -> Result<(), SkillFailure>;
+}
+
+/// Where a managed skill package is installed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentScope {
+    Local,
+    Global,
+}
+
+impl AgentScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AgentScope::Local => "local",
+            AgentScope::Global => "global",
+        }
+    }
+}
+
+/// A destination that cannot be resolved, with an actionable message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocationError {
+    pub code: &'static str,
+    pub message: String,
+}
+
+/// Absolute skill destinations for one target and scope.
+pub trait AgentLocations {
+    /// The absolute skills parent directory.
+    fn skills_parent(
+        &self,
+        target: AgentTarget,
+        scope: AgentScope,
+    ) -> Result<String, LocationError>;
+    /// A recognized legacy user location, for reporting only.
+    fn legacy_parent(&self, target: AgentTarget) -> Option<String>;
+    /// Resolve an explicit `--path` for the selected scope.
+    fn resolve_custom(&self, raw: &str, scope: AgentScope) -> Result<String, LocationError>;
+    /// The selected worktree root, when the command runs inside one.
+    fn worktree_root(&self) -> Option<String>;
+}
+
+/// A native `Stop` hook that Memoria owns in a client configuration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HookPlan {
+    pub target: AgentTarget,
+    /// Absolute configuration file that receives the owned group.
+    pub configuration: String,
+    /// Absolute ownership record path.
+    pub record: String,
+    /// `absent`, `installed`, `modified`, `unmanaged`, `ambiguous`, or
+    /// `conflict`.
+    pub state: String,
+    /// Every planned write, removal, and retained artifact.
+    pub writes: Vec<String>,
+    pub removals: Vec<String>,
+    pub no_change: bool,
+    pub recovery_needed: bool,
+    /// `requires-client-review` until the client itself approves the hook.
+    pub activation: String,
+    /// The exact shell command the owned handler runs.
+    pub command: String,
+    /// A digest of the client configuration's bytes when the plan was made.
+    /// Application compares it again before it writes, so a concurrent edit
+    /// is a conflict rather than a silent overwrite. `None` means the file
+    /// did not exist.
+    pub expected_digest: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HookFailure {
+    Conflict { code: &'static str, message: String },
+    Unsupported { code: &'static str, message: String },
+    Io(AdapterError),
+}
+
+/// Reversible, project-level native hook configuration.
+pub trait HookStore {
+    fn plan_install(&self, target: AgentTarget) -> Result<HookPlan, HookFailure>;
+    fn apply_install(&self, plan: &HookPlan) -> Result<(), HookFailure>;
+    fn status(&self, target: AgentTarget) -> Result<HookPlan, HookFailure>;
+    fn plan_uninstall(&self, target: AgentTarget) -> Result<HookPlan, HookFailure>;
+    fn apply_uninstall(&self, plan: &HookPlan) -> Result<(), HookFailure>;
+}
+
+/// The result of one bounded child process.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BoundedOutput {
+    pub exit_code: Option<i32>,
+    pub stdout: Vec<u8>,
+    /// The deadline elapsed before the child finished.
+    pub timed_out: bool,
+    /// The child produced more stdout than the caller allowed.
+    pub output_truncated: bool,
+}
+
+/// Run this executable's own bounded status inspection without a shell.
+pub trait BoundedStatusProcess {
+    /// Invoke `memoria --root <root> status --summary --format json` with a
+    /// deadline in milliseconds and a stdout byte limit.
+    fn run_summary(
+        &self,
+        root: &str,
+        deadline_ms: u64,
+        stdout_limit: u64,
+    ) -> Result<BoundedOutput, AdapterError>;
 }
 
 /// Progress messages shown before writes.
@@ -334,15 +613,19 @@ pub trait Progress {
 pub struct Services<'a> {
     pub files: &'a dyn ProjectFiles,
     pub git: &'a dyn GitRepository,
+    pub ignore: &'a dyn RepositoryIgnoreMatcher,
     pub config: &'a dyn ConfigurationReader,
     pub markdown: &'a dyn MarkdownCodec,
     pub hasher: &'a dyn FingerprintHasher,
     pub state: &'a dyn StateStore,
+    pub inspector: &'a dyn StateInspector,
     pub clock: &'a dyn Clock,
     pub locks: &'a dyn WriteCoordinator,
     pub writer: &'a dyn AtomicWriter,
     pub packets: &'a dyn ReviewPacketCodec,
     pub packet_input: &'a dyn PacketInput,
     pub skills: &'a dyn SkillPackageStore,
+    pub locations: &'a dyn AgentLocations,
+    pub hooks: &'a dyn HookStore,
     pub progress: &'a dyn Progress,
 }
