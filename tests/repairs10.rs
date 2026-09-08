@@ -19,7 +19,7 @@ fn policy_hash(packet: &Path) -> String {
 
 // MEM-042
 #[test]
-fn whitespace_bearing_global_excludes_paths_keep_their_policy() {
+fn whitespace_bearing_host_exclude_paths_change_selection_only() {
     let external = tempfile::tempdir().unwrap();
     // (label, configured core.excludesFile value, relative to the worktree root?)
     let trailing = external.path().join("global ignore ");
@@ -52,16 +52,21 @@ fn whitespace_bearing_global_excludes_paths_keep_their_policy() {
         project.append("src/execution/runner.rs", "// pending\n");
         let (packet, token) = project.review_packet("src/execution/README.md");
         let before = project.state();
-        // The rules change; the selected sources and their bytes do not.
+        // The host rules change; the selected sources and their bytes do not.
+        // Host settings decide Git eligibility, never repository policy, so
+        // no document becomes stale and the packet still acknowledges.
         fs::write(&file, "*.after\n").unwrap();
         assert!(stdout(&project.git(&["check-ignore", "x.after"])).contains("x.after"));
-        for document in ["src/execution/README.md", "src/corpus/README.md"] {
-            assert_eq!(
-                project.cause_codes(document),
-                vec!["input_changed"],
-                "{label}: {document} must go stale on a global policy edit"
-            );
-        }
+        assert_eq!(
+            project.cause_codes("src/corpus/README.md"),
+            Vec::<String>::new(),
+            "{label}: an irrelevant host rule must not make a document stale"
+        );
+        assert_eq!(
+            project.cause_codes("src/execution/README.md"),
+            vec!["input_changed"],
+            "{label}: the real byte change is still visible"
+        );
         let output = project.ack(
             "src/execution/README.md",
             &packet,
@@ -71,31 +76,35 @@ fn whitespace_bearing_global_excludes_paths_keep_their_policy() {
         );
         assert_eq!(
             output.status.code(),
-            Some(3),
+            Some(0),
             "{label}: {}",
             stdout(&output)
         );
-        assert_eq!(project.state(), before, "{label}: nothing committed");
-        let (_, check) = project.json(&["check"]);
-        assert!(
-            diagnostic_codes(&check).contains(&"review_pending".to_string()),
-            "{label}"
+        assert_ne!(project.state(), before, "{label}: the review was recorded");
+        let (code, check) = project.json(&["check"]);
+        assert_eq!(
+            code,
+            0,
+            "{label}: {}",
+            memoria_infrastructure::json::to_compact(&check)
         );
+        // Identities stay logical and host-independent: a twin project with
+        // different host rules hashes the same policy.
+        project.append("src/execution/runner.rs", "// again\n");
         let (fresh, _) = project.review_packet("src/execution/README.md");
-        assert_ne!(policy_hash(&packet), policy_hash(&fresh), "{label}");
-        // Identities stay logical: the path never enters the hash, so a twin
-        // project with the same rules under a different filename agrees.
+        assert_eq!(policy_hash(&packet), policy_hash(&fresh), "{label}");
         let twin = Project::seed();
         let twin_file = external
             .path()
             .join(format!("twin-{}", label.replace(' ', "-")));
-        fs::write(&twin_file, "*.after\n").unwrap();
+        fs::write(&twin_file, "*.unrelated\n").unwrap();
         twin.git(&["config", "core.excludesFile", twin_file.to_str().unwrap()]);
         if relative {
             fs::write(twin.root.join(".git/info/exclude"), "*spaced-excludes\n").unwrap();
         }
-        assert_eq!(twin.run(&["init"]).status.code(), Some(0));
+        assert_eq!(twin.run(&["init", "--apply"]).status.code(), Some(0));
         assert_eq!(twin.run(&["render"]).status.code(), Some(0));
+        twin.append("src/execution/runner.rs", "// pending\n");
         let (twin_packet, _) = twin.review_packet("src/execution/README.md");
         assert_eq!(policy_hash(&fresh), policy_hash(&twin_packet), "{label}");
     }
@@ -107,18 +116,18 @@ fn quoted_policy_values_keep_comments_out_of_rules() {
     // Root ignore rules: every spelling excludes the generated file and
     // yields one effective policy.
     let variants = [
-        ("uncommented", "version = 1\nignore = [\"build's/**\"]\n"),
+        ("uncommented", "version = 2\nignore = [\"build's/**\"]\n"),
         (
             "commented",
-            "version = 1\nignore = [\"build's/**\"] # generated output\n",
+            "version = 2\nignore = [\"build's/**\"] # generated output\n",
         ),
         (
             "literal",
-            "version = 1\nignore = ['''build's/**'''] # generated output\n",
+            "version = 2\nignore = ['''build's/**'''] # generated output\n",
         ),
         (
             "multiline",
-            "version = 1\nignore = [\n \"build's/**\", # generated output\n]\n",
+            "version = 2\nignore = [\n \"build's/**\", # generated output\n]\n",
         ),
     ];
     let mut hashes = BTreeSet::new();
@@ -127,7 +136,11 @@ fn quoted_policy_values_keep_comments_out_of_rules() {
         let project = Project::seed();
         project.write("build's/output.rs", "generated\n");
         project.write("memoria.toml", config);
-        assert_eq!(project.run(&["init"]).status.code(), Some(0), "{label}");
+        assert_eq!(
+            project.run(&["init", "--apply"]).status.code(),
+            Some(0),
+            "{label}"
+        );
         assert_eq!(project.run(&["render"]).status.code(), Some(0), "{label}");
         let (code, explain) = project.json(&["status", "--explain", "build's/output.rs"]);
         assert_eq!(code, 0, "{label}");
@@ -153,13 +166,17 @@ fn quoted_policy_values_keep_comments_out_of_rules() {
         project.write("src/retrieval/say \"hi\"/noise.rs", "noise\n");
         project.write(
             "memoria.toml",
-            format!("version = 1\nignore = [\n \"**/generated/**\",{comment}\n \"**/fixture's/**\",{comment}\n]\n"),
+            format!("version = 2\nignore = [\n \"**/generated/**\",{comment}\n \"**/fixture's/**\",{comment}\n]\n"),
         );
         project.write(
             "src/retrieval/README.memoria.toml",
             format!("include = [\"fixture's/**\"]{comment}\nignore = ['say \"hi\"/**']{comment}\n"),
         );
-        assert_eq!(project.run(&["init"]).status.code(), Some(0), "{comment:?}");
+        assert_eq!(
+            project.run(&["init", "--apply"]).status.code(),
+            Some(0),
+            "{comment:?}"
+        );
         assert_eq!(
             project.run(&["render"]).status.code(),
             Some(0),

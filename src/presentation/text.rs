@@ -191,16 +191,231 @@ fn causes_of(detail: &Detail) -> String {
 
 pub fn init(report: &InitReport) -> String {
     let mut out = String::new();
-    for path in &report.created {
-        let _ = writeln!(out, "created   {path}");
+    if report.applied {
+        let _ = writeln!(out, "memoria init --apply");
+    } else {
+        let _ = writeln!(out, "memoria init preview. Nothing was written.");
     }
-    for path in &report.existing {
-        let _ = writeln!(out, "existing  {path}");
+    // The strategy explanation comes before the file operations: the author
+    // chooses the documentation model, not the tool.
+    let _ = writeln!(out, "\nWhat Memoria does:");
+    for line in &report.strategy {
+        let _ = writeln!(out, "  - {line}");
     }
-    let _ = writeln!(out, "\nNext steps:");
-    for (index, item) in report.checklist.iter().enumerate() {
-        let _ = writeln!(out, "{}. {item}", index + 1);
+    let _ = writeln!(out, "\nDocumentation strategies other projects use:");
+    for example in &report.examples {
+        let _ = writeln!(out, "  - {}: {}", example.name, example.summary);
     }
+    let _ = writeln!(out, "\nCommitted files:");
+    for file in &report.files {
+        let _ = writeln!(out, "  {:<7} {}", file.action, file.path);
+    }
+    let _ = writeln!(
+        out,
+        "\nRoot README.md  {}",
+        if report.root_readme_present {
+            "present"
+        } else {
+            "missing; write it before `memoria init --apply`"
+        }
+    );
+    if report.applied {
+        for path in &report.created {
+            let _ = writeln!(out, "created   {path}");
+        }
+        for path in &report.existing {
+            let _ = writeln!(out, "existing  {path}");
+        }
+    } else {
+        let _ = writeln!(
+            out,
+            "\nRun `memoria init --apply` to create the missing files."
+        );
+    }
+    let _ = writeln!(out, "Then run `{}`.", report.next_command);
+    out
+}
+
+pub fn guidance(report: &memoria_application::usecases::guidance::GuidanceReport) -> String {
+    let mut out = String::new();
+    let _ = writeln!(out, "Guidance for {}", report.document);
+    let _ = writeln!(out, "Digest          {}", report.digest);
+    match report.changed_since_review {
+        None => {
+            let _ = writeln!(out, "Reviewed        never");
+        }
+        Some(changed) => {
+            let _ = writeln!(
+                out,
+                "Reviewed        {} ({})",
+                report.reviewed_digest.as_deref().unwrap_or("none"),
+                if changed { "changed" } else { "unchanged" }
+            );
+        }
+    }
+    if report.entries.is_empty() {
+        let _ = writeln!(
+            out,
+            "\nThis boundary has no guidance. Add entries under [documentation] in memoria.toml."
+        );
+    } else {
+        let _ = writeln!(out, "\nEffective guidance, in applied order:");
+        for entry in &report.entries {
+            let field = |key: &str| match entry.get(key) {
+                Some(memoria_application::error::Detail::Text(text)) => text.clone(),
+                _ => String::new(),
+            };
+            let scope = field("scope");
+            let scope = if scope.is_empty() {
+                "<root>".to_string()
+            } else {
+                scope
+            };
+            let _ = writeln!(
+                out,
+                "\n  [{} {} scope={scope}]\n{}",
+                field("kind"),
+                field("source"),
+                field("text").trim_end()
+            );
+        }
+    }
+    if !report.scopes.is_empty() {
+        let _ = writeln!(out, "\nScopes that add guidance:");
+        for scope in &report.scopes {
+            let label = if scope.scope.is_empty() {
+                "<root>"
+            } else {
+                scope.scope.as_str()
+            };
+            let _ = writeln!(
+                out,
+                "  {label} ({} entries, {}): {}",
+                scope.entries, scope.source, scope.inspect_command
+            );
+        }
+    }
+    let _ = writeln!(
+        out,
+        "\nGuidance is review context. It never selects files and never decides freshness."
+    );
+    out
+}
+
+pub fn summary(report: &memoria_application::usecases::status::StatusSummary) -> String {
+    let mut out = String::new();
+    let _ = writeln!(out, "READMEs         {}", report.readmes);
+    let _ = writeln!(out, "Selected files  {}", report.selected_files);
+    let _ = writeln!(
+        out,
+        "Input size      {}",
+        human_bytes(report.selected_bytes)
+    );
+    let _ = writeln!(
+        out,
+        "Reviews         {} current, {} pending, {} never reviewed, {} waiting",
+        report.current, report.pending, report.never_reviewed, report.waiting
+    );
+    let _ = writeln!(
+        out,
+        "Guidance        {} documents, {} changed since review, {} never reviewed",
+        report.guidance.documents_with_guidance,
+        report.guidance.changed_documents,
+        report.guidance.unreviewed_documents
+    );
+    let _ = writeln!(
+        out,
+        "Coverage        {} unowned, {} disconnected",
+        report.unowned, report.disconnected
+    );
+    let _ = writeln!(
+        out,
+        "Invalidations   {} open, {} missing targets",
+        report.open_invalidations, report.missing_invalidation_targets
+    );
+    let _ = writeln!(
+        out,
+        "Diagnostics     {} errors, {} warnings",
+        report.error_diagnostics, report.warning_diagnostics
+    );
+    out
+}
+
+pub fn state_inspect(
+    report: &memoria_application::usecases::state_inspect::InspectReport,
+) -> String {
+    let i = &report.inspected;
+    let mut out = String::new();
+    let _ = writeln!(out, "State file      {}", i.path);
+    let _ = writeln!(out, "Format          version {}", i.format_version);
+    let _ = writeln!(out, "Codec           {}", i.codec);
+    let _ = writeln!(out, "File bytes      {}", i.file_bytes);
+    let _ = writeln!(out, "Payload bytes   {}", i.payload_bytes);
+    let _ = writeln!(out, "Checksum        {}", i.checksum);
+    let _ = writeln!(out, "Revision        {}", i.state.revision);
+    let _ = writeln!(out, "Next id         {}", i.state.next_invalidation_id);
+    let digests: std::collections::BTreeMap<&str, &str> = i
+        .guidance
+        .iter()
+        .map(|(document, digest)| (document.as_str(), digest.as_str()))
+        .collect();
+    let _ = writeln!(out, "\nReviews ({}):", i.state.reviews.len());
+    for (document, record) in &i.state.reviews {
+        let _ = writeln!(
+            out,
+            "  {document}\n    revision {} by {} at {} ({})",
+            record.revision,
+            record.reviewer.as_str(),
+            record.reviewed_at,
+            record.result.as_str()
+        );
+        let _ = writeln!(
+            out,
+            "    files {}, imports {}, guidance {}",
+            record.manifest.files().len(),
+            record.manifest.imports().len(),
+            digests
+                .get(document.as_str())
+                .copied()
+                .unwrap_or("0000000000000000")
+        );
+        let _ = writeln!(
+            out,
+            "    commit {}{}",
+            record.git.base_commit.as_deref().unwrap_or("none"),
+            if record.git.worktree_dirty {
+                " (dirty)"
+            } else {
+                ""
+            }
+        );
+        let _ = writeln!(out, "    note {}", record.note.as_str());
+    }
+    let _ = writeln!(
+        out,
+        "\nActive invalidations ({}):",
+        i.state.invalidations.len()
+    );
+    for invalidation in &i.state.invalidations {
+        let _ = writeln!(
+            out,
+            "  #{} {} at {}: {}",
+            invalidation.id,
+            invalidation.scope,
+            invalidation.created_at,
+            invalidation.reason.as_str()
+        );
+        let _ = writeln!(
+            out,
+            "    {} target(s), {} still pending",
+            invalidation.targets.len(),
+            invalidation.pending.len()
+        );
+    }
+    let _ = writeln!(
+        out,
+        "\nInspection reads stored bytes only. Run `memoria status` for worktree freshness."
+    );
     out
 }
 
@@ -423,15 +638,29 @@ pub fn packet(packet: &FocusedReviewPacket) -> String {
             let _ = writeln!(out, "  #{id}: {reason}");
         }
     }
-    if !packet.context.instructions.is_empty() {
-        let _ = writeln!(out, "\nWriting instructions:");
-        for instruction in &packet.context.instructions {
+    // Effective guidance comes before the owned evidence: read the project's
+    // documentation goals before you judge this boundary.
+    let guidance = &packet.context.guidance;
+    let _ = writeln!(
+        out,
+        "\nProject documentation guidance (digest {}):",
+        guidance.digest
+    );
+    if guidance.entries.is_empty() {
+        let _ = writeln!(out, "  none declared for this boundary");
+    } else {
+        for entry in &guidance.entries {
+            let scope = if entry.scope.is_root() {
+                "<root>".to_string()
+            } else {
+                entry.scope.as_str().to_string()
+            };
             let _ = writeln!(
                 out,
-                "  [{} {}]\n{}",
-                instruction.kind,
-                instruction.source,
-                instruction.text.trim_end()
+                "  [{} {} scope={scope}]\n{}",
+                entry.kind,
+                entry.source,
+                entry.text.trim_end()
             );
         }
     }
@@ -660,7 +889,35 @@ pub fn agent(report: &AgentReport) -> String {
         plan.target.as_str(),
         plan.destination
     );
+    let _ = writeln!(out, "  scope      {}", plan.scope.as_str());
+    let _ = writeln!(out, "  state      {}", plan.state);
+    let _ = writeln!(
+        out,
+        "  version    installed {} / embedded {}",
+        plan.package_version.as_deref().unwrap_or("none"),
+        plan.embedded_version
+    );
     let _ = writeln!(out, "  existing   {}", plan.existing);
+    for path in &plan.modified_paths {
+        let _ = writeln!(out, "  modified   {path}");
+    }
+    for path in &plan.unknown_paths {
+        let _ = writeln!(out, "  unknown    {path}");
+    }
+    for artifact in &plan.retained_artifacts {
+        let _ = writeln!(
+            out,
+            "  retained   {} ({}, removable_by_uninstall={})",
+            artifact.path, artifact.reason, artifact.removable_by_uninstall
+        );
+    }
+    for package in &plan.overlapping {
+        let _ = writeln!(
+            out,
+            "  overlap    {} {} ({}): {}",
+            package.scope, package.destination, package.state, package.note
+        );
+    }
     if plan.recovery_needed {
         let _ = writeln!(
             out,
@@ -683,8 +940,43 @@ pub fn agent(report: &AgentReport) -> String {
 }
 
 fn plan_operation(plan: &memoria_application::ports::SkillPlan) -> &'static str {
-    match plan.operation {
-        memoria_application::ports::SkillOperation::Install => "install",
-        memoria_application::ports::SkillOperation::Uninstall => "uninstall",
+    plan.operation.as_str()
+}
+
+pub fn agent_hook(report: &memoria_application::usecases::agent_hooks::HookReport) -> String {
+    let plan = &report.plan;
+    let mut out = String::new();
+    let verb = match (report.dry_run, plan.no_change, report.applied) {
+        (true, _, _) => "dry run",
+        (_, true, _) => "no change",
+        (_, _, true) => "applied",
+        _ => "planned",
+    };
+    let _ = writeln!(
+        out,
+        "{verb}: Stop hook target={} state={}",
+        plan.target.as_str(),
+        plan.state
+    );
+    let _ = writeln!(out, "  configuration {}", plan.configuration);
+    let _ = writeln!(out, "  record        {}", plan.record);
+    let _ = writeln!(out, "  activation    {}", plan.activation);
+    if plan.recovery_needed {
+        let _ = writeln!(
+            out,
+            "  recovery      an interrupted hook transaction record remains"
+        );
     }
+    for path in &plan.writes {
+        let _ = writeln!(out, "  write         {path}");
+    }
+    for path in &plan.removals {
+        let _ = writeln!(out, "  remove        {path}");
+    }
+    let _ = writeln!(out, "\nCommand:\n  {}", plan.command);
+    let _ = writeln!(
+        out,
+        "\nThese are local installation changes. The absolute executable path does not belong in a portable shared hook configuration.\nThe client still reviews and activates the hook: open its /hooks interface."
+    );
+    out
 }

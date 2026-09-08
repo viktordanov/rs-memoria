@@ -36,8 +36,10 @@ Keep a project's documented mental model connected to its code.
 Usage: memoria [OPTIONS] <COMMAND>
 
 Commands:
-  init        Create root configuration, a minimal root README, and empty state
+  init        Preview the setup, or create the two committed files with --apply
   status      Show coverage, input size, and review state
+  guidance    Show the project documentation guidance that applies to a README
+  state       Inspect committed state without changing it
   lint        Check structure, configuration, markers, and link hints
   review      Show the ordered review plan, or a focused packet for one README
   render      Refresh declared import blocks only
@@ -45,7 +47,7 @@ Commands:
   invalidate  Mark one README, a subtree, or the whole project for semantic review
   check       Run read-only validation for CI
   graph       Show documentation ownership, imports, navigation, and status
-  agent       Install or remove the managed Memoria skill for an agent
+  agent       Install or remove the managed Memoria skill and hooks for an agent
   help        Print this message or the help of the given subcommand(s)
 
 Options:
@@ -61,6 +63,7 @@ Options:
 `Cli` parses the command, document path, and flags.
 `discover_root` identifies the Git worktree root.
 `run` creates `Services` from the concrete adapters and dispatches the command.
+The write lock comes from the Git port, at the worktree-private path, so the committed state file is never the process lock.
 The application function returns structured data and diagnostics.
 The presentation code describes those values without recalculating review decisions.
 
@@ -71,11 +74,15 @@ Thus, packet limits apply equally to human text and JSON.
 Only the JSON packet supports acknowledgement.
 Human packet text supports reading.
 
-Source evidence: [cli.rs:13](presentation/cli.rs#L13) and [main.rs:82](main.rs#L82).
+Source evidence: [cli.rs](presentation/cli.rs#L1) and [main.rs](main.rs#L1).
 
 ## Output can fail after a mutation
 
-The JSON envelope contains `schema_version`, `command`, `ok`, `data`, and `diagnostics`.
+The JSON envelope contains `schema_version`, `command`, `ok`, `data`, and `diagnostics`, at schema version 2.
+The native hook runner is the one exception: it writes one native JSON object and always exits 0.
+The runner starts one three-second deadline at entry and bounds its input, its discovery, and its child.
+One supervisor owns every process it starts, so an expired deadline terminates them before the runner returns.
+Its grammar has no format option, so an explicit `--format` value is a usage error.
 Human diagnostics go to stderr.
 The final response goes to stdout.
 Help and version output use plain text.
@@ -85,7 +92,7 @@ The completed mutation remains in place.
 `memoria status` shows the resulting review state.
 An output error does not mean that the mutation failed.
 
-Source evidence: [json.rs:7](presentation/json.rs#L7) and [main.rs:312](main.rs#L312).
+Source evidence: [json.rs](presentation/json.rs#L7) and [main.rs](main.rs#L1).
 
 ## Exit statuses
 
@@ -106,16 +113,25 @@ The executable also owns usage errors and errors during output delivery.
 
 | File | Ownership |
 | --- | --- |
-| [main.rs](main.rs#L82) | Adapter assembly, command dispatch, and output delivery |
-| [presentation/cli.rs](presentation/cli.rs#L13) | Command grammar |
-| [presentation/text.rs](presentation/text.rs#L319) | Human output |
-| [presentation/json.rs](presentation/json.rs#L7) | JSON envelope |
+| [main.rs](main.rs#L1) | Adapter assembly, command dispatch, and output delivery |
+| [presentation/cli.rs](presentation/cli.rs#L1) | Command grammar |
+| [presentation/text.rs](presentation/text.rs#L1) | Human output |
+| [presentation/json.rs](presentation/json.rs#L1) | JSON envelope |
 
 An agent skill is a file of instructions for an agent.
 `main.rs` embeds `skills/memoria/SKILL.md` at build time.
 The installer receives that embedded text through `FsSkillStore`.
 A later edit to the source skill requires a new binary build to change the installed text.
 
+Three commands resolve before project discovery, because they do not need a project:
+
+1. `memoria agent hook run` speaks native hook JSON on stdin and stdout.
+2. `memoria state inspect --file` decodes one explicit file outside Git.
+3. A global `memoria agent` operation builds narrow agent services.
+
+An ordinary command runs no agent client program.
+Only a hook installation measures the version of the client that the target selects.
+
 ## Continue
 
-Read [main.rs:82](main.rs#L82) to trace the adapter assembly.
+Read [main.rs](main.rs#L1) to trace the adapter assembly.

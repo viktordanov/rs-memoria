@@ -1,0 +1,13 @@
+# A Codex project configuration with unrelated values and comments.
+model = "gpt-5"          # kept exactly
+approval_policy = "on-request"
+
+[sandbox]
+mode = "workspace-write" # kept exactly
+
+[[hooks.Stop]]
+# A user's own Stop group.
+[[hooks.Stop.hooks]]
+type = "command"
+command = "echo user inline stop"
+timeout = 10

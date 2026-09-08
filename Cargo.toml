@@ -7,7 +7,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 rust-version = "1.96"
@@ -31,6 +31,9 @@ memoria-infrastructure = { path = "crates/memoria-infrastructure" }
 clap = { version = "4.5", features = ["derive"] }
 
 [dev-dependencies]
+memoria-domain = { path = "crates/memoria-domain" }
+zstd-safe = { version = "=7.2.4", default-features = false, features = ["std"] }
+rustix = { version = "1", features = ["fs", "std"] }
 tempfile = "3"
 
 [profile.release]

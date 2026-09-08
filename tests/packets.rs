@@ -43,7 +43,7 @@ fn tokens_are_fixed_size_and_deterministic() {
         "identical inputs produce identical tokens"
     );
     assert_eq!(token_a.len(), 21);
-    assert!(token_a.starts_with("mrv1."));
+    assert!(token_a.starts_with("mrv2."));
     let a = parse_json(&fs::read(&packet_a).unwrap());
     let b = parse_json(&fs::read(&packet_b).unwrap());
     assert_eq!(
@@ -69,8 +69,9 @@ fn oversized_and_malformed_tokens_are_rejected_before_reading_the_packet() {
         token.to_uppercase(),
         format!("{} ", &token[..20]),
         format!("{}é", &token[..20]),
-        format!("mrv2.{}", &token[5..]),
-        "mrv1.payload=eyJkb2MiOiJSRUFETUUifQ".to_string(),
+        // The retired version 1 prefix is rejected before the packet is read.
+        format!("mrv1.{}", &token[5..]),
+        "mrv3.payload=eyJkb2MiOiJSRUFETUUifQ".to_string(),
     ];
     for bad in cases {
         let output = project.run(&[
@@ -96,14 +97,14 @@ fn oversized_and_malformed_tokens_are_rejected_before_reading_the_packet() {
         );
     }
     // A syntactically valid but wrong token is a mismatch after packet validation.
-    let wrong = format!("mrv1.{}", "0".repeat(16));
+    let wrong = format!("mrv2.{}", "0".repeat(16));
     let output = ack_with(&project, "src/execution/README.md", &packet, &wrong);
     assert_eq!(output.status.code(), Some(2));
     assert_eq!(
         diagnostic_codes(&parse_json(&output.stdout)),
         vec!["token_mismatch"]
     );
-    assert!(!project.exists(".memoria/state.json.tmp"));
+    assert!(!project.exists(".memoria.lock.tmp"));
 }
 
 #[test]
@@ -132,7 +133,7 @@ fn file_and_stdin_transport_are_equivalent_and_replay_conflicts() {
         &bytes,
     );
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
-    let via_stdin = parse_json(&project.state());
+    let via_stdin = project.inspect_state();
     // The same packet through the file transport is now a revision conflict.
     let output = ack_with(&project, "src/execution/README.md", &packet, &token);
     assert_eq!(output.status.code(), Some(3));
@@ -140,7 +141,7 @@ fn file_and_stdin_transport_are_equivalent_and_replay_conflicts() {
         diagnostic_codes(&parse_json(&output.stdout)),
         vec!["revision_conflict"]
     );
-    assert_eq!(parse_json(&project.state()), via_stdin);
+    assert_eq!(project.inspect_state(), via_stdin);
 
     // An independent baseline through the file transport reaches an equivalent state.
     let other = Project::seed();
@@ -152,7 +153,7 @@ fn file_and_stdin_transport_are_equivalent_and_replay_conflicts() {
             .code(),
         Some(0)
     );
-    let via_file = parse_json(&other.state());
+    let via_file = other.inspect_state();
     let strip_time = |mut value: Json| {
         if let Json::Object(map) = &mut value
             && let Some(Json::Object(reviews)) = map.get_mut("reviews")
@@ -266,7 +267,7 @@ fn file_transport_rejects_bad_sources() {
         truncated,
     );
     assert_eq!(output.status.code(), Some(2));
-    assert!(!project.exists(".memoria/state.json.bak"));
+    assert!(!project.exists("memoria.lock.bak"));
     assert_eq!(project.status_label("src/execution/README.md"), "pending");
 }
 
@@ -318,7 +319,7 @@ fn tampered_packets_are_rejected_and_canonical_reformatting_is_accepted() {
                 set_path(
                     v,
                     &["data", "token"],
-                    Json::String(format!("mrv1.{}", "1".repeat(16))),
+                    Json::String(format!("mrv2.{}", "1".repeat(16))),
                 )
             }),
             "packet_integrity_failed",
@@ -356,8 +357,14 @@ fn tampered_packets_are_rejected_and_canonical_reformatting_is_accepted() {
             "packet_integrity_failed",
         ),
         (
+            // A version 1 envelope belongs to the previous release.
             "schema",
-            mutate(&|v| set_path(v, &["schema_version"], Json::Number(2))),
+            mutate(&|v| set_path(v, &["schema_version"], Json::Number(1))),
+            "packet_integrity_failed",
+        ),
+        (
+            "future schema",
+            mutate(&|v| set_path(v, &["schema_version"], Json::Number(3))),
             "packet_integrity_failed",
         ),
         (
@@ -396,7 +403,7 @@ fn tampered_packets_are_rejected_and_canonical_reformatting_is_accepted() {
                 set_path(
                     v,
                     &["data", "token"],
-                    Json::String(format!("mrv1.{}", "1".repeat(16))),
+                    Json::String(format!("mrv2.{}", "1".repeat(16))),
                 )
             })),
             "packet_token_mismatch",
@@ -443,9 +450,10 @@ fn tampered_packets_are_rejected_and_canonical_reformatting_is_accepted() {
             "packet_schema_invalid",
         ),
         (
+            // Version 1 packets are rejected before acknowledgement.
             "version",
             redigest(mutate(&|v| {
-                set_path(v, &["data", "packet_version"], Json::Number(2))
+                set_path(v, &["data", "packet_version"], Json::Number(1))
             })),
             "packet_schema_invalid",
         ),
@@ -482,8 +490,8 @@ fn tampered_packets_are_rejected_and_canonical_reformatting_is_accepted() {
     fs::write(
         &dup,
         to_pretty(&original).replacen(
-            "\"schema_version\": 1",
-            "\"schema_version\": 1, \"schema_version\": 1",
+            "\"schema_version\": 2",
+            "\"schema_version\": 2, \"schema_version\": 2",
             1,
         ),
     )
@@ -612,12 +620,12 @@ fn serialized_and_structural_limits_are_enforced_at_the_boundary() {
         diagnostic_codes(&parse_json(&output.stdout)),
         vec!["packet_limit_exceeded"]
     );
-    assert!(!project.exists(".memoria/state.json.tmp"));
+    assert!(!project.exists(".memoria.lock.tmp"));
 
     // Record and depth limits at the codec boundary.
     let deep = |n: usize| {
         format!(
-            "{{\"schema_version\":1,\"command\":\"review\",\"ok\":true,\"data\":{{\"packet_digest\":\"{}\"}},\"diagnostics\":[{}{}]}}",
+            "{{\"schema_version\":2,\"command\":\"review\",\"ok\":true,\"data\":{{\"packet_digest\":\"{}\"}},\"diagnostics\":[{}{}]}}",
             "0".repeat(16),
             "[".repeat(n),
             "]".repeat(n)
@@ -641,7 +649,7 @@ fn serialized_and_structural_limits_are_enforced_at_the_boundary() {
     );
     let records = |n: usize| {
         format!(
-            "{{\"schema_version\":1,\"command\":\"review\",\"ok\":true,\"data\":{{\"packet_digest\":\"{}\"}},\"diagnostics\":[{}]}}",
+            "{{\"schema_version\":2,\"command\":\"review\",\"ok\":true,\"data\":{{\"packet_digest\":\"{}\"}},\"diagnostics\":[{}]}}",
             "0".repeat(16),
             vec!["0"; n].join(",")
         )
@@ -815,7 +823,7 @@ fn read_only_commands_write_nothing() {
     }
     // Failed acknowledgements also write nothing.
     let (packet, token) = project.review_packet("src/execution/README.md");
-    let bad = format!("mrv1.{}", "0".repeat(16));
+    let bad = format!("mrv2.{}", "0".repeat(16));
     let _ = ack_with(&project, "src/execution/README.md", &packet, &bad);
     assert_eq!(project.tree_snapshot(), before);
     // An uninitialized project: no `.memoria` after malformed packets.
@@ -872,7 +880,7 @@ fn concurrent_acknowledgements_do_not_lose_reviews() {
     assert_eq!(codes.iter().filter(|c| **c == 0).count(), 1, "{codes:?}");
     assert!(codes.iter().all(|c| *c == 0 || *c == 3), "{codes:?}");
     assert_eq!(project.status_label("src/execution/README.md"), "current");
-    let state = parse_json(&project.state());
+    let state = project.inspect_state();
     assert_eq!(
         get_u64(&state, &["reviews", "src/execution/README.md", "revision"]),
         2
@@ -880,7 +888,7 @@ fn concurrent_acknowledgements_do_not_lose_reviews() {
     // Different documents: retry after busy succeeds and both reviews remain.
     let output = ack_with(&project, "src/corpus/README.md", &packet_b, &token_b);
     assert_eq!(output.status.code(), Some(0));
-    let state = parse_json(&project.state());
+    let state = project.inspect_state();
     assert_eq!(
         get_u64(&state, &["reviews", "src/corpus/README.md", "revision"]),
         2
@@ -899,8 +907,12 @@ fn held_lock_reports_busy_and_post_commit_edits_are_detected() {
     project.baseline();
     project.append("src/execution/runner.rs", "// pending\n");
     let (packet, token) = project.review_packet("src/execution/README.md");
-    let guard = memoria_infrastructure::fs::lock_file(&project.root.join(".memoria/write.lock"))
-        .unwrap_or_else(|_| panic!("lock"));
+    // The write lock is worktree-private under Git metadata; the committed
+    // `memoria.lock` never acts as the process lock.
+    let lock_path = project.root.join(".git/memoria/write.lock");
+    std::fs::create_dir_all(lock_path.parent().unwrap()).unwrap();
+    let guard =
+        memoria_infrastructure::fs::lock_file(&lock_path).unwrap_or_else(|_| panic!("lock"));
     let output = ack_with(&project, "src/execution/README.md", &packet, &token);
     assert_eq!(output.status.code(), Some(3));
     assert_eq!(

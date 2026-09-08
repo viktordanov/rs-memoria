@@ -12,6 +12,8 @@ pub struct CheckReport {
     pub pending: Vec<Detail>,
     pub outdated_imports: Vec<String>,
     pub structural_errors: u64,
+    /// Advisory only. Changed guidance never fails `check`.
+    pub guidance: super::status::GuidanceCounts,
 }
 
 impl CheckReport {
@@ -24,6 +26,7 @@ impl CheckReport {
                 Detail::texts(self.outdated_imports.clone()),
             )
             .number("structural_errors", self.structural_errors)
+            .with("guidance", self.guidance.to_detail())
             .bool(
                 "ok",
                 self.pending.is_empty()
@@ -84,11 +87,31 @@ pub fn run(services: &Services<'_>) -> Result<Outcome<CheckReport>, AppError> {
         warning.severity = crate::error::Severity::Error;
     }
     let structural_errors = snapshot.structural_errors().len() as u64;
+    // Changed guidance is advisory context. It is reported as a hint and
+    // never turns a byte-current document into a failure.
+    let guidance = super::status::guidance_counts(&snapshot);
+    if guidance.changed_documents > 0 {
+        diagnostics.push(
+            Diagnostic::hint(
+                "guidance_changed",
+                format!(
+                    "{} reviewed document(s) show guidance that changed since their review; byte-based freshness is separate. Run `memoria guidance <README.md>`, then `memoria invalidate` the scope the change affects.",
+                    guidance.changed_documents
+                ),
+            )
+            .with_details(
+                DetailMap::default()
+                    .number("changed_documents", guidance.changed_documents)
+                    .build(),
+            ),
+        );
+    }
     let report = CheckReport {
         readmes: snapshot.collected.documents.len() as u64,
         pending,
         outdated_imports: outdated,
         structural_errors,
+        guidance,
     };
     if diagnostics.iter().any(|d| d.is_error()) {
         return Err(

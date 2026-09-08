@@ -2,7 +2,18 @@
 
 use memoria_application::ports::{FingerprintHasher, HashStream};
 use memoria_domain::Hash64;
-use xxhash_rust::xxh3::{Xxh3, xxh3_64};
+use xxhash_rust::xxh3::{Xxh3, xxh3_64 as raw_xxh3_64, xxh3_128 as raw_xxh3_128};
+
+/// XXH3-64 with the default secret and seed zero.
+pub fn xxh3_64(bytes: &[u8]) -> u64 {
+    raw_xxh3_64(bytes)
+}
+
+/// XXH3-128 with the default secret and seed zero, in big-endian order.
+/// The `memoria.lock` frame stores these sixteen bytes as its trailer.
+pub fn xxh3_128(bytes: &[u8]) -> [u8; 16] {
+    raw_xxh3_128(bytes).to_be_bytes()
+}
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Xxh3Hasher;
@@ -21,7 +32,7 @@ impl HashStream for Stream {
 
 impl FingerprintHasher for Xxh3Hasher {
     fn hash(&self, bytes: &[u8]) -> Hash64 {
-        Hash64(xxh3_64(bytes))
+        Hash64(raw_xxh3_64(bytes))
     }
 
     fn stream(&self) -> Box<dyn HashStream> {
@@ -32,6 +43,20 @@ impl FingerprintHasher for Xxh3Hasher {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frame_checksum_is_big_endian_xxh3_128() {
+        // Reference XXH3_128bits values from xxHash C 0.8.3.
+        assert_eq!(
+            super::xxh3_128(b""),
+            [
+                0x99, 0xaa, 0x06, 0xd3, 0x01, 0x47, 0x98, 0xd8, 0x60, 0x01, 0xc3, 0x24, 0x46, 0x8d,
+                0x49, 0x7f
+            ]
+        );
+        assert_eq!(super::xxh3_128(b"a").len(), 16);
+        assert_ne!(super::xxh3_128(b"a"), super::xxh3_128(b"b"));
+    }
 
     #[test]
     fn identifies_xxh3_64_for_one_shot_and_streaming() {

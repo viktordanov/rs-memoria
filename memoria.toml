@@ -1,4 +1,4 @@
-version = 1
+version = 2
 
 # The integration tests use the sample repositories in tests/fixtures.
 # These repositories are outside the documentation inputs for this project.
@@ -6,7 +6,7 @@ ignore = ["tests/fixtures/**"]
 include = []
 
 [documentation]
-instructions = [
+guidance = [
     "Before you write documentation, locate the simple-english and i-have-adhd skills in your agent environment. Load each full SKILL.md. Read their required references. Apply their actual instructions to the documentation. If either skill is unavailable, stop before documentation edits. Report the missing skill by name. Do not substitute remembered rules for either skill. Use skill names without machine-specific paths.",
     "For every documentation file except the root README.md, classify each passage as procedural or descriptive and apply strict Simplified Technical English. Limit procedural sentences to 20 words and descriptive sentences to 25 words. Put one instruction in each procedural sentence. Put each condition before its command. Use active voice, simple tenses, full grammar, and one stable term for each concept. Preserve code, commands, paths, identifiers, product names, and quoted errors exactly. Use make sure that for a required state. Use examine for faults. Use measure for a value. Use invoke for a CLI command. Do not claim certified ASD-STE100 compliance without the official dictionary.",
     "Treat the root README.md as the one exception to strict Simplified Technical English. Write it as welcoming public documentation with a natural voice and varied sentence rhythm. Explain the reader's problem and Memoria's value before specialized terms. Do not force controlled words such as invoke or examine into conversational prose. Keep the language clear, concrete, and easy to scan.",
@@ -14,7 +14,7 @@ instructions = [
     "Write the root README for a new consumer. Lead with the product, the problem, common use cases, and a quick start. Show the complete top-level memoria --help output through an export owned by src/README.md and a managed import in the root README. Link readers to task guides and implementation boundaries before repository internals. Keep the self-demo as evidence after the consumer workflow. Keep nested READMEs within their ownership boundaries. Give each nested README enough local context for a direct reader. Support claims with repository evidence. Import short summaries without whole-section duplication.",
     "Use GitHub-compatible Mermaid inside Markdown as the repository standard for explanatory diagrams. Use neutral wording and default transparent rendering. Do not add theme, background, or color overrides. Give each diagram one clear claim. Add a short accessible explanation and source references. Examine Mermaid syntax before acknowledgement. Update managed import bodies through memoria render. Obtain a fresh packet after edits. Examine changed prose for sentence limits, vocabulary, grammar, conditions, and list structure before acknowledgement.",
 ]
-instruction_files = []
+guidance_files = []
 
 [fingerprints]
 default = "raw"

@@ -50,6 +50,30 @@ impl Detail {
         }
     }
 
+    /// A bound on the serialized size of this value. It counts every text
+    /// byte, every key, and a fixed cost for punctuation, so a caller can
+    /// refuse an oversized rendering before it builds the output.
+    pub fn approximate_bytes(&self) -> u64 {
+        match self {
+            Detail::Null => 4,
+            Detail::Bool(_) => 5,
+            Detail::Number(_) => 20,
+            Detail::Text(text) => text.len() as u64 + 2,
+            Detail::List(items) => {
+                2 + items
+                    .iter()
+                    .map(|item| item.approximate_bytes() + 1)
+                    .sum::<u64>()
+            }
+            Detail::Map(map) => {
+                2 + map
+                    .iter()
+                    .map(|(key, value)| key.len() as u64 + 4 + value.approximate_bytes())
+                    .sum::<u64>()
+            }
+        }
+    }
+
     pub fn get(&self, key: &str) -> Option<&Detail> {
         match self {
             Detail::Map(map) => map.get(key),

@@ -19,17 +19,17 @@ const SECOND: &[u8] = b"[\xc3-\xc4]*\n";
 /// Names Git matches against the rules: `é.txt` (0xc3 0xa9) and `Ā.txt`
 /// (0xc4 0x80). Hypothetical only; no such file exists in the project.
 fn git_oracle(project: &Project) -> BTreeSet<String> {
-    let mut child = Command::new("git")
+    let mut command = Command::new("git");
+    command
         .arg("-C")
         .arg(&project.root)
         .args(["check-ignore", "--no-index", "-z", "--stdin"])
-        .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("LC_ALL", "C")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
+        .stderr(Stdio::piped());
+    isolate_git(&mut command, project.home.path());
+    let mut child = command.spawn().unwrap();
     child
         .stdin
         .take()
@@ -86,23 +86,22 @@ fn ack_json(project: &Project, packet: &Path, token: &str) -> (i32, Json) {
 
 // MEM-048
 #[test]
-fn ignore_rule_bytes_outside_utf8_change_the_policy_in_every_source() {
-    let external = tempfile::tempdir().unwrap();
-    for source in ["local", "repository", "global"] {
+fn ignore_rule_bytes_outside_utf8_change_the_repository_policy() {
+    // Only committed `.gitignore` files are repository policy. `info/exclude`
+    // and `core.excludesFile` are host sources: they still decide actual Git
+    // eligibility, but their bytes never enter the policy hash.
+    {
+        let source = "local";
         let project = Project::empty_repo();
         project.write("README.md", "# Root\n");
         project.write("a.rs", "source\n");
         project.commit_all("seed");
-        assert_eq!(project.run(&["init"]).status.code(), Some(0), "{source}");
-        let rule = match source {
-            "local" => project.root.join(".gitignore"),
-            "repository" => project.root.join(".git/info/exclude"),
-            _ => {
-                let path = external.path().join(format!("global-byte-ignore-{source}"));
-                project.git(&["config", "core.excludesFile", path.to_str().unwrap()]);
-                path
-            }
-        };
+        assert_eq!(
+            project.run(&["init", "--apply"]).status.code(),
+            Some(0),
+            "{source}"
+        );
+        let rule = project.root.join(".gitignore");
         fs::write(&rule, FIRST).unwrap();
         let before_oracle = git_oracle(&project);
         let (packet, token, hash_first) = capture(&project);
@@ -166,6 +165,59 @@ fn ignore_rule_bytes_outside_utf8_change_the_policy_in_every_source() {
         fs::write(&rule, [SECOND, b"*.log\n"].concat()).unwrap();
         assert_eq!(ack_json(&project, &packet, &token).0, 0, "{source}");
         assert_eq!(project.json(&["check"]).0, 0, "{source}");
+    }
+}
+
+// MEM-048: host rule bytes are eligibility, never policy.
+#[test]
+fn host_ignore_rule_bytes_change_eligibility_without_changing_policy() {
+    let external = tempfile::tempdir().unwrap();
+    for source in ["repository", "global"] {
+        let project = Project::empty_repo();
+        project.write("README.md", "# Root\n");
+        project.write("a.rs", "source\n");
+        project.commit_all("seed");
+        assert_eq!(
+            project.run(&["init", "--apply"]).status.code(),
+            Some(0),
+            "{source}"
+        );
+        let rule = match source {
+            "repository" => project.root.join(".git/info/exclude"),
+            _ => {
+                let path = external.path().join(format!("host-byte-ignore-{source}"));
+                project.git(&["config", "core.excludesFile", path.to_str().unwrap()]);
+                path
+            }
+        };
+        fs::create_dir_all(rule.parent().unwrap()).unwrap();
+        fs::write(&rule, FIRST).unwrap();
+        let before_oracle = git_oracle(&project);
+        let (packet, token, hash_first) = capture(&project);
+        assert_eq!(ack_json(&project, &packet, &token).0, 0, "{source}");
+        let state = project.state();
+        // Only the host rule bytes change; the selected sources do not.
+        fs::write(&rule, SECOND).unwrap();
+        let after_oracle = git_oracle(&project);
+        assert_ne!(
+            before_oracle, after_oracle,
+            "{source}: Git evaluates the two byte ranges differently"
+        );
+        // The document stays current, so no packet exists to compare; the
+        // policy is compared through the review record instead.
+        assert_eq!(project.json(&["check"]).0, 0, "{source}: still current");
+        assert_eq!(project.state(), state, "{source}: state preserved");
+        let recorded = project.inspect_state();
+        let hash_second = get_str(
+            &recorded,
+            &["reviews", "README.md", "input_manifest", "policy_hash"],
+        )
+        .to_string();
+        assert_eq!(
+            hash_first, hash_second,
+            "{source}: host rule bytes must not change the policy fingerprint"
+        );
+        let _ = token;
     }
 }
 

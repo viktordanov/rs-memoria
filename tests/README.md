@@ -40,7 +40,10 @@ The fixture names prevent sample READMEs from becoming real boundaries in this p
 The root `memoria.toml` also excludes `tests/fixtures/**` from selected source inputs.
 This decision leaves the real test suites inside the documentation scope.
 
-Source evidence: [common/mod.rs:29](common/mod.rs#L29), [common/mod.rs:52](common/mod.rs#L52), and [memoria.toml](../memoria.toml).
+`common/state_vectors.rs` builds the frozen `memoria.lock` representation vectors.
+It reads one frozen logical input and rebuilds the scaled fixtures in Rust, so no large expansion is stored.
+
+Source evidence: [common/mod.rs](common/mod.rs#L1), [common/state_vectors.rs](common/state_vectors.rs#L1), and [memoria.toml](../memoria.toml).
 
 ## The assertions describe observable behavior
 
@@ -58,7 +61,10 @@ An acknowledgement with an unchanged export ends that review path.
 The snapshot-conflict scenario changes a file after packet creation.
 It expects exit 3, exact differences, and unchanged state bytes.
 
-Source evidence: [workflow.rs:9](workflow.rs#L9), [workflow.rs:86](workflow.rs#L86), and [workflow.rs:554](workflow.rs#L554).
+The portability scenario varies each host ignore source without changing a selected file.
+It expects unchanged policy hashes, unchanged state bytes, and a clean check.
+
+Source evidence: [workflow.rs](workflow.rs#L1), [portability.rs](portability.rs#L1), and [state_format.rs](state_format.rs#L1).
 
 ## Suite map
 
@@ -69,17 +75,35 @@ An invalidation requests a review with an explicit reason, even without a file c
 | [workflow.rs](workflow.rs) | Ownership, review order, imports, and invalidation |
 | [packets.rs](packets.rs) | Packet transport, limits, integrity, replay, and concurrency |
 | [edges.rs](edges.rs) | Discovery, paths, configuration, and corrupt state |
-| [agent.rs](agent.rs) | Installation, local edits, backups, and removal |
+| [portability.rs](portability.rs) | Host rules against repository policy, and clean clones |
+| [guidance.rs](guidance.rs) | Setup preview, guidance visibility, and advisory behavior |
+| [state_format.rs](state_format.rs) | Frozen lock vectors, corruption, limits, and inspection |
+| [agent.rs](agent.rs) | Skill scopes, status, upgrade, backups, and removal |
+| [agent_hooks.rs](agent_hooks.rs) | Hook ownership, interrupted transactions, and the bounded runner |
 | `repairs.rs` through `repairs15.rs` | Regression cases for recorded defects |
 
 The repair suites contain multiple cases and supporting controls.
 Their source headers identify the related defect numbers.
 The tests describe specific cases, not a proof of all possible filesystem behavior.
 
+Some cases rebuild an interrupted state instead of stopping a real process.
+They write the exact transaction record that each durable boundary leaves, then invoke the public command.
+Their edits change one identity at a time, so a refusal names one cause.
+The process cases are real: a stub Git records an identifier, and the test examines that process after the endpoint exits.
+One stub blocks under its own identifier, and another exits early and leaves a descendant holding its pipes.
+
 ## Test boundaries
 
 The harness invokes the executable that Cargo supplies through `CARGO_BIN_EXE_memoria`.
+Each fixture runs with an isolated home and XDG configuration directory.
+Every Git invocation also runs with empty system and global configuration files.
+The harness clears inherited Git parameters, so a host signing rule cannot change a seed commit.
+Tests that exercise host ignore rules override those locations explicitly.
+
 Some corruption tests construct invalid state deliberately.
+The frozen `memoria.lock` vectors under `fixtures/state-v2` measure representation and size.
+They are not project review records, and no test uses them as one.
+
 Normal documentation review uses packets and the Memoria CLI.
 Test results do not establish whether a human explanation is correct.
 

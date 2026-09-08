@@ -10,31 +10,55 @@ use std::collections::{BTreeMap, BTreeSet};
 use memoria_domain::canonical;
 use memoria_domain::{
     ByteRange, DirPath, Document, DocumentId, DocumentStatus, EffectivePolicy, Exclusion, ExportId,
-    FileInput, GitContext, GitRuleScope, Glob, GraphError, Hash64, Import, ImportGraph,
-    ImportInput, InputManifest, NavigationGraph, OwnershipTree, PolicyRuleScope, ProjectPath,
-    ReviewState, RuleScope, SelectionDecision,
+    FileInput, GitContext, GitRuleScope, Glob, GraphError, GuidanceDigest, GuidanceEntry,
+    GuidanceKind, Hash64, Import, ImportGraph, ImportInput, InputManifest, NavigationGraph,
+    OwnershipTree, PolicyRuleScope, ProjectPath, ReviewState, RuleScope, SelectionDecision,
 };
 
 use crate::config::RootConfig;
 use crate::error::{AppError, Detail, DetailMap, Diagnostic, ExitClass, sort_diagnostics};
 use crate::gitignore;
-use crate::ports::{FileKind, LoadedState, Services, StateFailure};
+use crate::guidance;
+use crate::ports::{FileKind, IgnoreScope, LoadedState, Services, StateFailure};
 
 pub const ROOT_CONFIG_PATH: &str = "memoria.toml";
 pub const SIDECAR_FILE_NAME: &str = "README.memoria.toml";
-pub const STATE_PATH: &str = ".memoria/state.json";
+/// The generated, machine-owned committed state, beside `memoria.toml`.
+pub const STATE_PATH: &str = "memoria.lock";
+/// The version 1 state file. Recognized only to report the clean cutover.
+pub const LEGACY_STATE_PATH: &str = ".memoria/state.json";
+/// The version 1 state directory. Still reserved, never a source input.
 pub const STATE_DIR: &str = ".memoria";
+/// Reserved prefix of the state writer's temporary file.
+pub const STATE_TEMP_PREFIX: &str = ".memoria.lock.tmp.";
 
-/// A writing instruction applicable within a configuration scope.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Instruction {
-    pub scope: DirPath,
-    /// `memoria.toml`, a sidecar path, or an instruction file path.
-    pub source: String,
-    /// `inline` or `file`.
-    pub kind: &'static str,
-    pub text: String,
+/// Exact integration paths that are agent context, never product inputs.
+/// They stay reserved whether or not an integration is installed, so hook
+/// installation cannot change documentation freshness.
+pub const RESERVED_INTEGRATION_PATHS: &[&str] = &[
+    ".codex/hooks.json",
+    ".codex/config.toml",
+    ".codex/memoria-hook.json",
+    ".claude/settings.local.json",
+    ".claude/memoria-hook.json",
+];
+
+/// Whether a path is the state writer's reserved temporary destination.
+pub fn is_state_temp(path: &ProjectPath) -> bool {
+    path.directory().is_root()
+        && path
+            .file_name()
+            .strip_prefix(STATE_TEMP_PREFIX)
+            .is_some_and(|suffix| {
+                suffix.len() == 32
+                    && suffix
+                        .bytes()
+                        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            })
 }
+
+/// One applicable guidance entry with its declaring configuration scope.
+pub type Guidance = GuidanceEntry;
 
 /// One configuration scope: the root or a sidecar.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,8 +67,8 @@ pub struct ScopeConfig {
     pub source: String,
     pub rules: RuleScope,
     pub policy: PolicyRuleScope,
-    pub instructions: Vec<Instruction>,
-    pub instruction_files: Vec<ProjectPath>,
+    pub guidance: Vec<Guidance>,
+    pub guidance_files: Vec<ProjectPath>,
 }
 
 /// Exact facts gathered from the ports in one pass.
@@ -59,10 +83,8 @@ pub struct Collected {
     pub decisions: BTreeMap<ProjectPath, SelectionDecision>,
     pub file_bytes: BTreeMap<ProjectPath, Vec<u8>>,
     pub document_bytes: BTreeMap<DocumentId, Vec<u8>>,
-    pub instruction_bytes: BTreeMap<ProjectPath, Vec<u8>>,
+    pub guidance_bytes: BTreeMap<ProjectPath, Vec<u8>>,
     pub gitignores: BTreeMap<ProjectPath, Vec<u8>>,
-    pub global_excludes: Option<Vec<u8>>,
-    pub repository_excludes: Option<Vec<u8>>,
     pub state: Option<LoadedState>,
     pub diagnostics: Vec<Diagnostic>,
 }
@@ -89,6 +111,8 @@ pub struct Snapshot {
     pub policies: BTreeMap<DocumentId, EffectivePolicy>,
     pub policy_hashes: BTreeMap<DocumentId, Hash64>,
     pub manifests: BTreeMap<DocumentId, InputManifest>,
+    /// Effective guidance and its digest, for every discovered document.
+    pub guidance: BTreeMap<DocumentId, guidance::EffectiveGuidance>,
     pub state: ReviewState,
     pub statuses: Vec<DocumentStatus>,
     pub outdated_imports: Vec<OutdatedImport>,
@@ -156,6 +180,9 @@ fn tool_reserved(path: &ProjectPath, managed_parents: &BTreeSet<DirPath>) -> boo
     if first == ".git" || first == STATE_DIR {
         return true;
     }
+    if path.as_str() == STATE_PATH || is_state_temp(path) {
+        return true;
+    }
     if (first == ".agents" || first == ".claude")
         && components.next() == Some("skills")
         && components.next().is_some_and(is_managed_artifact)
@@ -172,7 +199,7 @@ fn tool_reserved(path: &ProjectPath, managed_parents: &BTreeSet<DirPath>) -> boo
 
 fn reserved_category(
     path: &ProjectPath,
-    instruction_files: &BTreeSet<ProjectPath>,
+    guidance_files: &BTreeSet<ProjectPath>,
     managed_parents: &BTreeSet<DirPath>,
 ) -> Option<&'static str> {
     let mut components = path.components();
@@ -183,6 +210,12 @@ fn reserved_category(
     }
     if first == STATE_DIR {
         return Some("state");
+    }
+    if path.as_str() == STATE_PATH || is_state_temp(path) {
+        return Some("state");
+    }
+    if RESERVED_INTEGRATION_PATHS.contains(&path.as_str()) {
+        return Some("agent-hook");
     }
     if path.as_str() == ROOT_CONFIG_PATH {
         return Some("configuration");
@@ -196,8 +229,8 @@ fn reserved_category(
     if path.is_readme() {
         return Some("document");
     }
-    if instruction_files.contains(path) {
-        return Some("instruction-file");
+    if guidance_files.contains(path) {
+        return Some("guidance-file");
     }
     if (first == ".agents" || first == ".claude")
         && components.next() == Some("skills")
@@ -248,30 +281,33 @@ fn io_error(err: crate::ports::AdapterError) -> AppError {
     AppError::io("io_error", err.to_string())
 }
 
-/// Structural validation plus recomputed fingerprints for loaded state.
-pub fn validate_state(services: &Services<'_>, state: &ReviewState) -> Result<(), AppError> {
+/// Structural validation of loaded state.
+///
+/// Version 2 stores no second input checksum: each fingerprint is derived
+/// from the reconstructed manifest, so it cannot disagree with it. The outer
+/// frame checksum protects the stored bytes instead.
+pub fn validate_state(_services: &Services<'_>, state: &ReviewState) -> Result<(), AppError> {
     if let Err(err) = state.validate() {
         return Err(AppError::new(
             ExitClass::Io,
             Diagnostic::error("state_corrupt", err.to_string()).at_path(STATE_PATH),
         ));
     }
-    for (document, record) in &state.reviews {
-        let expected = services
-            .hasher
-            .hash(&canonical::encode_inputs(&record.manifest));
-        if expected != record.input_fingerprint {
-            return Err(AppError::new(
-                ExitClass::Io,
-                Diagnostic::error(
-                    "state_corrupt",
-                    format!("stored input_fingerprint for {document} does not match its manifest"),
-                )
-                .at_path(STATE_PATH),
-            ));
-        }
-    }
     Ok(())
+}
+
+/// Translate a state adapter failure into the command-level error.
+pub fn state_failure(failure: StateFailure) -> AppError {
+    match failure {
+        StateFailure::Io(err) => AppError::io("state_unreadable", err.to_string()),
+        StateFailure::Conflict => {
+            AppError::conflict("state_conflict", "state changed while loading")
+        }
+        other => AppError::new(
+            ExitClass::Io,
+            Diagnostic::error(other.code(), other.message()).at_path(STATE_PATH),
+        ),
+    }
 }
 
 /// Read and validate the root configuration; missing is a validation error.
@@ -437,17 +473,17 @@ fn collect(services: &Services<'_>) -> Result<Collected, AppError> {
 
     // Configuration scopes.
     let mut scopes: Vec<ScopeConfig> = Vec::new();
-    let mut instruction_files: BTreeSet<ProjectPath> = BTreeSet::new();
+    let mut guidance_files: BTreeSet<ProjectPath> = BTreeSet::new();
     let root_scope = build_scope(
         DirPath::root(),
         ROOT_CONFIG_PATH,
         &root_config.ignore,
         &root_config.include,
-        &root_config.instructions,
-        &root_config.instruction_files,
+        &root_config.guidance,
+        &root_config.guidance_files,
         &mut diagnostics,
     );
-    instruction_files.extend(root_scope.instruction_files.iter().cloned());
+    guidance_files.extend(root_scope.guidance_files.iter().cloned());
     scopes.push(root_scope);
     for sidecar in &sidecar_paths {
         let dir = sidecar.directory();
@@ -480,11 +516,11 @@ fn collect(services: &Services<'_>) -> Result<Collected, AppError> {
                     sidecar.as_str(),
                     &config.ignore,
                     &config.include,
-                    &config.instructions,
-                    &config.instruction_files,
+                    &config.guidance,
+                    &config.guidance_files,
                     &mut diagnostics,
                 );
-                instruction_files.extend(scope.instruction_files.iter().cloned());
+                guidance_files.extend(scope.guidance_files.iter().cloned());
                 scopes.push(scope);
             }
             Err(message) => diagnostics
@@ -493,11 +529,11 @@ fn collect(services: &Services<'_>) -> Result<Collected, AppError> {
     }
     scopes.sort_by_key(|scope| (scope.dir.depth(), scope.dir.clone()));
 
-    // Instruction files.
-    let mut instruction_bytes: BTreeMap<ProjectPath, Vec<u8>> = BTreeMap::new();
-    for path in &instruction_files {
-        if let Some(bytes) = read_instruction_file(services, path, &mut diagnostics)? {
-            instruction_bytes.insert(path.clone(), bytes);
+    // Guidance files.
+    let mut guidance_bytes: BTreeMap<ProjectPath, Vec<u8>> = BTreeMap::new();
+    for path in &guidance_files {
+        if let Some(bytes) = read_guidance_file(services, path, &documents, &mut diagnostics)? {
+            guidance_bytes.insert(path.clone(), bytes);
         }
     }
 
@@ -509,7 +545,7 @@ fn collect(services: &Services<'_>) -> Result<Collected, AppError> {
     let mut gitignores: BTreeMap<ProjectPath, Vec<u8>> = BTreeMap::new();
     for path in &eligible {
         let reserved =
-            reserved_category(path, &instruction_files, &managed_parents).map(str::to_string);
+            reserved_category(path, &guidance_files, &managed_parents).map(str::to_string);
         let decision = memoria_domain::selection::decide(path, reserved, &rule_scopes);
         if decision.selected() {
             match kinds[path] {
@@ -531,18 +567,41 @@ fn collect(services: &Services<'_>) -> Result<Collected, AppError> {
         }
         decisions.insert(path.clone(), decision);
     }
-    // Git applies a `.gitignore` in every directory it traverses, even when
-    // that file is itself ignored or untracked and even when the directory
-    // holds no eligible file. Walk the directories Git traverses: skip
-    // `.git`, directories that Git's ignore rules exclude as directories,
-    // and nested repositories. Ignored trees are never entered.
-    // Only directories Git actually traverses for ignore selection carry
-    // active `.gitignore` scopes. A tracked descendant inside an ignored
-    // directory does not activate that directory's rules, and tool-reserved
-    // trees (Git metadata, Memoria state, managed guidance and its backups)
-    // never contribute policy.
+    // Repository ignore inventory. Git applies a `.gitignore` in every
+    // directory it traverses, even when that file is itself ignored or
+    // untracked and even when the directory holds no eligible file. This
+    // walk asks only the repository's own rules which directories to enter,
+    // through the repository matcher port. Host ignore settings still decide
+    // actual Git eligibility, but they never decide which repository rules
+    // are active, so a harmless host rule cannot hide a nested `.gitignore`
+    // and change a project's policy hash.
+    //
+    // A directory's own rules are read before its children are evaluated.
+    // A tracked descendant inside an ignored directory does not activate
+    // that directory's rules, and tool-reserved trees (Git metadata, Memoria
+    // state, managed guidance packages and their backups) never contribute
+    // policy.
     let mut policy_dirs: BTreeSet<DirPath> = BTreeSet::new();
     policy_dirs.insert(DirPath::root());
+    let mut rule_sources: Vec<IgnoreScope> = Vec::new();
+    let read_rules = |dir: &DirPath,
+                      gitignores: &mut BTreeMap<ProjectPath, Vec<u8>>,
+                      sources: &mut Vec<IgnoreScope>|
+     -> Result<(), AppError> {
+        let Ok(candidate) = dir.join(".gitignore") else {
+            return Ok(());
+        };
+        if services.files.kind(candidate.as_str()).map_err(io_error)? == FileKind::Regular {
+            let bytes = services.files.read(candidate.as_str()).map_err(io_error)?;
+            sources.push(IgnoreScope {
+                path: candidate.as_str().to_string(),
+                bytes: bytes.clone(),
+            });
+            gitignores.insert(candidate, bytes);
+        }
+        Ok(())
+    };
+    read_rules(&DirPath::root(), &mut gitignores, &mut rule_sources)?;
     let mut frontier: Vec<DirPath> = vec![DirPath::root()];
     while !frontier.is_empty() {
         let mut candidates: Vec<(DirPath, String)> = Vec::new();
@@ -552,7 +611,7 @@ fn collect(services: &Services<'_>) -> Result<Collected, AppError> {
                 .subdirectories(dir.as_str())
                 .map_err(io_error)?
             {
-                if name == ".git" || name == STATE_DIR && dir.is_root() {
+                if name == ".git" || (name == STATE_DIR && dir.is_root()) {
                     continue;
                 }
                 let Ok(child) =
@@ -576,9 +635,9 @@ fn collect(services: &Services<'_>) -> Result<Collected, AppError> {
         }
         let names: Vec<String> = candidates.iter().map(|(_, name)| name.clone()).collect();
         let ignored: BTreeSet<String> = services
-            .git
-            .ignored_directories(&names)
-            .map_err(git_error)?
+            .ignore
+            .ignored_directories(&rule_sources, &names)
+            .map_err(io_error)?
             .into_iter()
             .collect();
         for (dir, name) in candidates {
@@ -586,18 +645,8 @@ fn collect(services: &Services<'_>) -> Result<Collected, AppError> {
                 continue;
             }
             policy_dirs.insert(dir.clone());
+            read_rules(&dir, &mut gitignores, &mut rule_sources)?;
             frontier.push(dir);
-        }
-    }
-    for dir in &policy_dirs {
-        let Ok(candidate) = dir.join(".gitignore") else {
-            continue;
-        };
-        if services.files.kind(candidate.as_str()).map_err(io_error)? == FileKind::Regular {
-            gitignores.insert(
-                candidate.clone(),
-                services.files.read(candidate.as_str()).map_err(io_error)?,
-            );
         }
     }
     for document in &documents {
@@ -607,27 +656,7 @@ fn collect(services: &Services<'_>) -> Result<Collected, AppError> {
         );
     }
 
-    let global_excludes = services.git.global_excludes().map_err(git_error)?;
-    let repository_excludes = services.git.repository_excludes().map_err(git_error)?;
-
-    let state = match services.state.load() {
-        Ok(state) => state,
-        Err(StateFailure::Io(err)) => {
-            return Err(AppError::io("state_unreadable", err.to_string()));
-        }
-        Err(StateFailure::Corrupt(message)) => {
-            return Err(AppError::new(
-                ExitClass::Io,
-                Diagnostic::error("state_corrupt", message).at_path(STATE_PATH),
-            ));
-        }
-        Err(StateFailure::Conflict) => {
-            return Err(AppError::conflict(
-                "state_conflict",
-                "state changed while loading",
-            ));
-        }
-    };
+    let state = services.state.load().map_err(state_failure)?;
     if let Some(loaded) = &state {
         validate_state(services, &loaded.state)?;
     }
@@ -642,33 +671,61 @@ fn collect(services: &Services<'_>) -> Result<Collected, AppError> {
         decisions,
         file_bytes,
         document_bytes,
-        instruction_bytes,
+        guidance_bytes,
         gitignores,
-        global_excludes,
-        repository_excludes,
         state,
         diagnostics,
     })
 }
 
-/// Read one configured instruction file with the inspection rules: it must
-/// exist, be a regular file (never a symlink), and be UTF-8. Problems are
-/// reported as diagnostics; `Ok(None)` means the file could not be used.
-fn read_instruction_file(
+/// Whether a path may never be a guidance destination. Guidance is review
+/// context, so Git metadata, state artifacts, configuration files, and
+/// README boundary files stay outside it.
+fn forbidden_guidance_destination(path: &ProjectPath) -> Option<&'static str> {
+    let first = path.components().next().unwrap_or("");
+    if first == ".git" {
+        return Some("Git metadata");
+    }
+    if first == STATE_DIR || path.as_str() == STATE_PATH || is_state_temp(path) {
+        return Some("a state artifact");
+    }
+    if path.as_str() == ROOT_CONFIG_PATH || path.file_name() == SIDECAR_FILE_NAME {
+        return Some("a configuration file");
+    }
+    if path.is_readme() {
+        return Some("a README boundary file");
+    }
+    None
+}
+
+/// Read one configured guidance file with the inspection rules: it must
+/// exist, be a regular file (never a symlink), be UTF-8, and name a
+/// destination that guidance may use. Problems are reported as diagnostics;
+/// `Ok(None)` means the file could not be used.
+fn read_guidance_file(
     services: &Services<'_>,
     path: &ProjectPath,
+    documents: &BTreeSet<DocumentId>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<Option<Vec<u8>>, AppError> {
+    let _ = documents;
+    if let Some(reason) = forbidden_guidance_destination(path) {
+        diagnostics.push(
+            Diagnostic::error(
+                "guidance_file_invalid",
+                format!("guidance_files entry names {reason}, which guidance may not use"),
+            )
+            .at_path(path.as_str()),
+        );
+        return Ok(None);
+    }
     match services.files.kind(path.as_str()).map_err(io_error)? {
         FileKind::Regular => {
             let bytes = services.files.read(path.as_str()).map_err(io_error)?;
             if std::str::from_utf8(&bytes).is_err() {
                 diagnostics.push(
-                    Diagnostic::error(
-                        "instruction_file_invalid",
-                        "instruction file is not valid UTF-8",
-                    )
-                    .at_path(path.as_str()),
+                    Diagnostic::error("guidance_file_invalid", "guidance file is not valid UTF-8")
+                        .at_path(path.as_str()),
                 );
             }
             Ok(Some(bytes))
@@ -676,8 +733,18 @@ fn read_instruction_file(
         FileKind::Missing => {
             diagnostics.push(
                 Diagnostic::error(
-                    "instruction_file_missing",
-                    "referenced instruction file does not exist",
+                    "guidance_file_missing",
+                    "referenced guidance file does not exist",
+                )
+                .at_path(path.as_str()),
+            );
+            Ok(None)
+        }
+        FileKind::Symlink => {
+            diagnostics.push(
+                Diagnostic::error(
+                    "guidance_file_invalid",
+                    "guidance file must be a regular file, found a symlink",
                 )
                 .at_path(path.as_str()),
             );
@@ -686,8 +753,8 @@ fn read_instruction_file(
         other => {
             diagnostics.push(
                 Diagnostic::error(
-                    "instruction_file_invalid",
-                    format!("instruction file must be a regular file, found {other:?}"),
+                    "guidance_file_invalid",
+                    format!("guidance file must be a regular file, found {other:?}"),
                 )
                 .at_path(path.as_str()),
             );
@@ -710,12 +777,13 @@ pub fn validate_root_config(
         ROOT_CONFIG_PATH,
         &config.ignore,
         &config.include,
-        &config.instructions,
-        &config.instruction_files,
+        &config.guidance,
+        &config.guidance_files,
         &mut diagnostics,
     );
-    for path in &scope.instruction_files {
-        read_instruction_file(services, path, &mut diagnostics)?;
+    let documents = BTreeSet::new();
+    for path in &scope.guidance_files {
+        read_guidance_file(services, path, &documents, &mut diagnostics)?;
     }
     sort_diagnostics(&mut diagnostics);
     Ok(diagnostics)
@@ -727,33 +795,28 @@ fn build_scope(
     source: &str,
     ignore: &[String],
     include: &[String],
-    instructions: &[String],
-    instruction_files: &[String],
+    guidance_texts: &[String],
+    guidance_files: &[String],
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ScopeConfig {
     let ignore_globs = compile_globs(ignore, source, "ignore", diagnostics);
     let include_globs = compile_globs(include, source, "include", diagnostics);
     let mut files = Vec::new();
-    for relative in instruction_files {
+    for relative in guidance_files {
         match ProjectPath::resolve_relative(&dir, relative) {
             Ok(path) => files.push(path),
             Err(err) => diagnostics.push(
                 Diagnostic::error(
-                    "instruction_file_invalid",
-                    format!("instruction_files entry {relative:?}: {err}"),
+                    "guidance_file_invalid",
+                    format!("guidance_files entry {relative:?}: {err}"),
                 )
                 .at_path(source),
             ),
         }
     }
-    let inline: Vec<Instruction> = instructions
+    let inline: Vec<Guidance> = guidance_texts
         .iter()
-        .map(|text| Instruction {
-            scope: dir.clone(),
-            source: source.to_string(),
-            kind: "inline",
-            text: text.clone(),
-        })
+        .map(|text| guidance::entry(dir.clone(), source, GuidanceKind::Inline, text.clone()))
         .collect();
     ScopeConfig {
         dir: dir.clone(),
@@ -764,8 +827,8 @@ fn build_scope(
             include: include_globs,
         },
         policy: PolicyRuleScope::new(dir, ignore.to_vec(), include.to_vec()),
-        instructions: inline,
-        instruction_files: files,
+        guidance: inline,
+        guidance_files: files,
     }
 }
 
@@ -889,6 +952,40 @@ fn analyze(services: &Services<'_>, collected: Collected) -> Snapshot {
                 }
             }
         }
+    }
+
+    // Effective guidance. It is advisory review context: it stays outside
+    // the policy hash, the input manifest, the review schedule, and import
+    // propagation.
+    let mut guidance_map: BTreeMap<DocumentId, guidance::EffectiveGuidance> = BTreeMap::new();
+    for document in &collected.documents {
+        let ancestors = document.directory().ancestors();
+        let mut entries: Vec<Guidance> = Vec::new();
+        for scope in &collected.scopes {
+            if !ancestors.contains(&scope.dir) {
+                continue;
+            }
+            entries.extend(scope.guidance.iter().cloned());
+            for path in &scope.guidance_files {
+                if let Some(bytes) = collected.guidance_bytes.get(path) {
+                    entries.push(guidance::entry(
+                        scope.dir.clone(),
+                        path.as_str(),
+                        GuidanceKind::File,
+                        String::from_utf8_lossy(bytes).into_owned(),
+                    ));
+                }
+            }
+        }
+        let digest = guidance::digest_of(hasher, &entries);
+        guidance_map.insert(
+            document.clone(),
+            guidance::EffectiveGuidance {
+                document: document.clone(),
+                entries,
+                digest,
+            },
+        );
     }
 
     // Policies and manifests.
@@ -1017,6 +1114,7 @@ fn analyze(services: &Services<'_>, collected: Collected) -> Snapshot {
         policies,
         policy_hashes,
         manifests,
+        guidance: guidance_map,
         state,
         statuses,
         outdated_imports,
@@ -1209,12 +1307,6 @@ fn effective_policy(
             });
         }
     };
-    if let Some(bytes) = &collected.global_excludes {
-        push_scope(&mut git_scopes, "global", bytes);
-    }
-    if let Some(bytes) = &collected.repository_excludes {
-        push_scope(&mut git_scopes, "repository", bytes);
-    }
     for (path, bytes) in &collected.gitignores {
         let dir = path.directory();
         let is_ancestor = ancestors.contains(&dir);
@@ -1307,27 +1399,66 @@ impl Snapshot {
         )
     }
 
-    /// Instructions from the root to the nearest scope of a document.
-    pub fn applicable_instructions(&self, document: &DocumentId) -> Vec<Instruction> {
+    /// Effective guidance from the root scope toward the document scope.
+    /// Inline entries precede file entries within each scope, and each list
+    /// preserves its authored order.
+    pub fn applicable_guidance(&self, document: &DocumentId) -> Vec<Guidance> {
         let ancestors = document.directory().ancestors();
         let mut out = Vec::new();
         for scope in &self.collected.scopes {
             if !ancestors.contains(&scope.dir) {
                 continue;
             }
-            out.extend(scope.instructions.iter().cloned());
-            for path in &scope.instruction_files {
-                if let Some(bytes) = self.collected.instruction_bytes.get(path) {
-                    out.push(Instruction {
-                        scope: scope.dir.clone(),
-                        source: path.as_str().to_string(),
-                        kind: "file",
-                        text: String::from_utf8_lossy(bytes).into_owned(),
-                    });
+            out.extend(scope.guidance.iter().cloned());
+            for path in &scope.guidance_files {
+                if let Some(bytes) = self.collected.guidance_bytes.get(path) {
+                    out.push(guidance::entry(
+                        scope.dir.clone(),
+                        path.as_str(),
+                        GuidanceKind::File,
+                        String::from_utf8_lossy(bytes).into_owned(),
+                    ));
                 }
             }
         }
         out
+    }
+
+    /// The effective guidance and digest of a document.
+    pub fn guidance_of(&self, document: &DocumentId) -> guidance::EffectiveGuidance {
+        self.guidance
+            .get(document)
+            .cloned()
+            .unwrap_or_else(|| guidance::EffectiveGuidance {
+                document: document.clone(),
+                entries: Vec::new(),
+                digest: GuidanceDigest::default(),
+            })
+    }
+
+    /// Scopes that add guidance, with the boundary that can inspect each.
+    pub fn guidance_scopes(&self) -> Vec<(DirPath, String, usize)> {
+        self.collected
+            .scopes
+            .iter()
+            .filter(|scope| !scope.guidance.is_empty() || !scope.guidance_files.is_empty())
+            .map(|scope| {
+                let count = scope.guidance.len()
+                    + scope
+                        .guidance_files
+                        .iter()
+                        .filter(|p| self.collected.guidance_bytes.contains_key(*p))
+                        .count();
+                (scope.dir.clone(), scope.source.clone(), count)
+            })
+            .collect()
+    }
+
+    /// Whether a document's guidance differs from the guidance its last
+    /// review recorded. An absent review has nothing to compare.
+    pub fn guidance_changed(&self, document: &DocumentId) -> Option<bool> {
+        let record = self.state.reviews.get(document)?;
+        Some(record.guidance != self.guidance_of(document).digest)
     }
 
     pub fn outdated_imports_of(&self, document: &DocumentId) -> Vec<&OutdatedImport> {

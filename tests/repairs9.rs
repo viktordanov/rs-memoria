@@ -14,31 +14,31 @@ fn init_rejects_invalid_existing_configuration_before_writing() {
     let cases: Vec<(&str, String, &str)> = vec![
         (
             "parent glob",
-            "version = 1\nignore = [\n    \"../outside/**\",\n]\n".to_string(),
+            "version = 2\nignore = [\n    \"../outside/**\",\n]\n".to_string(),
             "configuration_invalid",
         ),
         (
             "negation glob",
-            "version = 1\ninclude = [\n    \"!keep\",\n]\n".to_string(),
+            "version = 2\ninclude = [\n    \"!keep\",\n]\n".to_string(),
             "configuration_invalid",
         ),
         (
             "missing instruction",
-            "version = 1\n\n[documentation]\ninstruction_files = [\n    \"missing.md\",\n]\n"
+            "version = 2\n\n[documentation]\nguidance_files = [\n    \"missing.md\",\n]\n"
                 .to_string(),
-            "instruction_file_missing",
+            "guidance_file_missing",
         ),
         (
             "escaping instruction",
-            "version = 1\n\n[documentation]\ninstruction_files = [\n    \"../outside.md\",\n]\n"
+            "version = 2\n\n[documentation]\nguidance_files = [\n    \"../outside.md\",\n]\n"
                 .to_string(),
-            "instruction_file_invalid",
+            "guidance_file_invalid",
         ),
         (
             "symlinked instruction",
-            "version = 1\n\n[documentation]\ninstruction_files = [\n    \"rules.md\",\n]\n"
+            "version = 2\n\n[documentation]\nguidance_files = [\n    \"rules.md\",\n]\n"
                 .to_string(),
-            "instruction_file_invalid",
+            "guidance_file_invalid",
         ),
     ];
     for (name, config, code) in cases {
@@ -56,7 +56,7 @@ fn init_rejects_invalid_existing_configuration_before_writing() {
         project.write("source.txt", "original\n");
         project.commit_all("seed");
         let before = project.tree_snapshot();
-        let (exit, init) = project.json(&["init"]);
+        let (exit, init) = project.json(&["init", "--apply"]);
         assert_eq!(exit, 1, "{name}: {init:?}");
         assert!(
             diagnostic_codes(&init).contains(&code.to_string()),
@@ -72,15 +72,15 @@ fn init_rejects_invalid_existing_configuration_before_writing() {
     }
     // A valid existing configuration still initializes the missing files, and unresolved imports are not init's concern.
     let project = Project::empty_repo();
-    project.write("memoria.toml", "version = 1\nignore = [\n    \"**/generated/**\",\n]\n\n[documentation]\ninstruction_files = [\n    \"rules.md\",\n]\n");
+    project.write("memoria.toml", "version = 2\nignore = [\n    \"**/generated/**\",\n]\n\n[documentation]\nguidance_files = [\n    \"rules.md\",\n]\n");
     project.write("rules.md", "# rules\n");
     project.write("README.md", "# Root\n\n<!-- memoria:import src=\"missing/README.md#summary\" -->\n<!-- /memoria:import -->\n");
     project.commit_all("seed");
-    let (exit, init) = project.json(&["init"]);
+    let (exit, init) = project.json(&["init", "--apply"]);
     assert_eq!(exit, 0, "{init:?}");
     assert_eq!(
         strings(get(&init, &["data", "created"])),
-        vec![".memoria/state.json"]
+        vec!["memoria.lock"]
     );
     assert_eq!(
         project.json(&["lint"]).0,
@@ -94,7 +94,7 @@ fn init_rejects_invalid_existing_configuration_before_writing() {
 fn human_review_refuses_packets_above_the_record_cap_like_json() {
     let make = |instructions: usize| -> Project {
         let project = Project::empty_repo();
-        let mut config = String::from("version = 1\n[documentation]\ninstructions = [\n");
+        let mut config = String::from("version = 2\n[documentation]\nguidance = [\n");
         for _ in 0..instructions {
             config.push_str("    \"x\",\n");
         }
@@ -103,7 +103,7 @@ fn human_review_refuses_packets_above_the_record_cap_like_json() {
         project.write("README.md", "# Root\n");
         project.write("child/README.md", "# Child\n");
         project.commit_all("seed");
-        assert_eq!(project.run(&["init"]).status.code(), Some(0));
+        assert_eq!(project.run(&["init", "--apply"]).status.code(), Some(0));
         project
     };
     // Calibrate: every instruction is one record; the navigation diagnostic adds one.
@@ -133,7 +133,7 @@ fn human_review_refuses_packets_above_the_record_cap_like_json() {
         "{}",
         stdout(&human)
     );
-    assert!(stdout(&human).contains("Token           mrv1."));
+    assert!(stdout(&human).contains("Token           mrv2."));
     // 100,001 records: both formats refuse without a token.
     let project = make(exact + 1);
     let (code, refused) = project.json(&["review", "README.md"]);
@@ -146,13 +146,13 @@ fn human_review_refuses_packets_above_the_record_cap_like_json() {
     let human = project.run(&["review", "README.md"]);
     assert_eq!(human.status.code(), Some(1), "{}", stdout(&human));
     assert!(
-        !stdout(&human).contains("mrv1."),
+        !stdout(&human).contains("mrv2."),
         "no token in human output: {}",
         stdout(&human)
     );
     assert!(stderr(&human).contains("packet_too_large"));
     // The project is untouched by either refusal.
-    assert!(!project.exists(".memoria/state.json.tmp"));
+    assert!(!project.exists(".memoria.lock.tmp"));
     assert_eq!(
         project.json(&["check"]).0,
         1,

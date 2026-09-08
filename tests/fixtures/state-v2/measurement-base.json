@@ -3,22 +3,19 @@
   "next_invalidation_id": 2,
   "reviews": {
     "README.md": {
-      "acknowledged_invalidations": [],
+      "acknowledged_invalidations": [
+        1
+      ],
       "git": {
-        "base_commit": "1eaff70ffcf7368a552ce3c1c7585e0285d104ab",
+        "base_commit": "1eaf6e9a99a50f944dbc0b189cf63414ad0978bd",
         "worktree_dirty": true
       },
-      "input_fingerprint": "640881ec7943e9f3",
+      "input_fingerprint": "b5814320fae93b27",
       "input_manifest": {
         "document": "README.md",
-        "document_bytes": 11141,
-        "document_hash": "10e39d1ba86b4d97",
+        "document_bytes": 10996,
+        "document_hash": "0d27565d9b019ef3",
         "files": [
-          {
-            "bytes": 3155,
-            "hash": "0e8fd45693361952",
-            "path": ".github/workflows/release-assets.yml"
-          },
           {
             "bytes": 16821,
             "hash": "fa7fb4c1877781aa",
@@ -101,12 +98,12 @@
         "policy_hash": "336c150896928f05",
         "version": 1
       },
-      "note": "Homebrew is now the primary macOS install path, with Cargo retained for source builds.",
+      "note": "Reframed the public guide, corrected its workflow example, and added maintained navigation and CLI help.",
       "result": "updated",
-      "reviewed_at": "2026-09-08T10:11:33Z",
+      "reviewed_at": "2026-09-08T00:13:10Z",
       "reviewer": "Codex",
-      "revision": 9,
-      "token_digest": "d5cc42ecb761f0e5"
+      "revision": 2,
+      "token_digest": "a3832c23d47749aa"
     },
     "crates/memoria-application/README.md": {
       "acknowledged_invalidations": [
@@ -614,6 +611,6 @@
       "token_digest": "6b257f1673317dca"
     }
   },
-  "revision": 20,
+  "revision": 13,
   "schema_version": 1
 }
