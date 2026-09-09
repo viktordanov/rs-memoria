@@ -22,13 +22,6 @@ jobs:
   checks:
     name: Rust checks and CLI acceptance on Linux
     runs-on: ubuntu-24.04
-    # Fixture snapshots include .git. Background maintenance must not mutate it.
-    env:
-      GIT_CONFIG_COUNT: "2"
-      GIT_CONFIG_KEY_0: maintenance.auto
-      GIT_CONFIG_VALUE_0: "false"
-      GIT_CONFIG_KEY_1: gc.auto
-      GIT_CONFIG_VALUE_1: "0"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,7 +42,22 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Test
-        run: cargo test --workspace --locked
+        # The fixture harness clears Git configuration environment variables.
+        # A command wrapper keeps background maintenance out of .git snapshots.
+        # It changes no repository or global Git configuration.
+        env:
+          MEMORIA_CI_GIT: /usr/bin/git
+        run: |
+          set -euo pipefail
+          wrapper_dir="$RUNNER_TEMP/memoria-ci-git"
+          mkdir -p "$wrapper_dir"
+          cat > "$wrapper_dir/git" <<'SH'
+          #!/bin/sh
+          exec "$MEMORIA_CI_GIT" -c maintenance.auto=false -c gc.auto=0 "$@"
+          SH
+          chmod 755 "$wrapper_dir/git"
+          export PATH="$wrapper_dir:$PATH"
+          cargo test --workspace --locked
 
       - name: Build the release binary
         run: cargo build --release --locked
