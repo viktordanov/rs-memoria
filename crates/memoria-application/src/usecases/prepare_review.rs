@@ -1,8 +1,8 @@
 //! `memoria review <README.md>`: one complete focused packet with its token.
 
-use memoria_domain::{DocumentId, InputChange, ReviewRecord};
+use memoria_domain::{DocumentId, InputChange};
 
-use crate::diff::{DiffText, diff_bytes};
+use super::evidence::diff_entry;
 use crate::error::{AppError, Detail, DetailMap, Diagnostic, ExitClass, Outcome};
 use crate::packet::{
     ChangeEntry, ContentEncoding, DEFAULT_RAW_INPUT_LIMIT, DiffEntry, ExportEntry, FileContent,
@@ -392,87 +392,4 @@ pub fn build_packet(
         raw_input_bytes,
         record_count,
     })
-}
-
-fn diff_entry(
-    services: &Services<'_>,
-    record: &ReviewRecord,
-    identity: &str,
-    path: &str,
-    previous: Option<(u64, memoria_domain::Hash64)>,
-    current: Option<&[u8]>,
-    budget: &mut u64,
-) -> DiffEntry {
-    let status_removed = current.is_none();
-    let Some((prev_len, prev_hash)) = previous else {
-        return DiffEntry {
-            identity: identity.into(),
-            status: "added".into(),
-            reason: None,
-            old_encoding: None,
-            old_body: None,
-            text: None,
-        };
-    };
-    let Some(commit) = record.git.base_commit.as_deref() else {
-        return unavailable(identity, "the previous review recorded no base commit");
-    };
-    let old = match services.git.read_blob(commit, path) {
-        Ok(Some(bytes)) => bytes,
-        Ok(None) => {
-            return unavailable(
-                identity,
-                &format!("{path} is not available at commit {commit}"),
-            );
-        }
-        Err(err) => return unavailable(identity, &err.to_string()),
-    };
-    if old.len() as u64 != prev_len || services.hasher.hash(&old) != prev_hash {
-        return unavailable(
-            identity,
-            &format!(
-                "{path} at commit {commit} does not match the reviewed hash; the prior snapshot was not committed"
-            ),
-        );
-    }
-    // Available content is never relabeled to fit a budget: the producer
-    // refuses the whole packet when the decoded total exceeds the cap.
-    *budget += old.len() as u64;
-    let encoding = ContentEncoding::for_bytes(&old);
-    if status_removed {
-        return DiffEntry {
-            identity: identity.into(),
-            status: "removed".into(),
-            reason: None,
-            old_encoding: Some(encoding),
-            old_body: Some(old),
-            text: None,
-        };
-    }
-    let current = current.unwrap_or(&[]);
-    let (status, text) = match diff_bytes(&old, current) {
-        DiffText::Unified(text) => ("available", Some(text)),
-        DiffText::Identical => ("available", Some(String::new())),
-        DiffText::Binary => ("binary", None),
-        DiffText::TooLarge => ("too_large", None),
-    };
-    DiffEntry {
-        identity: identity.into(),
-        status: status.into(),
-        reason: None,
-        old_encoding: Some(encoding),
-        old_body: Some(old),
-        text,
-    }
-}
-
-fn unavailable(identity: &str, reason: &str) -> DiffEntry {
-    DiffEntry {
-        identity: identity.into(),
-        status: "unavailable".into(),
-        reason: Some(reason.to_string()),
-        old_encoding: None,
-        old_body: None,
-        text: None,
-    }
 }

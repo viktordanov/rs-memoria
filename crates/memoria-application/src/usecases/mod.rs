@@ -4,6 +4,8 @@ pub mod ack;
 pub mod agent;
 pub mod agent_hooks;
 pub mod check;
+mod evidence;
+pub mod explain;
 pub mod graph;
 pub mod guidance;
 pub mod init;
@@ -12,6 +14,7 @@ pub mod lint;
 pub mod plan;
 pub mod prepare_review;
 pub mod render;
+pub mod state_diff;
 pub mod state_inspect;
 pub mod status;
 

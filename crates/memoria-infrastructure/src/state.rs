@@ -371,6 +371,7 @@ impl LockStateInspector {
         let bytes = read_bounded(path)?;
         let decoded = lock_codec::decode(&bytes).map_err(|e| lock_failure(e, path))?;
         Ok(InspectedState {
+            encoded: bytes,
             path: display,
             file_bytes: decoded.file_bytes,
             payload_bytes: decoded.payload_bytes,

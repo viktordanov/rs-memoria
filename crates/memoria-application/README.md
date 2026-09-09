@@ -100,8 +100,14 @@ The `lint` command examines documentation structure without writes.
 The `check` command also requires current reviews and current imported text.
 Neither command records an acknowledgement.
 
-The read-only commands are `status`, `guidance`, `state_inspect`, `plan`, `lint`, `check`, and `graph`.
+The read-only commands include `status`, `guidance`, `state_inspect`, `state_diff`, `explain`, `plan`, `lint`, `check`, and `graph`.
 An `init` preview is read-only too; only `init --apply` writes.
+
+`explain` uses the stable snapshot without a readiness gate, so current and waiting documents also produce evidence.
+The shared evidence helper verifies Git bytes against the saved length and hash before a hunk.
+Packets retain their existing evidence contract through that helper.
+`state_diff` compares explicit snapshots through `StateInspector` and matches logical records by identity.
+Neither command writes source contents or hunks into lock state.
 
 `guidance` reports a configuration error for a README that exists.
 It returns the errors with the partial report instead of hiding them.

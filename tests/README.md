@@ -77,6 +77,7 @@ An invalidation requests a review with an explicit reason, even without a file c
 | [edges.rs](edges.rs) | Discovery, paths, configuration, and corrupt state |
 | [portability.rs](portability.rs) | Host rules against repository policy, and clean clones |
 | [guidance.rs](guidance.rs) | Setup preview, guidance visibility, and advisory behavior |
+| [usability.rs](usability.rs) | Completions, reviewer identity, freshness explanations, state comparisons, and human guidance cues |
 | [state_format.rs](state_format.rs) | Frozen lock vectors, corruption, limits, and inspection |
 | [agent.rs](agent.rs) | Skill scopes, status, upgrade, backups, and removal |
 | [agent_hooks.rs](agent_hooks.rs) | Hook ownership, interrupted transactions, and the bounded runner |

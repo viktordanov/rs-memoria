@@ -18,7 +18,7 @@ pub struct InspectReport {
     pub inspected: InspectedState,
 }
 
-fn state_detail(inspected: &InspectedState) -> Detail {
+pub(crate) fn state_detail(inspected: &InspectedState) -> Detail {
     let state = &inspected.state;
     let guidance: std::collections::BTreeMap<&str, &str> = inspected
         .guidance

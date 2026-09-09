@@ -744,7 +744,7 @@ fn changed_imports_are_reported_with_exact_differences_and_text() {
     let err = stderr(&output);
     assert!(err.contains("src/execution/README.md#summary"), "{err}");
     assert!(
-        err.contains("before_hash=") && err.contains("after_bytes="),
+        err.contains("before_hash:") && err.contains("after_bytes:"),
         "{err}"
     );
     assert!(err.contains("+") && err.contains("carefully"), "{err}");
@@ -765,13 +765,13 @@ fn human_cycle_diagnostics_list_every_edge_location() {
     assert!(err.contains("import_cycle"), "{err}");
     assert!(
         err.contains(
-            "export_id=summary importer=README.md line=23 provider=src/execution/README.md"
+            "export_id: summary\n      importer: README.md\n      line: 23\n      provider: src/execution/README.md"
         ),
         "{err}"
     );
     assert!(
         err.contains(
-            "export_id=summary importer=src/execution/README.md line=11 provider=README.md"
+            "export_id: summary\n      importer: src/execution/README.md\n      line: 11\n      provider: README.md"
         ),
         "{err}"
     );

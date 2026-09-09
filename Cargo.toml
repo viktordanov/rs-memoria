@@ -7,7 +7,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 license = "MIT"
 rust-version = "1.96"
@@ -29,6 +29,9 @@ path = "src/main.rs"
 memoria-application = { path = "crates/memoria-application" }
 memoria-infrastructure = { path = "crates/memoria-infrastructure" }
 clap = { version = "4.5", features = ["derive"] }
+clap_complete = "4.6"
+terminal_size = "0.4"
+unicode-width = "0.2"
 
 [dev-dependencies]
 memoria-domain = { path = "crates/memoria-domain" }

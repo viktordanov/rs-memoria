@@ -2,7 +2,7 @@
 
 use std::fmt::Write as _;
 
-use memoria_application::error::{Detail, Diagnostic};
+use memoria_application::error::Detail;
 use memoria_application::packet::{ContentEncoding, FocusedReviewPacket};
 use memoria_application::usecases::ack::AckReport;
 use memoria_application::usecases::agent::AgentReport;
@@ -29,117 +29,60 @@ pub fn human_bytes(bytes: u64) -> String {
     }
 }
 
-pub fn diagnostic_line(diagnostic: &Diagnostic) -> String {
-    let mut out = String::new();
-    let _ = write!(out, "{}: {}", diagnostic.severity.as_str(), diagnostic.code);
-    if let Some(path) = &diagnostic.path {
-        let _ = write!(out, " {path}");
-        if let Some(line) = diagnostic.line {
-            let _ = write!(out, ":{line}");
-            if let Some(column) = diagnostic.column {
-                let _ = write!(out, ":{column}");
+pub fn state_diff(report: &memoria_application::usecases::state_diff::StateDiffReport) -> String {
+    let mut out = format!(
+        "State comparison: {} -> {}\n",
+        text_of(&report.before, "path"),
+        text_of(&report.after, "path")
+    );
+    out.push_str(if !report.changes.is_empty() {
+        "Logical state changed\n"
+    } else if report.byte_equal {
+        "Logical state unchanged; encoded bytes identical.\n"
+    } else {
+        "Logical state unchanged; encoded bytes differ.\n"
+    });
+    for change in &report.changes {
+        let _ = writeln!(out, "\n{}", texts_of(change, "path").join(" -> "));
+        for side in ["before", "after"] {
+            let _ = writeln!(
+                out,
+                "  {side} (present: {}):",
+                text_of(change, &format!("{side}_present"))
+            );
+            if let Some(value) = change.get(side) {
+                super::human::detail(&mut out, value, 2);
             }
         }
     }
-    let _ = write!(out, ": {}", diagnostic.message);
-    render_details(&mut out, &diagnostic.details, 1);
+    out.push_str(
+        "\nThis compares saved review records. It does not establish current freshness.\n",
+    );
     out
 }
 
-/// Render structured details under a diagnostic so human output carries the
-/// same facts as JSON: cycle edges with marker lines, snapshot differences
-/// with lengths and hashes, and textual diffs.
-fn render_details(out: &mut String, details: &Detail, depth: usize) {
-    let indent = "  ".repeat(depth);
-    match details {
-        Detail::Map(map) if !map.is_empty() => {
-            for (key, value) in map {
-                match value {
-                    Detail::List(items) if !items.is_empty() => {
-                        let _ = write!(out, "\n{indent}{key}:");
-                        for item in items {
-                            render_list_item(out, item, depth + 1);
-                        }
-                    }
-                    Detail::List(_) => {}
-                    Detail::Map(_) => {
-                        let _ = write!(out, "\n{indent}{key}:");
-                        render_details(out, value, depth + 1);
-                    }
-                    scalar => {
-                        let _ = write!(out, "\n{indent}{key}: ");
-                        render_scalar(out, scalar, depth + 1);
-                    }
-                }
-            }
-        }
-        _ => {}
-    }
-}
-
-fn render_list_item(out: &mut String, item: &Detail, depth: usize) {
-    let indent = "  ".repeat(depth);
-    match item {
-        Detail::Map(map) => {
-            let mut fields = Vec::new();
-            let mut blocks = Vec::new();
-            for (key, value) in map {
-                match value {
-                    Detail::Text(text) if text.contains('\n') => blocks.push((key, text)),
-                    Detail::List(items) if !items.is_empty() => {
-                        let rendered: Vec<String> = items
-                            .iter()
-                            .map(|i| match i {
-                                Detail::Text(t) => t.clone(),
-                                Detail::Number(n) => n.to_string(),
-                                other => format!("{other:?}"),
-                            })
-                            .collect();
-                        fields.push(format!("{key}=[{}]", rendered.join(", ")));
-                    }
-                    Detail::List(_) => {}
-                    Detail::Null => {}
-                    Detail::Text(text) => fields.push(format!("{key}={text}")),
-                    Detail::Number(n) => fields.push(format!("{key}={n}")),
-                    Detail::Bool(b) => fields.push(format!("{key}={b}")),
-                    Detail::Map(_) => fields.push(format!("{key}={{...}}")),
-                }
-            }
-            let _ = write!(out, "\n{indent}- {}", fields.join(" "));
-            for (key, text) in blocks {
-                let _ = write!(out, "\n{indent}  {key}:");
-                for line in text.lines() {
-                    let _ = write!(out, "\n{indent}    {line}");
-                }
-            }
-        }
-        scalar => {
-            let _ = write!(out, "\n{indent}- ");
-            render_scalar(out, scalar, depth + 1);
-        }
-    }
-}
-
-fn render_scalar(out: &mut String, value: &Detail, depth: usize) {
-    match value {
-        Detail::Text(text) if text.contains('\n') => {
-            let indent = "  ".repeat(depth);
-            for line in text.lines() {
-                let _ = write!(out, "\n{indent}{line}");
-            }
-        }
-        Detail::Text(text) => out.push_str(text),
-        Detail::Number(n) => {
-            let _ = write!(out, "{n}");
-        }
-        Detail::Bool(b) => {
-            let _ = write!(out, "{b}");
-        }
-        Detail::Null => out.push_str("null"),
-        other => {
-            let _ = write!(out, "{other:?}");
-        }
-    }
+pub fn explain(report: &memoria_application::usecases::explain::ExplainReport) -> String {
+    let mut out = format!(
+        "Freshness: {} ({})\n",
+        report.document,
+        text_of(&report.state, "status")
+    );
+    super::human::detail(&mut out, &report.state, 0);
+    out.push_str("\nChanges:\n");
+    super::human::detail(&mut out, &Detail::List(report.changes.clone()), 1);
+    out.push_str("\nPolicy (prior rules are not stored):\n");
+    super::human::detail(&mut out, &report.policy, 1);
+    out.push_str("\nGuidance (advisory context):\n");
+    super::human::detail(&mut out, &report.guidance, 1);
+    out.push_str("\nGit evidence:\n");
+    super::human::detail(&mut out, &Detail::List(report.evidence.clone()), 1);
+    let _ = writeln!(out, "\nRead guidance: memoria guidance {}", report.document);
+    let _ = writeln!(
+        out,
+        "Review packet (when ready): memoria review {} --format json",
+        report.document
+    );
+    out
 }
 
 fn text_of(detail: &Detail, key: &str) -> String {
@@ -570,6 +513,12 @@ pub fn plan(report: &ReviewPlan) -> String {
             if text_of(task, "render_required") == "true" {
                 line.push_str("  (run `memoria render` first)");
             }
+            if text_of(task, "guidance_present") == "true" {
+                line.push_str("; guidance present");
+            }
+            if text_of(task, "guidance_changed") == "true" {
+                line.push_str("; guidance changed");
+            }
             let _ = writeln!(out, "{line}");
         }
     }
@@ -580,6 +529,17 @@ pub fn plan(report: &ReviewPlan) -> String {
             text_of(waiting, "document"),
             texts_of(waiting, "waiting_on").join(", ")
         );
+    }
+    if !report.tasks.is_empty() {
+        let _ = writeln!(out, "{}", report.guidance_first);
+        if let Some(next) = &report.next_ready
+            && let Some(task) = report
+                .tasks
+                .iter()
+                .find(|task| text_of(task, "document") == *next)
+        {
+            let _ = writeln!(out, "Guidance: {}", text_of(task, "guidance_command"));
+        }
     }
     match &report.next_action {
         Some((kind, next)) => {

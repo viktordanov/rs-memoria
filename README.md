@@ -144,9 +144,15 @@ READMEs can also share small, stable explanations. A provider marks an export, a
 
 Sometimes the reason for another review is not a file diff at all. `memoria invalidate` records an explicit request — a changed policy, a new architecture decision — and carries your reason into the packet.
 
+To see why a boundary needs review, run `memoria explain README.md`. It shows changed paths and hashes, with Git hunks only when the recorded baseline matches the reviewed bytes. To compare saved review records, use `memoria state diff before.lock after.lock`; that comparison does not establish current freshness.
+
+For repeated reviews, you can set `MEMORIA_REVIEWER` to your chosen label. An explicit `--reviewer` always wins, and a successful acknowledgement confirms the label it used. The label records attribution, not authentication or authority. Agents should pass their label explicitly.
+
 ## Project documentation guidance
 
 Guidance is the prose you write for whoever reviews your documentation: what these documents are for, who reads them, and how to write them.
+
+The owner chooses the goals, the reviewer judges correctness, and Memoria checks exact inputs and review consistency. Guidance provides context; it does not grant permission or override your task.
 
 ```toml
 [documentation]
@@ -182,19 +188,21 @@ Keep a project's documented mental model connected to its code.
 Usage: memoria [OPTIONS] <COMMAND>
 
 Commands:
-  init        Preview the setup, or create the two committed files with --apply
-  status      Show coverage, input size, and review state
-  guidance    Show the project documentation guidance that applies to a README
-  state       Inspect committed state without changing it
-  lint        Check structure, configuration, markers, and link hints
-  review      Show the ordered review plan, or a focused packet for one README
-  render      Refresh declared import blocks only
-  ack         Record a review result against the exact packet snapshot
-  invalidate  Mark one README, a subtree, or the whole project for semantic review
-  check       Run read-only validation for CI
-  graph       Show documentation ownership, imports, navigation, and status
-  agent       Install or remove the managed Memoria skill and hooks for an agent
-  help        Print this message or the help of the given subcommand(s)
+  completions  Print a shell completion script without project discovery or installation
+  explain      Explain one README's whole-file freshness with verified local Git evidence
+  init         Validate root setup inputs, or create missing configuration and state with --apply
+  status       Show coverage, input size, and review state
+  guidance     Show the project documentation guidance that applies to a README
+  state        Inspect or compare committed state without changing it
+  lint         Check structure, configuration, markers, and link hints
+  review       Show the ordered review plan, or a focused packet for one README
+  render       Refresh declared import blocks only
+  ack          Record a review result against the exact packet snapshot
+  invalidate   Mark one README, a subtree, or the whole project for semantic review
+  check        Run read-only validation for CI
+  graph        Show documentation ownership, imports, navigation, and status
+  agent        Install or remove the managed Memoria skill and hooks for an agent
+  help         Print this message or the help of the given subcommand(s)
 
 Options:
       --root <DIRECTORY>  Project root. Must be the Git worktree root. Defaults to discovery from the current directory
@@ -214,7 +222,7 @@ The [command reference](docs/cli.md) covers every argument, state change, diagno
 | Look up a command or failure | [Command reference](docs/cli.md) |
 | Understand the committed state file | [Committed state](docs/state.md) |
 | Install the agent skill or a Stop hook | [Agent integrations](docs/agents.md) |
-| Move a project to this release | [Release 0.2.0](docs/releases/0.2.0.md) |
+| See release changes and earlier upgrade notes | [Changelog](CHANGELOG.md) |
 
 Start with the workflow if you are new. The command reference is the lookup guide, the [specification](docs/specification.md) preserves the product rules and their rationale, and the [agent skill](skills/memoria/SKILL.md) is the procedure an assistant follows.
 
@@ -309,6 +317,6 @@ cargo build --release --locked
 
 </details>
 
-Memoria is available under the [MIT license](LICENSE).
+Memoria is available under the [MIT license](LICENSE). Created and maintained by Viktor D.
 
 Start with `memoria status`; it will tell you what the documentation needs next.

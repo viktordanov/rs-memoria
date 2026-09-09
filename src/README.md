@@ -36,19 +36,21 @@ Keep a project's documented mental model connected to its code.
 Usage: memoria [OPTIONS] <COMMAND>
 
 Commands:
-  init        Preview the setup, or create the two committed files with --apply
-  status      Show coverage, input size, and review state
-  guidance    Show the project documentation guidance that applies to a README
-  state       Inspect committed state without changing it
-  lint        Check structure, configuration, markers, and link hints
-  review      Show the ordered review plan, or a focused packet for one README
-  render      Refresh declared import blocks only
-  ack         Record a review result against the exact packet snapshot
-  invalidate  Mark one README, a subtree, or the whole project for semantic review
-  check       Run read-only validation for CI
-  graph       Show documentation ownership, imports, navigation, and status
-  agent       Install or remove the managed Memoria skill and hooks for an agent
-  help        Print this message or the help of the given subcommand(s)
+  completions  Print a shell completion script without project discovery or installation
+  explain      Explain one README's whole-file freshness with verified local Git evidence
+  init         Validate root setup inputs, or create missing configuration and state with --apply
+  status       Show coverage, input size, and review state
+  guidance     Show the project documentation guidance that applies to a README
+  state        Inspect or compare committed state without changing it
+  lint         Check structure, configuration, markers, and link hints
+  review       Show the ordered review plan, or a focused packet for one README
+  render       Refresh declared import blocks only
+  ack          Record a review result against the exact packet snapshot
+  invalidate   Mark one README, a subtree, or the whole project for semantic review
+  check        Run read-only validation for CI
+  graph        Show documentation ownership, imports, navigation, and status
+  agent        Install or remove the managed Memoria skill and hooks for an agent
+  help         Print this message or the help of the given subcommand(s)
 
 Options:
       --root <DIRECTORY>  Project root. Must be the Git worktree root. Defaults to discovery from the current directory
@@ -63,6 +65,9 @@ Options:
 `Cli` parses the command, document path, and flags.
 `discover_root` identifies the Git worktree root.
 `run` creates `Services` from the concrete adapters and dispatches the command.
+Completions and explicit state comparisons dispatch before project discovery.
+The CLI resolves the optional reviewer environment default only for acknowledgement.
+An explicit reviewer label takes precedence, and success output confirms that label.
 The write lock comes from the Git port, at the worktree-private path, so the committed state file is never the process lock.
 The application function returns structured data and diagnostics.
 The presentation code describes those values without recalculating review decisions.
@@ -84,6 +89,8 @@ The runner starts one three-second deadline at entry and bounds its input, its d
 One supervisor owns every process it starts, so an expired deadline terminates them before the runner returns.
 Its grammar has no format option, so an explicit `--format` value is a usage error.
 Human diagnostics go to stderr.
+The human renderer uses terminal width with an 80-column fallback and preserves structured evidence.
+It groups navigation warnings and import hints without changing individual JSON diagnostics.
 The final response goes to stdout.
 Help and version output use plain text.
 
@@ -123,11 +130,13 @@ An agent skill is a file of instructions for an agent.
 The installer receives that embedded text through `FsSkillStore`.
 A later edit to the source skill requires a new binary build to change the installed text.
 
-Three commands resolve before project discovery, because they do not need a project:
+Five command paths resolve before project discovery:
 
 1. `memoria agent hook run` speaks native hook JSON on stdin and stdout.
 2. `memoria state inspect --file` decodes one explicit file outside Git.
 3. A global `memoria agent` operation builds narrow agent services.
+4. `memoria completions` generates a shell script.
+5. `memoria state diff` compares two explicit lock snapshots.
 
 An ordinary command runs no agent client program.
 Only a hook installation measures the version of the client that the target selects.

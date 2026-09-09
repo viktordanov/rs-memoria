@@ -456,7 +456,7 @@ fn usage_and_exit_status_contract() {
     }
     // Human diagnostics go to stderr; stdout stays clean for JSON.
     let output = project.run(&["lint"]);
-    assert!(stderr(&output).contains("hint: missing_import_hint"));
+    assert!(stderr(&output).contains("hint [missing_import_hint]"));
     assert!(!stdout(&output).contains("missing_import_hint"));
     let output = project.run(&["lint", "--format", "json"]);
     assert!(stderr(&output).is_empty());
