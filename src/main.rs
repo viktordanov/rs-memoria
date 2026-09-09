@@ -86,6 +86,45 @@ fn discover_root(requested: Option<&str>) -> Result<GitCli, AppError> {
 }
 
 fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
+    if let Command::Completions { shell } = &cli.command {
+        use clap::CommandFactory as _;
+        use presentation::cli::CompletionShell;
+        let shell = match shell {
+            CompletionShell::Bash => clap_complete::Shell::Bash,
+            CompletionShell::Zsh => clap_complete::Shell::Zsh,
+            CompletionShell::Fish => clap_complete::Shell::Fish,
+        };
+        let mut script = Vec::new();
+        clap_complete::generate(shell, &mut Cli::command(), "memoria", &mut script);
+        let human = String::from_utf8(script).expect("completion generator emits UTF-8");
+        return Ok(CommandOutput {
+            data: Detail::map()
+                .text("shell", shell.to_string())
+                .text("script", human.clone())
+                .build(),
+            human,
+            diagnostics: vec![],
+            raw_json: None,
+        });
+    }
+    if let Command::State {
+        command: StateCommand::Diff { before, after },
+    } = &cli.command
+    {
+        let inspector = LockStateInspector::new(None, invocation_dir());
+        let outcome = usecases::state_diff::run_files(&inspector, before, after)?;
+        let data = outcome.data.to_detail();
+        let human = text::state_diff(&outcome.data);
+        return bounded_output(
+            cli,
+            outcome.diagnostics,
+            data,
+            human,
+            usecases::state_diff::MAX_RENDERED_BYTES,
+            "state_comparison_limit_exceeded",
+            true,
+        );
+    }
     let git = discover_root(cli.root.as_deref())?;
     let root = git.root().to_path_buf();
     let files = FsProjectFiles::new(root.clone());
@@ -150,6 +189,24 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
     };
 
     match &cli.command {
+        Command::Completions { .. }
+        | Command::State {
+            command: StateCommand::Diff { .. },
+        } => unreachable!("early dispatch"),
+        Command::Explain { document } => {
+            let outcome = usecases::explain::run(&services, document)?;
+            let data = outcome.data.to_detail();
+            let human = text::explain(&outcome.data);
+            bounded_output(
+                cli,
+                outcome.diagnostics,
+                data,
+                human,
+                usecases::explain::MAX_RENDERED_BYTES,
+                "explain_limit_exceeded",
+                false,
+            )
+        }
         Command::Init { apply } => {
             let outcome = usecases::init::run(&services, *apply)?;
             let (data, human) = (outcome.data.to_detail(), text::init(&outcome.data));
@@ -263,7 +320,10 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
                 document: args.document.clone(),
                 packet,
                 token: args.token.clone(),
-                reviewer: args.reviewer.clone(),
+                reviewer: presentation::cli::resolve_reviewer(
+                    args.reviewer.as_deref(),
+                    std::env::var_os("MEMORIA_REVIEWER"),
+                )?,
                 result: args.result.clone(),
                 note: args.note.clone(),
             };
@@ -337,6 +397,36 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
     }
 }
 
+fn bounded_output(
+    cli: &Cli,
+    diagnostics: Vec<Diagnostic>,
+    data: Detail,
+    human: String,
+    limit: u64,
+    code: &str,
+    io: bool,
+) -> Result<CommandOutput, AppError> {
+    let encoded = json::envelope(cli.command.name(), true, &data, &diagnostics).into_bytes();
+    if encoded.len() as u64 > limit || human.len() as u64 > limit {
+        let message = format!(
+            "The rendered output exceeds {limit} bytes (JSON: {}, human: {}).",
+            encoded.len(),
+            human.len()
+        );
+        return Err(if io {
+            AppError::io(code, message)
+        } else {
+            AppError::validation(code, message)
+        });
+    }
+    Ok(CommandOutput {
+        data,
+        human,
+        diagnostics,
+        raw_json: Some(encoded),
+    })
+}
+
 /// The lifecycle arguments of an explicitly global agent operation.
 fn global_agent_args(
     command: &AgentCommand,
@@ -372,7 +462,16 @@ fn run_global_agent(
                         &outcome.diagnostics,
                     )
                     .into_bytes(),
-                    Format::Human => text::agent(&outcome.data).into_bytes(),
+                    Format::Human => {
+                        eprint!(
+                            "{}",
+                            presentation::human::render_diagnostics(
+                                &outcome.diagnostics,
+                                presentation::human::HumanOptions::stderr()
+                            )
+                        );
+                        text::agent(&outcome.data).into_bytes()
+                    }
                 };
                 (0u8, payload)
             }
@@ -382,9 +481,13 @@ fn run_global_agent(
                         json::envelope("agent", false, &error.data, &error.diagnostics).into_bytes()
                     }
                     Format::Human => {
-                        for diagnostic in &error.diagnostics {
-                            eprintln!("{}", text::diagnostic_line(diagnostic));
-                        }
+                        eprint!(
+                            "{}",
+                            presentation::human::render_diagnostics(
+                                &error.diagnostics,
+                                presentation::human::HumanOptions::stderr()
+                            )
+                        );
                         format!(
                             "memoria agent failed with exit status {}\n",
                             error.class.code()
@@ -475,7 +578,9 @@ fn json_requested(args: &[String]) -> bool {
 
 /// The command name for a usage-error envelope: the first known command word.
 fn command_word(args: &[String]) -> &'static str {
-    const KNOWN: [&str; 13] = [
+    const KNOWN: [&str; 15] = [
+        "completions",
+        "explain",
         "init",
         "status",
         "guidance",
@@ -791,9 +896,13 @@ fn main() -> ExitCode {
                             .into_bytes()
                     }
                     Format::Human => {
-                        for diagnostic in &error.diagnostics {
-                            eprintln!("{}", text::diagnostic_line(diagnostic));
-                        }
+                        eprint!(
+                            "{}",
+                            presentation::human::render_diagnostics(
+                                &error.diagnostics,
+                                presentation::human::HumanOptions::stderr()
+                            )
+                        );
                         format!(
                             "memoria state inspect failed with exit status {}\n",
                             error.class.code()
@@ -857,9 +966,13 @@ fn main() -> ExitCode {
                         .into_bytes(),
                 },
                 Format::Human => {
-                    for diagnostic in &result.diagnostics {
-                        eprintln!("{}", text::diagnostic_line(diagnostic));
-                    }
+                    eprint!(
+                        "{}",
+                        presentation::human::render_diagnostics(
+                            &result.diagnostics,
+                            presentation::human::HumanOptions::stderr()
+                        )
+                    );
                     result.human.into_bytes()
                 }
             };
@@ -872,9 +985,13 @@ fn main() -> ExitCode {
                         .into_bytes()
                 }
                 Format::Human => {
-                    for diagnostic in &error.diagnostics {
-                        eprintln!("{}", text::diagnostic_line(diagnostic));
-                    }
+                    eprint!(
+                        "{}",
+                        presentation::human::render_diagnostics(
+                            &error.diagnostics,
+                            presentation::human::HumanOptions::stderr()
+                        )
+                    );
                     format!(
                         "memoria {command_name} failed with exit status {}\n",
                         error.class.code()

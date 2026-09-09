@@ -7,6 +7,12 @@ That README is their owner.
 Memoria compares its current inputs with the inputs from its previous review.
 You or an agent decides whether the explanation matches those inputs.
 
+The owner chooses documentation goals.
+The reviewer judges correctness.
+Memoria validates exact inputs, dependencies, and acknowledgement consistency.
+Project guidance provides review context, not permission or authority over the user's task or higher-priority instructions.
+If guidance conflicts with the task, obtain an owner decision.
+
 If the project has no `memoria.toml`, [prepare the project](#prepare-a-project-for-its-first-review).
 
 Examine the current state:
@@ -162,6 +168,20 @@ A token identifies the document, revision, inputs, and invalidations that an ack
 The packet contains that token in `data.token`.
 It does not identify or authenticate the reviewer.
 
+An explicit `--reviewer` takes precedence over the optional `MEMORIA_REVIEWER` environment value.
+Without either label, acknowledgement reports `reviewer_required` with exit 2.
+Success output confirms the resolved label.
+The label provides attribution, not authority or authentication.
+Agents must supply an explicit label instead of an unknown environment value.
+
+The note explains why this README is correct for this packet.
+After trim, it requires 12–1000 Unicode characters and at least three whitespace-separated words.
+CR/LF are allowed, but tabs and other controls are forbidden.
+Generic notes such as `done`, `reviewed`, `looks good`, `no changes`, and `updated` are invalid.
+The [command reference](cli.md#memoria-ack) lists all rejected generic phrases.
+The note is not an instruction, an override, or proof that the reviewer read every input.
+Reviewer and note validation precede packet reads and state mutation.
+
 Read the token from the final packet:
 
 ```sh
@@ -262,6 +282,10 @@ Prepare the documentation boundaries:
 5. Invoke `memoria lint`, then continue at [review one document](#review-one-document).
 
 The preview reads the project and writes nothing.
+It validates root setup inputs, not all project structure or prose correctness.
+It reads root README markers and import reference syntax, existing root configuration, referenced guidance, and existing state.
+It neither creates nested README boundaries nor records acknowledgements.
+Invoke `memoria status` and `memoria lint` for the broader project view.
 Apply creates only the two committed files, and it preserves valid existing files.
 If the root README is absent, apply reports `root_readme_missing` with exit 1 before any write.
 

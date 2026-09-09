@@ -240,6 +240,8 @@ pub trait StateStore {
 /// Framing facts and typed state from one read-only inspection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InspectedState {
+    /// Original bounded frame, for exact file-to-file byte comparison only.
+    pub encoded: Vec<u8>,
     /// The inspected path, as the caller named or the project resolved it.
     pub path: String,
     pub file_bytes: u64,

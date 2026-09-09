@@ -23,7 +23,11 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Preview the setup, or create the two committed files with --apply.
+    /// Print a shell completion script without project discovery or installation.
+    Completions { shell: CompletionShell },
+    /// Explain one README's whole-file freshness with verified local Git evidence.
+    Explain { document: String },
+    /// Validate root setup inputs, or create missing configuration and state with --apply.
     Init {
         /// Create the missing memoria.toml and memoria.lock files.
         #[arg(long)]
@@ -43,7 +47,7 @@ pub enum Command {
         /// Project-relative README path. Defaults to the root README.
         document: Option<String>,
     },
-    /// Inspect committed state without changing it.
+    /// Inspect or compare committed state without changing it.
     State {
         #[command(subcommand)]
         command: StateCommand,
@@ -89,6 +93,8 @@ pub enum Command {
 
 #[derive(Debug, Subcommand)]
 pub enum StateCommand {
+    /// Compare two explicit lock snapshots. Read-only; does not establish freshness.
+    Diff { before: String, after: String },
     /// Decode and print committed state. Read-only.
     Inspect {
         /// Explicit state file, resolved from the current directory.
@@ -108,13 +114,14 @@ pub struct AckArgs {
     /// The 21-byte token from the packet (`data.token`).
     #[arg(long, value_name = "TOKEN")]
     pub token: String,
-    /// Who reviewed (1–128 characters).
+    /// Who reviewed (1–128 characters). Overrides the opt-in MEMORIA_REVIEWER environment default.
     #[arg(long, value_name = "NAME")]
-    pub reviewer: String,
+    pub reviewer: Option<String>,
     /// `updated` or `no-update`.
     #[arg(long, value_name = "RESULT")]
     pub result: String,
-    /// Why the documentation is correct now (12–1000 characters, at least three words).
+    /// Why this README is correct for this packet. After trim: 12–1000 Unicode characters,
+    /// at least three words; CR/LF allowed, tabs and other controls forbidden. Generic notes are rejected.
     #[arg(long, value_name = "TEXT")]
     pub note: String,
 }
@@ -208,6 +215,11 @@ pub enum HookCommand {
 impl Command {
     pub fn name(&self) -> &'static str {
         match self {
+            Command::Completions { .. } => "completions",
+            Command::Explain { .. } => "explain",
+            Command::State {
+                command: StateCommand::Diff { .. },
+            } => "state diff",
             Command::Init { .. } => "init",
             Command::Status { .. } => "status",
             Command::Lint => "lint",
@@ -235,4 +247,36 @@ impl Command {
             },
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum CompletionShell {
+    Bash,
+    Zsh,
+    Fish,
+}
+
+pub fn resolve_reviewer(
+    explicit: Option<&str>,
+    environment: Option<std::ffi::OsString>,
+) -> Result<String, memoria_application::error::AppError> {
+    use memoria_application::error::AppError;
+    if let Some(label) = explicit {
+        return Ok(label.to_string());
+    }
+    let label = environment
+        .map(|value| {
+            value.into_string().map_err(|_| {
+                AppError::usage("reviewer_invalid", "MEMORIA_REVIEWER must be valid UTF-8")
+            })
+        })
+        .transpose()?;
+    label
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            AppError::usage(
+                "reviewer_required",
+                "Supply --reviewer NAME or set MEMORIA_REVIEWER to an explicit reviewer label.",
+            )
+        })
 }

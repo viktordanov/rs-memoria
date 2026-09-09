@@ -179,6 +179,11 @@ A symlink at `.memoria`, its lock, or its state file prevents mutations.
 A missing tracked README or sidecar counts as a deletion.
 The current files determine the resulting ownership and local rules.
 
+README discovery precedes Memoria ignore/include selection.
+An eligible nested README remains a boundary even when Memoria excludes its surrounding source files.
+A Memoria ignore rule does not hide a README boundary.
+A tracked README absent from the worktree is not a current boundary.
+
 Source evidence: [reserved paths](../crates/memoria-application/src/snapshot.rs#L137) and [filesystem path rules](../crates/memoria-infrastructure/src/fs.rs#L22).
 
 </details>
@@ -186,7 +191,8 @@ Source evidence: [reserved paths](../crates/memoria-application/src/snapshot.rs#
 <details>
 <summary>Git policy and inspection limits</summary>
 
-The fingerprint policy includes effective global excludes, repository excludes, and applicable `.gitignore` rules.
+The fingerprint policy includes applicable repository `.gitignore` rules and Memoria selection scopes.
+Host excludes affect Git eligibility but never enter the policy hash.
 Git traversal determines which directory ignore files are active.
 Ignored directories, nested repositories, and reserved trees stop that traversal.
 If Git ignores an active `.gitignore` file, its rules can still affect policy.
@@ -218,6 +224,74 @@ Source evidence: [Git command construction](../crates/memoria-infrastructure/src
 </details>
 
 ## Inspection commands
+
+### Shell completions
+
+`memoria completions bash|zsh|fish` prints a script without project discovery or installation.
+JSON output contains `data.shell` and the same full script in `data.script`.
+
+Create the script for your shell:
+
+```sh
+# Bash
+memoria completions bash > /tmp/memoria.bash
+source /tmp/memoria.bash
+
+# Zsh
+mkdir -p ~/.zsh/completions
+memoria completions zsh > ~/.zsh/completions/_memoria
+fpath=(~/.zsh/completions $fpath)
+autoload -Uz compinit
+compinit
+
+# Fish
+mkdir -p ~/.config/fish/completions
+memoria completions fish > ~/.config/fish/completions/memoria.fish
+```
+
+### `memoria explain <README.md>`
+
+This read-only command explains whole-file freshness for a current, pending, waiting, or never-reviewed boundary.
+It reports changed paths, hashes, lengths, policy, guidance, imports, invalidations, and locally verified Git hunks.
+It does not acquire a write lock, fetch Git objects, or acknowledge a review.
+`status --explain <path>` remains the separate source-selection explanation.
+
+The JSON result has `kind="freshness_explanation"`.
+It includes state fields, `changes`, `policy`, `guidance`, `evidence`, `before_manifest`, and `current_manifest`.
+A missing previous review produces a null previous manifest.
+Evidence records give baseline verification, expected and observed hashes and lengths, and a fixed unavailable-hunk reason code.
+Only a verified baseline permits a hunk.
+Unavailable hunks alone do not fail the command.
+
+The lock stores previous policy and guidance hashes, not previous rules or prose.
+The result labels that missing context `not_stored`.
+Current policy scopes retain their order and exact rule bytes, with base64 for non-UTF-8 rules.
+Guidance remains advisory, and a guidance-only change does not create a pending cause.
+The command preserves whole-file freshness even for a one-line comment change.
+
+Equal inputs and equal local Git evidence produce equal JSON.
+Limits are 32 MiB of decoded evidence, 100,000 records, and 64 MiB of buffered output.
+Old bytes and generated hunks count toward the evidence limit.
+A whole-result refusal returns `explain_limit_exceeded` with exit 1 and no partial success result.
+
+### `memoria state diff <OLD_LOCK> <NEW_LOCK>`
+
+This read-only command compares two explicit lock snapshots without project discovery.
+Both paths resolve from the invocation directory, even with `--root`.
+It compares saved records, not current source freshness.
+It does not convert files or store history.
+
+The JSON result has `kind="state_diff"`, frame metadata, `byte_equal`, `logical_equal`, and ordered `changes`.
+Each change has a path, presence flags, and before/after values.
+Presence flags distinguish absent values from stored nulls.
+Files match by path, imports by provider and export ID, and invalidations by ID.
+Both old and new notes remain visible.
+
+Equal and different snapshots both succeed with exit 0.
+Invalid snapshots retain state diagnostics and exit 4, with the failing operand identified.
+Each input retains the existing 64 MiB limits and expansion checks.
+The comparison has a 256 MiB buffered output limit.
+An output refusal returns `state_comparison_limit_exceeded` with exit 4.
 
 | Command | Result |
 | --- | --- |
@@ -366,6 +440,10 @@ A mutation changes stored files or saved review state.
 ### `memoria init [--apply]`
 
 Without `--apply`, the command is a read-only preview.
+It validates setup inputs, not the full project or the meaning of prose.
+The preview reads root README markers and import reference syntax, existing root configuration, referenced guidance, and existing state.
+It records no acknowledgement and does not certify nested documentation.
+Invoke `memoria status` and `memoria lint` for the broader project view.
 It explains the documentation model, gives three example strategies, and lists the two committed files.
 It reports a missing root README without failing.
 It writes nothing, not even in an empty project.
@@ -413,8 +491,20 @@ memoria ack <README.md> --packet <file|-> --token <token> \
 ```
 
 The reviewer name permits 1–128 characters.
-The note permits 12–1000 characters and requires at least three words.
-Generic notes such as `done` are invalid.
+An explicit `--reviewer` takes precedence over the optional `MEMORIA_REVIEWER` environment value.
+An absent or blank environment value without `--reviewer` produces `reviewer_required` with exit 2.
+An invalid explicit label never falls back to the environment.
+Labels use trim and the existing validation rules.
+Memoria never infers identity from the OS, Git, a model, or shared configuration.
+Success output confirms the resolved label, which provides attribution but no authentication or review authority.
+Managed agents must supply an explicit `--reviewer` label.
+
+After trim, the note permits 12–1000 Unicode characters and requires at least three whitespace-separated words.
+CR/LF are allowed, but tabs and other controls are forbidden.
+Normalization rejects generic notes: `done`, `reviewed`, `looks good`, `ok`, `okay`, `lgtm`, `fine`, `no changes`, `no change`, and `updated`.
+The note explains why this README is correct for this packet.
+It is not an instruction, an override, or proof that the reviewer read every input.
+Reviewer and note validation precede packet reads and state mutation.
 The `--packet -` argument selects stdin.
 Without that argument, acknowledgement does not read stdin.
 

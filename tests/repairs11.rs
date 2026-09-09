@@ -196,7 +196,13 @@ fn deleting_the_packet_document_is_a_snapshot_conflict() {
     assert_eq!(output.status.code(), Some(3));
     let text = format!("{}{}", stdout(&output), stderr(&output));
     assert!(text.contains("snapshot_changed"), "{text}");
-    assert!(text.contains("removed document README"), "{text}");
+    assert!(
+        text.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .contains("removed document README"),
+        "{text}"
+    );
     assert!(text.contains("src/disconnected/item.rs"), "{text}");
     assert_eq!(project.state(), before);
     // The document is still absent from status, and the project stays valid.

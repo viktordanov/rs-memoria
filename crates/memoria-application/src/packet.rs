@@ -256,7 +256,7 @@ pub fn review_record_detail(record: &ReviewRecord) -> Detail {
         .build()
 }
 
-fn body_detail(encoding: ContentEncoding, body: &[u8]) -> Detail {
+pub(crate) fn body_detail(encoding: ContentEncoding, body: &[u8]) -> Detail {
     match encoding {
         ContentEncoding::Utf8 => Detail::Text(String::from_utf8_lossy(body).into_owned()),
         ContentEncoding::Base64 => Detail::Text(base64_encode(body)),
