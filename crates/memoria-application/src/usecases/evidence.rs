@@ -1,71 +1,24 @@
 //! Shared verified Git baselines and packet-compatible hunks.
 use crate::diff::{DiffText, diff_bytes};
 use crate::packet::{ContentEncoding, DiffEntry};
-use crate::ports::Services;
 use memoria_domain::ReviewRecord;
 
 pub(crate) struct Baseline {
     pub bytes: Option<Vec<u8>>,
+    pub commit: Option<String>,
     pub observed: Option<(u64, memoria_domain::Hash64)>,
     pub reason_code: Option<&'static str>,
     pub reason: Option<String>,
 }
 
-pub(crate) fn baseline(
-    services: &Services<'_>,
-    record: &ReviewRecord,
-    path: &str,
-    expected: (u64, memoria_domain::Hash64),
-) -> Baseline {
-    let unavailable = |code, reason| Baseline {
-        bytes: None,
-        observed: None,
-        reason_code: Some(code),
-        reason: Some(reason),
-    };
-    let Some(commit) = record.git.base_commit.as_deref() else {
-        return unavailable(
-            "no_base_commit",
-            "the previous review recorded no base commit".into(),
-        );
-    };
-    let old = match services.git.read_blob(commit, path) {
-        Ok(Some(bytes)) => bytes,
-        Ok(None) => {
-            return unavailable(
-                "blob_unavailable",
-                format!("{path} is not available at commit {commit}"),
-            );
-        }
-        Err(err) => return unavailable("git_read_failed", err.to_string()),
-    };
-    let observed = (old.len() as u64, services.hasher.hash(&old));
-    if observed != expected {
-        return Baseline {
-            bytes: None,
-            observed: Some(observed),
-            reason_code: Some("reviewed_bytes_mismatch"),
-            reason: Some(format!(
-                "{path} at commit {commit} does not match the reviewed hash; the prior snapshot was not committed"
-            )),
-        };
-    }
-    Baseline {
-        bytes: Some(old),
-        observed: Some(observed),
-        reason_code: None,
-        reason: None,
-    }
-}
-
 pub(crate) fn diff_entry(
-    services: &Services<'_>,
     record: &ReviewRecord,
     identity: &str,
     path: &str,
     previous: Option<(u64, memoria_domain::Hash64)>,
     current: Option<&[u8]>,
     budget: &mut u64,
+    history: &mut super::history::History<'_, '_>,
 ) -> DiffEntry {
     let status_removed = current.is_none();
     let Some((prev_len, prev_hash)) = previous else {
@@ -78,7 +31,12 @@ pub(crate) fn diff_entry(
             text: None,
         };
     };
-    let baseline = baseline(services, record, path, (prev_len, prev_hash));
+    let baseline = history.lookup(
+        record.git.base_commit.as_deref(),
+        path,
+        None,
+        (prev_len, prev_hash),
+    );
     let Some(old) = baseline.bytes else {
         return unavailable(
             identity,

@@ -121,7 +121,7 @@ jobs:
 
       - name: Package the acceptance archives
         env:
-          TAG: v0.3.0
+          TAG: v0.4.0
         run: |
           set -euo pipefail
           source_date_epoch="$(git show -s --format=%ct HEAD)"

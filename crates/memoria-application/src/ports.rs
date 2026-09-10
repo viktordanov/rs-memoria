@@ -71,6 +71,39 @@ pub trait GitRepository {
     fn worktree_dirty(&self) -> Result<bool, AdapterError>;
     /// Bytes of `path` at `commit`, or `None` when unavailable.
     fn read_blob(&self, commit: &str, path: &str) -> Result<Option<Vec<u8>>, AdapterError>;
+    /// Bounded raw historical read. No filters, replacement objects, or network fetches.
+    fn historical_blob(
+        &self,
+        commit: &str,
+        path: &str,
+        limit: u64,
+        deadline: std::time::Instant,
+    ) -> Result<Option<Vec<u8>>, AdapterError> {
+        if std::time::Instant::now() >= deadline {
+            return Err(AdapterError::new(
+                "history_limit",
+                None,
+                "Historical deadline exhausted.",
+            ));
+        }
+        let bytes = self.read_blob(commit, path)?;
+        if bytes.as_ref().is_some_and(|b| b.len() as u64 > limit) {
+            return Err(AdapterError::new(
+                "history_limit",
+                None,
+                "Historical byte budget exhausted.",
+            ));
+        }
+        Ok(bytes)
+    }
+    /// Local HEAD ancestry only. The caller requests one extra item to detect exhaustion.
+    fn recent_commits(
+        &self,
+        _limit: usize,
+        _deadline: std::time::Instant,
+    ) -> Result<Vec<String>, AdapterError> {
+        Ok(vec![])
+    }
     /// Why Git ignores a path, when it does. Reporting only: this answer
     /// includes host rules and never enters deterministic policy.
     fn explain_ignore(&self, path: &str) -> Result<Option<String>, AdapterError>;

@@ -116,6 +116,20 @@ A packet outside the project does not become a new source input.
 
 If packet creation fails, resolve the reported error before the next stage.
 
+The default human view supplies a short entry point.
+It does not replace the review obligations below.
+Saved-packet retrieval keeps each selection tied to the captured bytes:
+
+```sh
+memoria packet view "$memoria_packet" --section guidance
+memoria packet view "$memoria_packet" --section content
+memoria packet view "$memoria_packet" --section history
+```
+
+The [experimental P1 procedure](../skills/memoria/SKILL.md) permits explicit reuse only with owner approval and a trusted prior review.
+The model-quality evaluation remains unrun, so full review remains the default.
+A P1 reviewer records actual examination, justified reuse, and named context retrieval separately from the canonical packet.
+
 ### 3. Examine the evidence and update the explanation
 
 Read the packet fields in this order:
@@ -207,6 +221,13 @@ Otherwise, the README becomes current for the reviewed inputs.
 
 The command rejects changed inputs or a conflicting revision instead of recording an outdated review.
 The [rejection table](#resolve-a-rejected-acknowledgement) gives the next action for each common error.
+
+Successful acknowledgement also reports historical coverage.
+Partial or unavailable Git evidence does not invalidate the review.
+If you want stronger future hunk availability, a source commit before acknowledgement can help.
+A source commit is optional.
+The reviewed snapshot remains the authority.
+The [history procedure](cli.md#historical-coverage) explains bounded recovery of later-committed matching bytes.
 
 ### 5. Finish the review cycle
 
@@ -376,7 +397,7 @@ New invalidations after packet creation remain pending after acknowledgement of 
 
 ### Self-hosting cycle
 
-This repository uses six document boundaries and five imports into the root README.
+This repository uses six document boundaries and six imported sections from five providers in the root README.
 The root owns this guide and the command reference.
 The crate, command entry, and test READMEs explain their local files.
 The root policy requires `simple-english` and `i-have-adhd` before documentation edits.
@@ -418,7 +439,7 @@ It does not establish whether the explanation is correct.
 <details>
 <summary>Manual pre-commit hook</summary>
 
-Memoria does not install hooks.
+Memoria does not install Git pre-commit hooks.
 A manually installed executable `.git/hooks/pre-commit` can contain this script:
 
 ```sh

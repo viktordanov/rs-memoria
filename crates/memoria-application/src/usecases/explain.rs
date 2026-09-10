@@ -113,6 +113,7 @@ pub fn run(
     let changes = previous
         .map(|record| diff_changes(&record.manifest.diff(manifest)))
         .unwrap_or_default();
+    let mut history = super::history::History::new(services);
     let mut evidence = Vec::new();
     if previous.is_none() {
         evidence.push(
@@ -159,19 +160,24 @@ pub fn run(
         let mut observed = None;
         let mut verified = false;
         let mut text = None;
-        let (status, mut code, mut reason) = if change.kind == "import" {
-            (
-                "unavailable",
-                Some("import_content_not_stored"),
-                Some("Previous export content is not stored.".to_string()),
-            )
-        } else if let (Some(record), Some(expected)) = (previous, change.before) {
-            let path = if change.kind == "document" {
-                document.as_str()
+        let (status, mut code, mut reason) = if let (Some(record), Some(expected)) =
+            (previous, change.before)
+        {
+            let (path, export) = if change.kind == "document" {
+                (document.as_str(), None)
+            } else if change.kind == "import" {
+                let (path, export) = change
+                    .identity
+                    .rsplit_once('#')
+                    .expect("canonical import identity");
+                (path, Some(export))
             } else {
-                &change.identity
+                (change.identity.as_str(), None)
             };
-            let base = super::evidence::baseline(services, record, path, expected);
+            let base = history.lookup(record.git.base_commit.as_deref(), path, export, expected);
+            if base.commit.is_some() {
+                item = item.with("base_commit", Detail::option_text(base.commit.clone()));
+            }
             observed = base.observed;
             decoded += observed.map(|v| v.0).unwrap_or(0);
             limit(decoded, evidence.len() as u64, 0)?;
@@ -179,6 +185,13 @@ pub fn run(
                 verified = true;
                 let current = if change.after.is_none() {
                     &[]
+                } else if let Some(export) = export {
+                    snapshot
+                        .export_body(
+                            &memoria_domain::DocumentId::parse(path).expect("canonical provider"),
+                            &memoria_domain::ExportId::parse(export).expect("canonical export"),
+                        )
+                        .unwrap_or(&[])
                 } else if change.kind == "document" {
                     snapshot.document_bytes(&document)
                 } else {

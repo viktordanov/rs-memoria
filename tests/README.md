@@ -73,6 +73,8 @@ An invalidation requests a review with an explicit reason, even without a file c
 | Suite | Coverage |
 | --- | --- |
 | [workflow.rs](workflow.rs) | Ownership, review order, imports, and invalidation |
+| [review_context.rs](review_context.rs) | Saved views, P1 fallback, and verified historical coverage |
+| [configuration.rs](configuration.rs) | Supported settings and explicit configuration errors |
 | [packets.rs](packets.rs) | Packet transport, limits, integrity, replay, and concurrency |
 | [edges.rs](edges.rs) | Discovery, paths, configuration, and corrupt state |
 | [portability.rs](portability.rs) | Host rules against repository policy, and clean clones |
@@ -107,6 +109,16 @@ They are not project review records, and no test uses them as one.
 
 Normal documentation review uses packets and the Memoria CLI.
 Test results do not establish whether a human explanation is correct.
+
+## Review context regression cases
+
+`review_context.rs` exercises saved-packet retrieval, opt-in P1 preparation, and historical commit coverage through the CLI.
+Its shapes include small and large owners, deep ownership, ordinary Markdown inputs, and shared-export fan-out.
+It tests dirty acknowledgement, later exact matches, missing objects, shallow ancestry, and exhausted candidate or byte budgets.
+Path changes require full-review fallback.
+A semantic control needs an unchanged limit definition.
+The test keeps that context accessible and does not claim model quality.
+Existing packet, state, portability, process, and corruption suites retain their integrity checks.
 
 ## Continue
 

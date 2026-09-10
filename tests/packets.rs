@@ -755,7 +755,7 @@ fn packets_carry_binary_content_diffs_and_deleted_files() {
     assert_eq!(get_str(added, &["status"]), "added");
     project.ack_ok("src/execution/README.md");
 
-    // Uncommitted prior snapshot: the old content does not match the recorded hash.
+    // Uncommitted prior snapshot: acknowledgement stores no unverified commit.
     project.append("src/execution/runner.rs", "// later\n");
     let (packet, _) = project.review_packet("src/execution/README.md");
     let value = parse_json(&fs::read(&packet).unwrap());
@@ -767,7 +767,7 @@ fn packets_carry_binary_content_diffs_and_deleted_files() {
         .find(|d| get_str(d, &["identity"]) == "src/execution/runner.rs")
         .unwrap();
     assert_eq!(get_str(runner, &["status"]), "unavailable");
-    assert!(get_str(runner, &["reason"]).contains("does not match"));
+    assert!(get_str(runner, &["reason"]).contains("no fully verified Git reference"));
     project.commit_all("second");
     project.ack_ok("src/execution/README.md");
 

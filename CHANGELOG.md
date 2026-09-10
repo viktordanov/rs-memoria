@@ -5,12 +5,24 @@ This file records user-visible changes in Memoria. The project maintainer owns r
 Contents:
 
 - [Unreleased](#unreleased)
+- [0.4.0](#040---2026-09-10)
 - [0.3.0](#030---2026-09-09)
 - [0.2.0](#020).
 
 ## Unreleased
 
 No changes yet.
+
+## 0.4.0 - 2026-09-10
+
+This release adds review-context interfaces. Canonical JSON v2 and the lock format remain unchanged.
+The [0.4.0 guide](docs/releases/0.4.0.md) explains the workflow and upgrade steps.
+
+- Human review and explain output start with changes and evidence. `--full` retains detailed output.
+- `memoria packet view` reads exact sections from a validated saved packet. Canonical JSON v2 acknowledgement transport remains complete.
+- Experimental P1 requires explicit trust and records coverage requirements with full-review fallback. Model-quality evaluation remains unrun.
+- New acknowledgements retain a Git reference only after complete content correspondence. Valid dirty reviews can report partial or unavailable historical coverage.
+- Bounded local history lookup can recover later-committed matching bytes without changing prior review attribution. Source commits before acknowledgement remain optional.
 
 ## 0.3.0 - 2026-09-09
 

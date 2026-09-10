@@ -399,6 +399,63 @@ impl GitRepository for GitCli {
         }
     }
 
+    fn historical_blob(
+        &self,
+        commit: &str,
+        path: &str,
+        limit: u64,
+        deadline: std::time::Instant,
+    ) -> Result<Option<Vec<u8>>, AdapterError> {
+        if commit.is_empty() || !commit.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Ok(None);
+        }
+        let spec = format!("{commit}:{path}");
+        let mut cmd = command(&self.root);
+        cmd.env("GIT_NO_REPLACE_OBJECTS", "1")
+            .args(["cat-file", "blob", &spec]);
+        let owner = Supervisor::new(deadline);
+        let output = owner.run(cmd, owner.remaining(), limit, false)?;
+        if output.timed_out || output.output_truncated {
+            return Err(AdapterError::new(
+                "history_limit",
+                None,
+                "Historical read budget exhausted.",
+            ));
+        }
+        Ok((output.exit_code == Some(0)).then_some(output.stdout))
+    }
+
+    fn recent_commits(
+        &self,
+        limit: usize,
+        deadline: std::time::Instant,
+    ) -> Result<Vec<String>, AdapterError> {
+        let mut cmd = command(&self.root);
+        cmd.env("GIT_NO_REPLACE_OBJECTS", "1").args([
+            "rev-list",
+            &format!("--max-count={limit}"),
+            "HEAD",
+            "--",
+        ]);
+        let owner = Supervisor::new(deadline);
+        let output = owner.run(cmd, owner.remaining(), (limit as u64 + 1) * 66, false)?;
+        if output.timed_out || output.output_truncated {
+            return Err(AdapterError::new(
+                "history_limit",
+                None,
+                "Historical candidate budget exhausted.",
+            ));
+        }
+        if output.exit_code != Some(0) {
+            return Ok(vec![]);
+        }
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter(|s| matches!(s.len(), 40 | 64) && s.bytes().all(|b| b.is_ascii_hexdigit()))
+            .map(str::to_string)
+            .collect())
+    }
+
     fn explain_ignore(&self, path: &str) -> Result<Option<String>, AdapterError> {
         let output = self.run(&["check-ignore", "--verbose", "--non-matching", "--", path])?;
         let text = String::from_utf8_lossy(&output.stdout);

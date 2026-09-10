@@ -57,11 +57,7 @@ fn explain_missing_git_baselines_keep_packet_reasons_and_null_observations() {
         // The reviewed source is absent from the stored commit, or there is no commit.
         project.write("source.txt", "reviewed bytes\n");
         project.baseline();
-        let expected_code = if committed_readme {
-            "blob_unavailable"
-        } else {
-            "no_base_commit"
-        };
+        let expected_code = "no_base_commit";
         for removed in [false, true] {
             if removed {
                 project.remove("source.txt");
@@ -78,10 +74,7 @@ fn explain_missing_git_baselines_keep_packet_reasons_and_null_observations() {
                 assert_eq!(get(entry, &[field]), &Json::Null);
             }
             assert_eq!(get_u64(entry, &["expected_bytes"]), 15);
-            assert_eq!(
-                get(entry, &["base_commit"]) == &Json::Null,
-                !committed_readme
-            );
+            assert_eq!(get(entry, &["base_commit"]), &Json::Null);
             let human = project.run(&["explain", "README.md"]);
             assert!(stdout(&human).contains(expected_code));
             assert!(!stdout(&human).contains("removed_file"));
@@ -154,8 +147,9 @@ fn explain_import_changes_and_explicit_invalidations() {
     assert_eq!(code, 0);
     assert!(get_bool(&result, &["data", "waiting"]));
     let text = json::to_compact(&result);
-    assert!(text.contains("import_content_not_stored"));
-    assert!(stdout(&project.run(&["explain", "README.md"])).contains("import_content_not_stored"));
+    let imported = evidence_for(&result, "src/execution/README.md#summary");
+    assert!(get_bool(imported, &["baseline_verified"]));
+    assert!(get_str(imported, &["text"]).contains("+A new exported sentence."));
     assert!(text.contains("src/execution/README.md#summary"));
     project.run(&[
         "invalidate",
@@ -538,7 +532,7 @@ fn explain_is_deterministic_read_only_and_matches_packet_hunks() {
     project.ack_ok("README.md"); // Save uncommitted bytes in the disposable fixture.
     project.write("source.txt", "third\n");
     let (_, explain) = project.json(&["explain", "README.md"]);
-    assert!(json::to_compact(&explain).contains("reviewed_bytes_mismatch"));
+    assert!(json::to_compact(&explain).contains("no_base_commit"));
     assert_eq!(project.json(&["explain", "missing/README.md"]).0, 1);
     assert_eq!(project.json(&["explain", "../README.md"]).0, 2);
 }
