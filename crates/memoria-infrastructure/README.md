@@ -12,12 +12,10 @@ Read [fs.rs](src/fs.rs#L110) to start with file classification and reads.
 ## On this page
 
 - [Role in the project](#role-in-the-project)
-- [Repository adapters](#repository-facts-enter-through-adapters)
-- [State writes](#state-writes-preserve-a-clear-error-boundary)
+- [Repository adapters](#repository-facts-enter-through-adapters), [local history](#bounded-local-history), and [state writes](#state-writes-preserve-a-clear-error-boundary)
 - [Formats and packet limits](#formats-and-packet-limits)
 - [Skill and hook installation](#skill-installation-has-its-own-transaction)
-- [Bounded processes](#one-supervisor-owns-every-bounded-subprocess)
-- [The lock codec](#the-lock-codec-produces-one-canonical-artifact)
+- [Bounded processes](#one-supervisor-owns-every-bounded-subprocess) and [the lock codec](#the-lock-codec-produces-one-canonical-artifact)
 
 ## Role in the project
 
@@ -49,6 +47,16 @@ The application uses these facts to enforce selection and repository boundaries.
 The adapters do not determine which README needs review.
 
 Source evidence: [git.rs:16](src/git.rs#L16), [repository_ignore.rs](src/repository_ignore.rs#L31), and [fs.rs:110](src/fs.rs#L110).
+
+## Bounded local history
+
+`GitCli::historical_blob` and `recent_commits` use the subprocess supervisor with a shared deadline and bounded output.
+The application supplies candidate and byte budgets.
+These commands disable object replacement and lazy fetching.
+They make no remote request and write no historical snapshots.
+Missing objects produce unavailable evidence.
+Exhausted limits remain explicit.
+The application compares the returned bytes with the acknowledged fingerprints before use.
 
 ## State writes preserve a clear error boundary
 

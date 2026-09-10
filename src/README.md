@@ -38,6 +38,7 @@ Usage: memoria [OPTIONS] <COMMAND>
 Commands:
   completions  Print a shell completion script without project discovery or installation
   explain      Explain one README's whole-file freshness with verified local Git evidence
+  packet       Read exact sections from a saved canonical packet without project discovery
   init         Validate root setup inputs, or create missing configuration and state with --apply
   status       Show coverage, input size, and review state
   guidance     Show the project documentation guidance that applies to a README
@@ -65,7 +66,7 @@ Options:
 `Cli` parses the command, document path, and flags.
 `discover_root` identifies the Git worktree root.
 `run` creates `Services` from the concrete adapters and dispatches the command.
-Completions and explicit state comparisons dispatch before project discovery.
+Completions, saved packet views, and explicit state comparisons dispatch before project discovery.
 The CLI resolves the optional reviewer environment default only for acknowledgement.
 An explicit reviewer label takes precedence, and success output confirms that label.
 The write lock comes from the Git port, at the worktree-private path, so the committed state file is never the process lock.
@@ -122,7 +123,9 @@ The executable also owns usage errors and errors during output delivery.
 | --- | --- |
 | [main.rs](main.rs#L1) | Adapter assembly, command dispatch, and output delivery |
 | [presentation/cli.rs](presentation/cli.rs#L1) | Command grammar |
-| [presentation/text.rs](presentation/text.rs#L1) | Human output |
+| [presentation/text.rs](presentation/text.rs#L1) | Detailed human output and other command views |
+| [presentation/review.rs](presentation/review.rs#L1) | Default human review and explanation |
+| [presentation/human.rs](presentation/human.rs#L1) | Human diagnostics and structured evidence |
 | [presentation/json.rs](presentation/json.rs#L1) | JSON envelope |
 
 An agent skill is a file of instructions for an agent.
@@ -130,7 +133,13 @@ An agent skill is a file of instructions for an agent.
 The installer receives that embedded text through `FsSkillStore`.
 A later edit to the source skill requires a new binary build to change the installed text.
 
-Five command paths resolve before project discovery:
+`memoria packet view` also dispatches before project discovery.
+It validates the saved packet before it returns exact snapshot selections.
+The default human review and explanation use `presentation/review.rs`.
+`--full` retains detailed output.
+Existing canonical JSON remains complete.
+
+These other command paths resolve before project discovery:
 
 1. `memoria agent hook run` speaks native hook JSON on stdin and stdout.
 2. `memoria state inspect --file` decodes one explicit file outside Git.

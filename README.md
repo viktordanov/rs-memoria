@@ -6,17 +6,14 @@
 
 README drift rarely announces itself. A feature changes, the tests move on, and the explanation that once made sense quietly becomes misleading. In a large repository, even finding the documentation that deserves another look can be harder than fixing it.
 
-Memoria turns that into a review queue. It records the exact bytes a reviewer examined, watches those bytes for change, and tells you which explanations are now unverified. The judgment stays yours.
+Memoria turns that into a review queue. It records fingerprints of the exact inputs a reviewer examined, watches those inputs for change, and tells you which explanations are now unverified. The judgment stays yours.
 
 ## Contents
 
-- [What Memoria does and does not do](#what-memoria-does-and-does-not-do)
-- [Your documentation strategy](#your-documentation-strategy)
+- [Purpose](#what-memoria-does-and-does-not-do) and [documentation strategy](#your-documentation-strategy)
 - [Quick start](#quick-start)
-- [The review workflow](#the-review-workflow)
-- [Project documentation guidance](#project-documentation-guidance)
-- [Command-line interface](#command-line-interface)
-- [Find the right guide](#find-the-right-guide)
+- [Review workflow](#the-review-workflow) and [project guidance](#project-documentation-guidance)
+- [Command-line interface](#command-line-interface) and [task guides](#find-the-right-guide)
 - [Self-hosting and development](#self-hosting-and-development)
 
 ## What Memoria does and does not do
@@ -27,7 +24,7 @@ It does that by remembering, for each README, the exact files and bytes a review
 
 What Memoria will never do:
 
-- Write or edit your prose. Only `memoria render` touches a file, and only inside explicitly declared import blocks.
+- Write or edit your prose. Only `memoria render` changes README text, and only inside explicitly declared import blocks.
 - Judge whether an explanation is good, complete, or true. A person or an agent does that.
 - Decide what a README should be about. That choice is yours, and Memoria works with whichever one you make.
 
@@ -66,10 +63,16 @@ Apply creates `memoria.toml` and `memoria.lock` beside each other. It needs a ro
 
 ## Quick start
 
-Install Memoria with Homebrew on an Apple Silicon or Intel Mac:
+**macOS (Apple Silicon or Intel)** — install from the [Homebrew tap](https://github.com/viktordanov/homebrew-tap):
 
 ```sh
 brew install viktordanov/tap/memoria
+```
+
+**Arch Linux (x86_64)** — install [memoria-bin from the AUR](https://aur.archlinux.org/packages/memoria-bin) with `yay`:
+
+```sh
+yay -S memoria-bin
 ```
 
 To build Memoria from this checkout instead, install it with Cargo:
@@ -131,6 +134,8 @@ flowchart LR
     ack --> current["README becomes current"]
 ```
 
+The default human view shows changes, evidence, scope, and the next command. Save the full JSON packet outside the project, then use `memoria packet view` to read its exact saved sections. Full review remains the default; the experimental incremental policy is opt-in, and its model-quality evaluation is unrun.
+
 The packet is the handoff. It carries the README, its selected files, imported text, the reasons a review is due, and the project's documentation guidance. A compact token binds an acknowledgement to that exact snapshot.
 
 Acknowledging changes one file: `memoria.lock`. Two files belong in Git:
@@ -144,7 +149,7 @@ READMEs can also share small, stable explanations. A provider marks an export, a
 
 Sometimes the reason for another review is not a file diff at all. `memoria invalidate` records an explicit request — a changed policy, a new architecture decision — and carries your reason into the packet.
 
-To see why a boundary needs review, run `memoria explain README.md`. It shows changed paths and hashes, with Git hunks only when the recorded baseline matches the reviewed bytes. To compare saved review records, use `memoria state diff before.lock after.lock`; that comparison does not establish current freshness.
+To see why a boundary needs review, run `memoria explain README.md`. It starts with changed paths, available hunks, and reasons for missing evidence. Hunks require historical bytes that match the last acknowledged inputs. Use `--full` for hashes and detailed context. To compare saved review records, use `memoria state diff before.lock after.lock`; that comparison does not establish current freshness.
 
 For repeated reviews, you can set `MEMORIA_REVIEWER` to your chosen label. An explicit `--reviewer` always wins, and a successful acknowledgement confirms the label it used. The label records attribution, not authentication or authority. Agents should pass their label explicitly.
 
@@ -190,6 +195,7 @@ Usage: memoria [OPTIONS] <COMMAND>
 Commands:
   completions  Print a shell completion script without project discovery or installation
   explain      Explain one README's whole-file freshness with verified local Git evidence
+  packet       Read exact sections from a saved canonical packet without project discovery
   init         Validate root setup inputs, or create missing configuration and state with --apply
   status       Show coverage, input size, and review state
   guidance     Show the project documentation guidance that applies to a README

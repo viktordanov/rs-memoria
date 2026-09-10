@@ -39,6 +39,32 @@ The file holds no absolute machine path, no source content, no full guidance tex
 
 The input fingerprint is not stored. Memoria computes it from the reconstructed manifest, so it cannot disagree with the manifest that it describes.
 
+### Commit evidence for the last review
+
+The existing `git.base_commit` field associates a commit with the last acknowledged review of inputs.
+It does not track the last prose edit.
+New acknowledgements retain a commit only when all reviewed content matches that commit.
+The comparison covers the README, owned files, and imported export bodies through their lengths and XXH3 fingerprints.
+Selection-policy and guidance fingerprints retain their independent meaning.
+A matching content reference does not certify the Git tree's selection policy or the reviewer's judgment.
+
+If no inspected commit supplies complete coverage, acknowledgement succeeds with a null reference.
+Its `historical_coverage` hint describes partial or unavailable evidence.
+Partial counts describe matches at one candidate, not a union of unrelated commits.
+The bounded search can stop before it finds an available match.
+A null reference therefore means that Memoria established no complete reference within that inspection.
+
+Existing records keep their bytes and attribution until the next acknowledgement.
+Earlier versions can contain unverified references.
+Every later hunk still requires an exact length and hash match, including hunks from those records.
+Local history can recover later-committed bytes without a state write.
+Git object removal can also make a previously usable reference unavailable.
+
+The lock retains its current schema, codec, and corruption checks.
+It stores no source snapshots or complete source history.
+Source commits before acknowledgement remain an optional convenience.
+The [CLI reference](cli.md#historical-coverage) gives the lookup limits and diagnostic fields.
+
 ## 3. Read the state
 
 Invoke the read-only inspection command:

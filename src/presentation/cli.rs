@@ -26,7 +26,16 @@ pub enum Command {
     /// Print a shell completion script without project discovery or installation.
     Completions { shell: CompletionShell },
     /// Explain one README's whole-file freshness with verified local Git evidence.
-    Explain { document: String },
+    Explain {
+        document: String,
+        #[arg(long)]
+        full: bool,
+    },
+    /// Read exact sections from a saved canonical packet without project discovery.
+    Packet {
+        #[command(subcommand)]
+        command: PacketCommand,
+    },
     /// Validate root setup inputs, or create missing configuration and state with --apply.
     Init {
         /// Create the missing memoria.toml and memoria.lock files.
@@ -61,6 +70,9 @@ pub enum Command {
         /// Raw input budget in bytes for the focused packet (default 8 MiB, at most 32 MiB).
         #[arg(long, value_name = "BYTES")]
         max_bytes: Option<u64>,
+        /// Show full human packet content. JSON is always complete.
+        #[arg(long)]
+        full: bool,
     },
     /// Refresh declared import blocks only.
     Render {
@@ -88,6 +100,21 @@ pub enum Command {
     Agent {
         #[command(subcommand)]
         command: AgentCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum PacketCommand {
+    /// Produce a non-canonical reading view of a validated saved packet.
+    View {
+        packet: String,
+        #[arg(long, default_value = "summary", conflicts_with = "file")]
+        section: String,
+        #[arg(long)]
+        file: Option<String>,
+        /// Opt into P1 preparation; this does not certify the prior review.
+        #[arg(long)]
+        trust_prior_review: bool,
     },
 }
 
@@ -224,6 +251,7 @@ impl Command {
             Command::Status { .. } => "status",
             Command::Lint => "lint",
             Command::Review { .. } => "review",
+            Command::Packet { .. } => "packet view",
             Command::Render { .. } => "render",
             Command::Ack(_) => "ack",
             Command::Invalidate { .. } => "invalidate",

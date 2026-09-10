@@ -269,7 +269,7 @@ Current policy scopes retain their order and exact rule bytes, with base64 for n
 Guidance remains advisory, and a guidance-only change does not create a pending cause.
 The command preserves whole-file freshness even for a one-line comment change.
 
-Equal inputs and equal local Git evidence produce equal JSON.
+Within the lookup budgets, equal inputs and equal local Git evidence produce equal JSON.
 Limits are 32 MiB of decoded evidence, 100,000 records, and 64 MiB of buffered output.
 Old bytes and generated hunks count toward the evidence limit.
 A whole-result refusal returns `explain_limit_exceeded` with exit 1 and no partial success result.
@@ -423,15 +423,101 @@ Otherwise, `data.manifest_omitted` is true and `data.manifest_summary` contains 
 The diagnostic supplies the same counts in human and JSON output.
 The tool does not omit required content to force a successful packet within a limit.
 
-Old file content comes from the base commit in the previous review.
-The content must match the reviewed hash before it can supply a diff.
+Old file content comes from a verified local commit.
+The bounded lookup examines the previous reference first.
+The content must match the reviewed length and hash before it can supply a diff.
 Without that match, the packet marks the diff unavailable and supplies current content.
 The state does not store old export bodies.
+The bounded lookup can recover matching export bodies from historical provider READMEs.
 A rejected acknowledgement can compare imports against the bytes in the supplied packet.
 
 Source evidence: [packet construction](../crates/memoria-application/src/usecases/prepare_review.rs#L105) and [packet codec](../crates/memoria-infrastructure/src/packet.rs#L268).
 
 </details>
+
+## Saved packet views
+
+The [method and results](development/review-context.md) explain the measured presentation savings and their limits.
+
+The default human review and explanation show changes, available hunks, scope, and the next command.
+`memoria review README.md --full` retains the detailed human packet.
+`memoria explain README.md --full` retains the detailed human explanation.
+`--format json` always retains complete schema-v2 output, regardless of `--full`.
+The human view never relaxes packet limits.
+
+1. Save the canonical packet outside the project:
+
+   ```sh
+   memoria review README.md --format json > /tmp/review.json
+   ```
+
+2. Invoke the saved-packet reader:
+
+   ```sh
+   memoria packet view /tmp/review.json
+   memoria packet view /tmp/review.json --section guidance
+   memoria packet view /tmp/review.json --file src/example.rs --format json
+   ```
+
+The reader requires no project discovery and makes no writes.
+`-` selects stdin.
+It validates the canonical packet before selection.
+The selected bodies come from that snapshot, even when the live files change.
+File bodies retain their declared UTF-8 or base64 encoding.
+A missing path causes `packet_view_file_missing` with exit 2.
+
+| Selection | Contents |
+| --- | --- |
+| `summary` (default), `changes` | Changes, hunks, missing-evidence reasons, scope counts, and a guidance cue |
+| `guidance`, `content` | Complete guidance or current README, files, and imports |
+| `history`, `inventory` | Previous review and diffs, or the current manifest |
+| `--file PATH` | One current README or owned file from the packet |
+| `incremental` | Experimental P1 preparation, with explicit coverage and fallback reasons |
+
+`--file` and an explicit `--section` are mutually exclusive.
+Imports remain accessible through `content` or `incremental`.
+JSON views use envelope schema 2, `data.kind=packet_view`, and `data.view_version=1`.
+They carry `canonical=false`, `snapshot_token`, and `source_packet_digest`.
+They cannot substitute for the canonical acknowledgement packet.
+New view fields do not change the existing packet schema or decoder.
+A view that exceeds 64 MiB in human or JSON rendering causes `packet_view_limit_exceeded` with exit 1.
+The reader refuses that result instead of truncating it.
+
+Experimental P1 requires explicit owner approval of reliance on a trusted prior review:
+
+```sh
+memoria packet view /tmp/review.json --section incremental --trust-prior-review --format json
+```
+
+Without that trust flag, preparation requires full review.
+The flag has no meaning for other sections and causes `packet_view_trust_invalid` with exit 2.
+An unknown section causes `packet_view_section_invalid` with exit 2.
+The [shipped skill](../skills/memoria/SKILL.md) defines trust, context retrieval, coverage, and full-review fallback.
+`model_quality_gate_passed=false` remains explicit.
+No projection records an inspection or approves an input.
+
+## Historical coverage
+
+Acknowledgement supplies a `historical_coverage` hint after a successful state save.
+The hint reports `verified`, `partial`, or `unavailable`, plus counts and budget status.
+Coverage includes the README, owned files, and imported export bodies at one commit.
+Only complete coverage supplies a new saved `git.base_commit`.
+Dirty acknowledgements remain valid with a null reference.
+
+History retrieval first examines the saved reference, then at most 64 commits from local HEAD ancestry.
+The shared operation budget permits 1,024 blob reads, 32 MiB of historical bytes, and four seconds, plus bounded process cleanup.
+Git never fetches missing objects for this operation.
+Every historical body must match the acknowledged length and XXH3 fingerprint.
+A later matching commit can supply a hunk without changing the earlier review attribution.
+`explain` names the actual matched commit in its evidence.
+Shallow or missing history cannot establish that matching bytes never existed elsewhere.
+
+`budget_exhausted` identifies incomplete coverage inspection.
+`inspection_failed` distinguishes an adapter error from an exhausted budget.
+Unavailable explanation evidence uses `history_limit_exceeded`, `git_read_failed`, `no_base_commit`, `reviewed_bytes_mismatch`, or `blob_unavailable`.
+These reasons describe local evidence, not review validity.
+Committing source before acknowledgement can improve future evidence, but it is optional.
+The [state guide](state.md#2-what-the-file-holds) describes the unchanged storage format.
 
 ## Review mutations
 
@@ -518,7 +604,7 @@ Acknowledgement has five stages:
 
 Changed documentation guidance causes `guidance_changed` with exit 3.
 That conflict writes no review state and does not make a current document stale.
-The application compares the guidance during the initial packet validation and again under the write lock.
+The application compares current guidance under the write lock and again before the state save.
 
 A changed manifest causes `snapshot_changed` with exit 3 and exact differences.
 A deleted packet document in an otherwise valid project causes the same conflict.
@@ -700,7 +786,7 @@ Source evidence: [Markdown codec](../crates/memoria-infrastructure/src/markdown.
 
 </details>
 
-The [specification](specification.md) retains its original draft status and proposed decisions.
+The [specification](specification.md) records the approved 0.2.0 contract and earlier proposed decisions.
 This reference describes the implementation in this checkout.
 
 ## Continue

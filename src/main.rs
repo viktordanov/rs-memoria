@@ -107,6 +107,44 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
             raw_json: None,
         });
     }
+    if let Command::Packet {
+        command:
+            presentation::cli::PacketCommand::View {
+                packet,
+                section,
+                file,
+                trust_prior_review,
+            },
+    } = &cli.command
+    {
+        let hasher = Xxh3Hasher;
+        let codec = JsonPacketCodec::new(&hasher);
+        let source = if packet == "-" {
+            PacketSource::Stdin
+        } else {
+            PacketSource::File(packet.clone())
+        };
+        let data = usecases::packet_view::run(
+            &FsPacketInput,
+            &codec,
+            &hasher,
+            &source,
+            section,
+            file.as_deref(),
+            *trust_prior_review,
+        )?;
+        let mut human = "Saved packet reading view (not an acknowledgement packet)\n".to_string();
+        presentation::human::detail(&mut human, &data, 0);
+        return bounded_output(
+            cli,
+            vec![],
+            data,
+            human,
+            memoria_application::packet::MAX_SERIALIZED_BYTES,
+            "packet_view_limit_exceeded",
+            false,
+        );
+    }
     if let Command::State {
         command: StateCommand::Diff { before, after },
     } = &cli.command
@@ -193,10 +231,15 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
         | Command::State {
             command: StateCommand::Diff { .. },
         } => unreachable!("early dispatch"),
-        Command::Explain { document } => {
+        Command::Packet { .. } => unreachable!("early dispatch"),
+        Command::Explain { document, full } => {
             let outcome = usecases::explain::run(&services, document)?;
             let data = outcome.data.to_detail();
-            let human = text::explain(&outcome.data);
+            let human = if *full {
+                text::explain(&outcome.data)
+            } else {
+                presentation::review::explain(&outcome.data)
+            };
             bounded_output(
                 cli,
                 outcome.diagnostics,
@@ -258,7 +301,14 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
         Command::Review {
             document: None,
             max_bytes,
+            full,
         } => {
+            if *full {
+                return Err(AppError::usage(
+                    "full_requires_document",
+                    "--full requires a focused README",
+                ));
+            }
             if max_bytes.is_some() {
                 return Err(AppError::usage(
                     "max_bytes_invalid",
@@ -272,6 +322,7 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
         Command::Review {
             document: Some(document),
             max_bytes,
+            full,
         } => {
             let mut outcome = usecases::prepare_review::run(&services, document, *max_bytes)?;
             // Both presentations report the same complete-envelope record count.
@@ -297,7 +348,11 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
             } else {
                 None
             };
-            let human = text::packet(&outcome.data);
+            let human = if *full {
+                text::packet(&outcome.data)
+            } else {
+                presentation::review::packet(&outcome.data)
+            };
             Ok(CommandOutput {
                 data: outcome.data.to_detail(),
                 human,
@@ -578,8 +633,9 @@ fn json_requested(args: &[String]) -> bool {
 
 /// The command name for a usage-error envelope: the first known command word.
 fn command_word(args: &[String]) -> &'static str {
-    const KNOWN: [&str; 15] = [
+    const KNOWN: [&str; 16] = [
         "completions",
+        "packet",
         "explain",
         "init",
         "status",

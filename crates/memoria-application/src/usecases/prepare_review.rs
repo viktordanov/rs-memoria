@@ -233,6 +233,7 @@ pub fn build_packet(
         .map(|d| d.as_str().to_string())
         .collect();
 
+    let mut history = super::history::History::new(services);
     let mut changes = Vec::new();
     let mut diffs = Vec::new();
     let mut decoded_budget: u64 = readme.bytes
@@ -254,13 +255,13 @@ pub fn build_packet(
         }
         if let Some(((prev_len, prev_hash), _)) = diff.document {
             diffs.push(diff_entry(
-                services,
                 record,
                 "README",
                 document.as_str(),
                 Some((prev_len, prev_hash)),
                 Some(readme_bytes),
                 &mut decoded_budget,
+                &mut history,
             ));
         }
         for change in &diff.files {
@@ -274,34 +275,62 @@ pub fn build_packet(
                     text: None,
                 }),
                 InputChange::Removed(f) => diffs.push(diff_entry(
-                    services,
                     record,
                     f.path.as_str(),
                     f.path.as_str(),
                     Some((f.bytes, f.hash)),
                     None,
                     &mut decoded_budget,
+                    &mut history,
                 )),
                 InputChange::Changed { before, after } => diffs.push(diff_entry(
-                    services,
                     record,
                     after.path.as_str(),
                     after.path.as_str(),
                     Some((before.bytes, before.hash)),
                     Some(snapshot.file_bytes(&after.path)),
                     &mut decoded_budget,
+                    &mut history,
                 )),
             }
         }
         for change in &diff.imports {
             if let InputChange::Changed { after, .. } | InputChange::Removed(after) = change {
+                let base = history.lookup(
+                    record.git.base_commit.as_deref(),
+                    after.document.as_str(),
+                    Some(after.export_id.as_str()),
+                    match change {
+                        InputChange::Changed { before, .. } => (before.bytes, before.hash),
+                        InputChange::Removed(before) => (before.bytes, before.hash),
+                        InputChange::Added(_) => unreachable!(),
+                    },
+                );
+                let text = base.bytes.as_ref().and_then(|old| {
+                    match crate::diff::diff_bytes(
+                        old,
+                        snapshot
+                            .export_body(&after.document, &after.export_id)
+                            .unwrap_or(&[]),
+                    ) {
+                        crate::diff::DiffText::Unified(text) => Some(text),
+                        crate::diff::DiffText::Identical => Some(String::new()),
+                        _ => None,
+                    }
+                });
+                decoded_budget += base.bytes.as_ref().map_or(0, |b| b.len() as u64);
                 diffs.push(DiffEntry {
                     identity: format!("{}#{}", after.document, after.export_id),
-                    status: "unavailable".into(),
-                    reason: Some("previous export content is not stored; compare with the provider's review history".into()),
-                    old_encoding: None,
-                    old_body: None,
-                    text: None,
+                    status: if text.is_some() {
+                        "available"
+                    } else {
+                        "unavailable"
+                    }
+                    .into(),
+                    reason: base.reason,
+                    old_encoding: base.bytes.as_ref().map(|_| ContentEncoding::Utf8),
+                    old_body: base.bytes,
+                    text,
                 });
             }
         }

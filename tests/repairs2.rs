@@ -159,6 +159,7 @@ fn missing_historical_blobs_never_invoke_a_remote_helper() {
     project.commit_all("baseline");
     // Review once so the record carries the base commit that holds runner.rs.
     project.append("src/execution/runner.rs", "// first\n");
+    project.commit_all("reviewed source bytes");
     project.ack_ok("src/execution/README.md");
     let head = String::from_utf8(project.git(&["rev-parse", "HEAD"]).stdout)
         .unwrap()
@@ -232,7 +233,7 @@ fn missing_historical_blobs_never_invoke_a_remote_helper() {
         .find(|d| get_str(d, &["identity"]) == "src/execution/runner.rs")
         .unwrap();
     assert_eq!(get_str(runner, &["status"]), "unavailable");
-    assert!(get_str(runner, &["reason"]).contains("not available"));
+    assert!(get_str(runner, &["reason"]).contains("unavailable"));
     // Every other read-only command also stays local.
     for args in [vec!["status"], vec!["check"], vec!["review"]] {
         let output = project

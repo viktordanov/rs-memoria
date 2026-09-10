@@ -252,14 +252,16 @@ fn guidance_is_visible_for_current_and_pending_documents() {
             get_str(t, &["guidance_command"]) == "memoria guidance src/corpus/README.md"
         })
     );
-    // Both packet formats carry the same effective guidance.
+    // Canonical JSON and the explicit full human view carry the same guidance.
     let (packet, _) = project.review_packet("src/corpus/README.md");
     let value = parse_json(&fs::read(&packet).unwrap());
     assert_eq!(
         get_str(&value, &["data", "context", "guidance", "digest"]),
         current
     );
-    let human = project.run(&["review", "src/corpus/README.md"]);
+    let brief = project.run(&["review", "src/corpus/README.md"]);
+    assert!(stdout(&brief).contains("Guidance:"));
+    let human = project.run(&["review", "src/corpus/README.md", "--full"]);
     assert!(
         stdout(&human).contains("Project documentation guidance"),
         "the human packet shows guidance before the owned evidence"

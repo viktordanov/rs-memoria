@@ -69,7 +69,14 @@ pub fn verify_packet(
     services: &Services<'_>,
     packet: &FocusedReviewPacket,
 ) -> Result<(), AppError> {
-    let hasher = services.hasher;
+    verify_packet_with_hasher(services.hasher, packet)
+}
+
+/// Shared integrity gate for acknowledgement and offline snapshot views.
+pub fn verify_packet_with_hasher(
+    hasher: &dyn crate::ports::FingerprintHasher,
+    packet: &FocusedReviewPacket,
+) -> Result<(), AppError> {
     let manifest = &packet.manifest;
     let content = &packet.content;
     let mismatch = |what: String| AppError::usage("packet_content_mismatch", what);
@@ -280,6 +287,11 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
         ));
     }
 
+    let coverage = super::history::History::new(services)
+        .coverage(&current_manifest, snapshot.git.base_commit.as_deref());
+    let mut reviewed_git = snapshot.git.clone();
+    reviewed_git.base_commit = coverage.commit.clone();
+
     // 4. State transition under the lock with a fresh reload.
     let loaded = services.state.load().map_err(state_error)?;
     let (mut state, expected) = match loaded {
@@ -317,7 +329,7 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
             reviewer: reviewer.clone(),
             result,
             note,
-            git: snapshot.git.clone(),
+            git: reviewed_git,
         })
         .map_err(|err| match err {
             AckError::SnapshotChanged(diff) => snapshot_changed(&snapshot, &packet, &diff),
@@ -386,6 +398,8 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
         .state
         .save(&state, expected.as_deref())
         .map_err(state_error)?;
+    let mut diagnostics = snapshot.non_error_diagnostics();
+    diagnostics.push(coverage.diagnostic());
     Ok(Outcome::new(
         AckReport {
             document: document.as_str().to_string(),
@@ -395,7 +409,7 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
             cleared: outcome.cleared,
             still_pending: outcome.still_pending,
         },
-        snapshot.non_error_diagnostics(),
+        diagnostics,
     ))
 }
 

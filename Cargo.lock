@@ -352,21 +352,21 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "memoria-application"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "memoria-domain",
 ]
 
 [[package]]
 name = "memoria-domain"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "proptest",
 ]
 
 [[package]]
 name = "memoria-infrastructure"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "base64",
  "gix-glob",
@@ -539,7 +539,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "rs-memoria"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "clap",
  "clap_complete",

@@ -57,7 +57,8 @@ After a document edit, a new packet represents the changed bytes.
 An outdated import requires `render` before the consumer can receive a packet.
 Packet creation makes no change to the saved review state.
 
-Every packet and every command response carries envelope schema version 2.
+Application command envelopes use schema version 2.
+The native hook runner uses its separate native JSON contract.
 A packet from an older envelope is invalid, and the reader names the received version.
 
 ## Acknowledgement saves the review result
@@ -82,10 +83,25 @@ A pending provider causes `dependencies_pending` with exit 3.
 These conflicts leave the stored review unchanged.
 New invalidations remain pending unless the packet includes them.
 
-The guidance comparison runs at stage 2 and again at stage 5.
+The current-guidance comparison runs at stage 3 and again at stage 5.
 Guidance is review context, so a change invalidates the packet without making a current document stale.
 
 Source evidence: [prepare_review.rs:105](src/usecases/prepare_review.rs#L105) and [ack.rs:193](src/usecases/ack.rs#L193).
+
+## Saved views and historical evidence
+
+`packet_view` validates a complete saved packet through the acknowledgement integrity checks before selection.
+It returns a separate reading contract and makes no state change.
+Experimental P1 preparation lists required examination and reuse candidates.
+It never asserts completed review.
+The shipped skill retains full review by default until an independent model-quality evaluation passes.
+
+`history` bounds local commit lookup and compares historical lengths and hashes with acknowledged content.
+Acknowledgement stores a commit only when the README, all owned files, and imported export bodies match one candidate.
+Partial coverage produces a diagnostic and a null reference.
+Dirty acknowledgement remains valid.
+Later evidence recovery never changes the previous review attribution.
+The [CLI reference](../../docs/cli.md#historical-coverage) defines the budgets and unavailable-evidence reasons.
 
 ## Mutation boundaries differ
 
@@ -104,7 +120,7 @@ The read-only commands include `status`, `guidance`, `state_inspect`, `state_dif
 An `init` preview is read-only too; only `init --apply` writes.
 
 `explain` uses the stable snapshot without a readiness gate, so current and waiting documents also produce evidence.
-The shared evidence helper verifies Git bytes against the saved length and hash before a hunk.
+The shared evidence helper compares Git bytes with the saved length and hash before a hunk.
 Packets retain their existing evidence contract through that helper.
 `state_diff` compares explicit snapshots through `StateInspector` and matches logical records by identity.
 Neither command writes source contents or hunks into lock state.
