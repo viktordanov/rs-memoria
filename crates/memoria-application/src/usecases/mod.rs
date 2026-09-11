@@ -6,6 +6,7 @@ pub mod agent_hooks;
 pub mod check;
 mod evidence;
 pub mod explain;
+pub mod github_workflow;
 pub mod graph;
 pub mod guidance;
 mod history;

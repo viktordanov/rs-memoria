@@ -616,6 +616,115 @@ pub trait HookStore {
     fn apply_uninstall(&self, plan: &HookPlan) -> Result<(), HookFailure>;
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkflowOperation {
+    Install,
+    Status,
+    Upgrade,
+    Uninstall,
+}
+
+impl WorkflowOperation {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            WorkflowOperation::Install => "install",
+            WorkflowOperation::Status => "status",
+            WorkflowOperation::Upgrade => "upgrade",
+            WorkflowOperation::Uninstall => "uninstall",
+        }
+    }
+}
+
+/// One resolved request against the managed consumer workflow.
+///
+/// The application resolves and validates every field before the adapter sees
+/// it. `apply` is false for a preview, which never writes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkflowRequest {
+    pub operation: WorkflowOperation,
+    /// Project-relative workflow path, one direct child of `.github/workflows`.
+    pub path: String,
+    /// The Memoria version the generated workflow installs.
+    pub version: Option<String>,
+    /// The Action code reference the generated workflow uses.
+    pub action_ref: Option<String>,
+    /// The runner label the generated job requests.
+    pub runner: Option<String>,
+    pub apply: bool,
+}
+
+/// What one workflow operation would do, or what `status` observed.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct WorkflowPlan {
+    /// Project-relative workflow path.
+    pub path: String,
+    /// Project-relative portable ownership record path.
+    pub record_path: String,
+    /// `absent`, `current`, `outdated`, `modified`, `unmanaged`, or `conflict`.
+    pub state: String,
+    /// The installed binary version, when a valid record exists.
+    pub installed_version: Option<String>,
+    pub installed_action_ref: Option<String>,
+    pub installed_runner: Option<String>,
+    pub installed_template: Option<u64>,
+    /// The values the proposed plan would record.
+    pub desired_version: String,
+    pub desired_action_ref: String,
+    pub desired_runner: String,
+    pub desired_template: u64,
+    /// The exact proposed workflow bytes, for install and upgrade.
+    pub rendered: Option<String>,
+    pub writes: Vec<String>,
+    pub removals: Vec<String>,
+    pub no_change: bool,
+    /// An interrupted transaction must be inspected before another mutation.
+    pub recovery_needed: bool,
+    /// Files this operation deliberately leaves in place.
+    pub retained_artifacts: Vec<RetainedArtifact>,
+    /// Other workflow filenames that already exist beside the destination.
+    pub siblings: Vec<String>,
+    /// Facts the preview must show, such as a preserved commit pin.
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkflowFailure {
+    /// Ownership, modification, or validation prevents a safe change.
+    Conflict {
+        code: &'static str,
+        message: String,
+        paths: Vec<String>,
+    },
+    /// The request itself is invalid.
+    Usage {
+        code: &'static str,
+        message: String,
+    },
+    /// `upgrade` or `status` found no managed workflow where one is required.
+    NotInstalled(String),
+    /// `install` found an older managed workflow. Upgrading is explicit.
+    UpgradeRequired(String),
+    Io(AdapterError),
+}
+
+/// The managed consumer workflow file and its portable ownership record.
+///
+/// The adapter owns one deterministic template. It never merges YAML, never
+/// adopts a file without a valid record, and never replaces a modified file.
+pub trait WorkflowStore {
+    /// The project-relative default destination.
+    fn default_path(&self) -> &'static str;
+    /// Inspect the destination and describe the operation. This never writes.
+    fn plan(&self, request: &WorkflowRequest) -> Result<WorkflowPlan, WorkflowFailure>;
+    /// Apply a plan that `plan` produced for the same request. The adapter
+    /// recomputes the plan from current bytes before it writes anything.
+    fn apply(
+        &self,
+        request: &WorkflowRequest,
+        plan: &WorkflowPlan,
+    ) -> Result<WorkflowPlan, WorkflowFailure>;
+}
+
 /// The result of one bounded child process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoundedOutput {
@@ -662,5 +771,6 @@ pub struct Services<'a> {
     pub skills: &'a dyn SkillPackageStore,
     pub locations: &'a dyn AgentLocations,
     pub hooks: &'a dyn HookStore,
+    pub workflows: &'a dyn WorkflowStore,
     pub progress: &'a dyn Progress,
 }

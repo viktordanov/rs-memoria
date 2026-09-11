@@ -193,22 +193,23 @@ Keep a project's documented mental model connected to its code.
 Usage: memoria [OPTIONS] <COMMAND>
 
 Commands:
-  completions  Print a shell completion script without project discovery or installation
-  explain      Explain one README's whole-file freshness with verified local Git evidence
-  packet       Read exact sections from a saved canonical packet without project discovery
-  init         Validate root setup inputs, or create missing configuration and state with --apply
-  status       Show coverage, input size, and review state
-  guidance     Show the project documentation guidance that applies to a README
-  state        Inspect or compare committed state without changing it
-  lint         Check structure, configuration, markers, and link hints
-  review       Show the ordered review plan, or a focused packet for one README
-  render       Refresh declared import blocks only
-  ack          Record a review result against the exact packet snapshot
-  invalidate   Mark one README, a subtree, or the whole project for semantic review
-  check        Run read-only validation for CI
-  graph        Show documentation ownership, imports, navigation, and status
-  agent        Install or remove the managed Memoria skill and hooks for an agent
-  help         Print this message or the help of the given subcommand(s)
+  completions   Print a shell completion script without project discovery or installation
+  explain       Explain one README's whole-file freshness with verified local Git evidence
+  packet        Read exact sections from a saved canonical packet without project discovery
+  init          Validate root setup inputs, or create missing configuration and state with --apply
+  status        Show coverage, input size, and review state
+  guidance      Show the project documentation guidance that applies to a README
+  state         Inspect or compare committed state without changing it
+  lint          Check structure, configuration, markers, and link hints
+  review        Show the ordered review plan, or a focused packet for one README
+  render        Refresh declared import blocks only
+  ack           Record a review result against the exact packet snapshot
+  invalidate    Mark one README, a subtree, or the whole project for semantic review
+  check         Run read-only validation for CI
+  graph         Show documentation ownership, imports, navigation, and status
+  agent         Install or remove the managed Memoria skill and hooks for an agent
+  integrations  Manage the agent skill, the agent hook, and the GitHub workflow
+  help          Print this message or the help of the given subcommand(s)
 
 Options:
       --root <DIRECTORY>  Project root. Must be the Git worktree root. Defaults to discovery from the current directory
@@ -220,6 +221,19 @@ Options:
 
 The [command reference](docs/cli.md) covers every argument, state change, diagnostic, and exit status.
 
+### Run it in CI
+
+Memoria can write the GitHub Actions workflow for you, and it shows you the file before it writes anything:
+
+```sh
+memoria integrations github install
+memoria integrations github install --apply
+```
+
+The generated workflow calls the first-party `setup-memoria` Action, which downloads a verified prebuilt executable for the runner — x64 or ARM64 — instead of compiling Memoria from source. Then it runs `memoria check`. Memoria never adopts or overwrites a workflow file it does not own, and a pending check still means a person reviews the documentation locally.
+
+The first command is a preview. It works in any project, even one Memoria has never seen: it prints the file it would write, names anything still missing, and changes nothing. The second command writes, so it needs an initialized project — the generated job runs `memoria check`. Author the root README first, then run `memoria init --apply`. One thing is still missing on the other end: version 0.5.0 is not published, so the `@v0.5.0` reference and the release archives do not resolve yet. Generate the workflow now and commit it; the job starts working when the release lands. The [GitHub Actions guide](docs/github-actions.md) covers the pins, the checksum, the ownership record, and what each state means.
+
 ## Find the right guide
 
 | If you want to… | Read… |
@@ -228,6 +242,8 @@ The [command reference](docs/cli.md) covers every argument, state change, diagno
 | Look up a command or failure | [Command reference](docs/cli.md) |
 | Understand the committed state file | [Committed state](docs/state.md) |
 | Install the agent skill or a Stop hook | [Agent integrations](docs/agents.md) |
+| Find every integration and its command name | [Integrations](docs/integrations.md) |
+| Run Memoria in GitHub Actions | [GitHub Actions](docs/github-actions.md) |
 | See release changes and earlier upgrade notes | [Changelog](CHANGELOG.md) |
 
 Start with the workflow if you are new. The command reference is the lookup guide, the [specification](docs/specification.md) preserves the product rules and their rationale, and the [agent skill](skills/memoria/SKILL.md) is the procedure an assistant follows.
@@ -306,7 +322,7 @@ They compare output, exit statuses, and stored files.
 The sample repositories stay outside this project documentation scope.
 <!-- /memoria:import -->
 
-The root README owns the shared guides, the root build files, the license, the source skill, the acceptance script, the CI workflow, and `.gitattributes` — where the `/memoria.lock binary` rule keeps Git from merging or converting the state file. The configuration excludes `tests/fixtures/**` because those files represent other repositories.
+The root README owns the shared guides, the root build files, the license, the source skill, the build and acceptance scripts, the setup Action and its fixtures, the CI workflows, and `.gitattributes` — where the `/memoria.lock binary` rule keeps Git from merging or converting the state file. The configuration excludes `tests/fixtures/**` because those files represent other repositories.
 
 <details>
 <summary>Development checks</summary>
@@ -320,6 +336,16 @@ cargo build --release --locked
 ```
 
 `.github/workflows/acceptance.yml` runs exactly these commands on `ubuntu-24.04`, then cross-compiles both macOS targets on Linux and inspects the results. A successful cross-build proves build compatibility, not macOS runtime behavior; a real Mac smoke check stays a manual step, described in the [release notes](docs/releases/0.2.0.md).
+
+Acceptance also builds the two Linux release archives — x64 and ARM64 — twice each inside a builder image pinned by digest in `scripts/linux-builders.json`, compares the resulting bytes, and runs the produced executable natively on its own architecture. `.github/workflows/setup-action.yml` exercises the setup Action itself on `ubuntu-24.04`, `ubuntu-latest`, and `ubuntu-24.04-arm` against a locally built archive, and records the image each job actually ran on.
+
+Those two workflows are configured, not yet demonstrated. No hosted run exists for either one. The x64 build and its double-build byte comparison were run locally; the ARM64 build, the native ARM64 run, the `ubuntu-latest` image confirmation, and the release publication are still open.
+
+```sh
+python3 -m unittest discover -s tests/setup_action -p 'test_*.py'
+./scripts/build-linux-release.sh --target x86_64-unknown-linux-gnu --output dist-a
+./scripts/check-github-workflow-template.sh --binary ./target/release/memoria --output /tmp/generated.yml
+```
 
 </details>
 

@@ -15,6 +15,7 @@ Read [workflow.rs](workflow.rs#L9) to start with the scenario that makes all rev
 - [Fixture setup](#a-fixture-becomes-a-repository)
 - [Observable assertions](#the-assertions-describe-observable-behavior)
 - [Suite map](#suite-map)
+- [Setup Action fixtures](#setup-action-fixtures)
 - [Test boundaries and next step](#test-boundaries)
 
 ## Role in the project
@@ -83,6 +84,8 @@ An invalidation requests a review with an explicit reason, even without a file c
 | [state_format.rs](state_format.rs) | Frozen lock vectors, corruption, limits, and inspection |
 | [agent.rs](agent.rs) | Skill scopes, status, upgrade, backups, and removal |
 | [agent_hooks.rs](agent_hooks.rs) | Hook ownership, interrupted transactions, and the bounded runner |
+| [integrations.rs](integrations.rs) | The umbrella grammar and equality with the older command names |
+| [github_workflows.rs](github_workflows.rs) | Workflow preview, apply, ownership, conflicts, and path safety |
 | `repairs.rs` through `repairs15.rs` | Regression cases for recorded defects |
 
 The repair suites contain multiple cases and supporting controls.
@@ -94,6 +97,24 @@ They write the exact transaction record that each durable boundary leaves, then 
 Their edits change one identity at a time, so a refusal names one cause.
 The process cases are real: a stub Git records an identifier, and the test examines that process after the endpoint exits.
 One stub blocks under its own identifier, and another exits early and leaves a descendant holding its pipes.
+
+## Setup Action fixtures
+
+`setup_action/` holds Python fixtures for the composite setup Action. Invoke them with this command:
+
+```sh
+python3 -m unittest discover -s tests/setup_action -p 'test_*.py'
+```
+
+They need Python 3 and PyYAML. PyYAML is a test-only dependency. `scripts/setup-memoria.py` needs no YAML library.
+
+`support.py` compiles a real ELF executable for the host with `rustc` and writes a fake `curl` that serves one fixed routing table. The fake transport records the exact requested URL, so a wrong asset selection fails a test. The fixtures replace the process architecture and the operating-system release file through module attributes, so the installer itself keeps no test-only environment variable. A poisoned `cargo` stub sits beside the fake transport: the Action must never invoke it.
+
+`test_install.py` also covers the version check as a whole operation. One deadline must cover the child and both stream readers, and both readers must finish before a version answer is accepted. Its stubs hold one or both pipes open in a grandchild after the parent exits, so an unfinished stream is a real condition rather than a simulated one. Each such stub releases its pipes within twelve seconds.
+
+`test_metadata.py` parses `action.yml` with a general YAML parser instead of the code that reads it. `check_consumer_workflow.py` examines the workflow that the CLI generates. PyYAML follows YAML 1.1 and reads the bare `on` key as a boolean. The checker therefore accepts both spellings of that key, and it also examines the raw bytes.
+
+`crates/memoria-infrastructure/tests/github_workflow_races.rs` injects an edit at the exact step where an editor can interfere with a workflow change. The adapter exposes a step hook for that purpose, in the same way that `fs.rs` exposes a fault hook. The covered windows are the displacement, the restoration that follows an aborted change, the no-clobber creation, the ownership record, and an interrupted transaction. Each fixture asserts which byte sequences survive; none of them claims coverage of a window it does not inject.
 
 ## Test boundaries
 

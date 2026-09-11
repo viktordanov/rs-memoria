@@ -168,3 +168,13 @@ Never replace unavailable evidence with unverified HEAD content.
 - Do not add a token bypass or edit `memoria.lock` by hand. It is binary; use `memoria state inspect` to read it.
 - `memoria init` is a preview that writes nothing. `memoria init --apply` creates `memoria.toml` and `memoria.lock`, and it needs a root README that the author wrote.
 - Do not install this skill or a hook into a project unless the user asks. Both are explicit, reversible, local changes.
+
+### Integrations
+
+- The preferred names are `memoria integrations skill ...`, `memoria integrations hook ...`, and `memoria integrations github ...`. The older `memoria agent ...` names keep the same behavior.
+- `memoria integrations github install|upgrade|uninstall` previews the change and writes nothing without `--apply`.
+- `install` and `upgrade` need a root README, a valid `memoria.toml`, and a readable `memoria.lock`. If a command reports `github_prerequisites_missing`, run the normal setup first; never work around it.
+- Do not install, upgrade, or remove the GitHub workflow unless the user asks. The change adds two files to the user's repository.
+- Memoria never adopts or overwrites a workflow file it does not own. If a command reports `github_unmanaged` or `github_modified`, report that to the user instead of removing the file.
+- The generated workflow and its ownership record are ordinary documentation inputs. They make the owning README pending, so the normal review procedure follows the change.
+- The workflow never acknowledges a review. A failing `memoria check` in CI still needs a local review.

@@ -140,3 +140,49 @@ jobs:
             (cd dist && sha256sum "$asset" > "${asset}.sha256")
           done
           ls -l dist
+
+  linux-release-acceptance:
+    name: Reproducible ${{ matrix.target }} build and native run
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+          persist-credentials: false
+
+      - name: Record the builder environment
+        run: |
+          set -euo pipefail
+          cat /etc/os-release
+          uname -s -r -m
+          docker version --format '{{.Server.Version}}'
+
+      - name: Build twice from the pinned builder image
+        run: |
+          set -euo pipefail
+          version="$(grep -A5 '^\[workspace.package\]$' Cargo.toml | grep -m1 '^version = ' | cut -d '"' -f 2)"
+          asset="memoria-${version}-${{ matrix.target }}.tar.gz"
+          ./scripts/build-linux-release.sh --target '${{ matrix.target }}' --output build-a
+          ./scripts/build-linux-release.sh --target '${{ matrix.target }}' --output build-b
+          cmp build-a/memoria build-b/memoria
+          cmp "build-a/${asset}" "build-b/${asset}"
+          ( cd build-a && sha256sum -c "${asset}.sha256" )
+          cat build-a/provenance.txt
+
+      - name: Run the produced executable natively
+        run: |
+          set -euo pipefail
+          version="$(grep -A5 '^\[workspace.package\]$' Cargo.toml | grep -m1 '^version = ' | cut -d '"' -f 2)"
+          test "$(./build-a/memoria --version)" = "memoria ${version}"
+          file ./build-a/memoria
+          ./scripts/check-next-change-set.sh --binary ./build-a/memoria --agent-tests simulated
+          ./scripts/check-github-workflow-template.sh \
+            --binary ./build-a/memoria --output "$RUNNER_TEMP/generated-consumer.yml"

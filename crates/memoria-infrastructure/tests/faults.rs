@@ -135,6 +135,7 @@ struct Harness<'a> {
     writer: AtomicFileWriter<'a>,
     packet_input: FsPacketInput,
     skills: FsSkillStore<'static>,
+    workflows: memoria_infrastructure::FsWorkflowStore<'static>,
     progress: Quiet,
 }
 
@@ -175,6 +176,11 @@ fn harness<'a>(
         writer: AtomicFileWriter::with_faults(root.to_path_buf(), writer_faults),
         packet_input: FsPacketInput,
         skills: FsSkillStore::new(root.to_path_buf(), "# skill\n", "0.1.0"),
+        workflows: memoria_infrastructure::FsWorkflowStore::new(
+            root.to_path_buf(),
+            root.join(".git"),
+            "0.5.0",
+        ),
         progress: Quiet,
     }
 }
@@ -198,6 +204,7 @@ impl Harness<'_> {
             skills: &self.skills,
             locations: &self.locations,
             hooks: &self.hooks,
+            workflows: &self.workflows,
             progress: &self.progress,
         }
     }

@@ -940,3 +940,80 @@ pub fn agent_hook(report: &memoria_application::usecases::agent_hooks::HookRepor
     );
     out
 }
+
+/// The managed consumer GitHub workflow plan or result.
+pub fn github_workflow(
+    report: &memoria_application::usecases::github_workflow::WorkflowReport,
+) -> String {
+    let mut out = String::new();
+    let plan = &report.plan;
+    let verb = match (report.applied, report.dry_run, plan.no_change) {
+        (true, _, _) => "applied",
+        (_, _, true) => "no change",
+        (_, true, _) => "dry run",
+        _ => "preview",
+    };
+    let _ = writeln!(
+        out,
+        "{verb}: integrations github {} {}",
+        report.operation.as_str(),
+        plan.path
+    );
+    let _ = writeln!(out, "  state      {}", plan.state);
+    let _ = writeln!(out, "  record     {}", plan.record_path);
+    let _ = writeln!(
+        out,
+        "  memoria    installed {} / desired {}",
+        plan.installed_version.as_deref().unwrap_or("none"),
+        plan.desired_version
+    );
+    let _ = writeln!(
+        out,
+        "  action ref installed {} / desired {}",
+        plan.installed_action_ref.as_deref().unwrap_or("none"),
+        plan.desired_action_ref
+    );
+    let _ = writeln!(
+        out,
+        "  runner     installed {} / desired {}",
+        plan.installed_runner.as_deref().unwrap_or("none"),
+        plan.desired_runner
+    );
+    for path in &plan.writes {
+        let _ = writeln!(out, "  write      {path}");
+    }
+    for path in &plan.removals {
+        let _ = writeln!(out, "  remove     {path}");
+    }
+    for artifact in &plan.retained_artifacts {
+        let _ = writeln!(
+            out,
+            "  retained   {} ({}, removable_by_uninstall={})",
+            artifact.path, artifact.reason, artifact.removable_by_uninstall
+        );
+    }
+    for name in &plan.siblings {
+        let _ = writeln!(out, "  sibling    .github/workflows/{name}");
+    }
+    for note in &plan.notes {
+        let _ = writeln!(out, "  note       {note}");
+    }
+    if plan.recovery_needed {
+        let _ = writeln!(
+            out,
+            "  recovery   an interrupted transaction must be resolved before a change"
+        );
+    }
+    if let Some(rendered) = &plan.rendered
+        && !report.applied
+    {
+        let _ = writeln!(out, "\nproposed {}:\n", plan.path);
+        for line in rendered.lines() {
+            let _ = writeln!(out, "  {line}");
+        }
+    }
+    if let Some(command) = &report.apply_command {
+        let _ = writeln!(out, "\nRun `{command}` to perform this change.");
+    }
+    out
+}

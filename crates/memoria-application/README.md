@@ -130,6 +130,18 @@ It returns the errors with the partial report instead of hiding them.
 `agent hooks install` validates the root configuration before its first write.
 If that configuration is invalid, the command fails and changes nothing.
 
+`github_workflow` validates the path, the version, the Action reference, and the runner label before it reaches the store.
+It requires `--apply` for every change, so the default result is a preview that writes nothing.
+The use case never downloads a release asset and never contacts GitHub, so a preview states that it did not confirm publication.
+`WorkflowStore` does the filesystem work, and the use case keeps no path or template detail.
+
+Install and upgrade also read three initialization facts through `ProjectFiles`, `ConfigurationReader`, and `StateStore`.
+The generated job runs `memoria check`, so a workflow without a root README, a valid configuration, and readable state could only fail.
+A preview reports each missing fact and stays read-only.
+An apply returns the failure before the store opens a lock, settles a transaction, or writes a file.
+A pending review is permitted, because review follows the workflow change.
+Status and uninstall read none of those facts, so they work in an uninitialized project.
+
 Source evidence: [render.rs:114](src/usecases/render.rs#L114), [invalidate.rs:50](src/usecases/invalidate.rs#L50), and [check.rs:37](src/usecases/check.rs#L37).
 
 ## File map
@@ -137,6 +149,7 @@ Source evidence: [render.rs:114](src/usecases/render.rs#L114), [invalidate.rs:50
 | File | Ownership |
 | --- | --- |
 | [ports.rs](src/ports.rs#L1) | `Services` and the adapter contracts |
+| [github_workflow.rs](src/usecases/github_workflow.rs#L1) | Workflow arguments, preview policy, and reports |
 | [snapshot.rs](src/snapshot.rs#L1) | Repository facts and derived review state |
 | [packet.rs](src/packet.rs#L1) | Packet values, limits, and token construction |
 | [guidance.rs](src/guidance.rs#L1) | Effective guidance and its digest |
