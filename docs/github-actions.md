@@ -2,7 +2,8 @@
 
 **Takeaway:** Memoria writes one small workflow file for your repository. That workflow calls the `setup-memoria` Action, which downloads a verified prebuilt executable on an Ubuntu runner. Nothing here compiles Memoria from source, and nothing here reviews your documentation.
 
-**Before you use the remote examples:** version 0.5.0 is not published yet. The `viktordanov/rs-memoria@v0.5.0` reference and the two release archives do not resolve until the maintainer publishes that tag and both architecture pairs. Until then, a generated workflow is correct but its job cannot install Memoria.
+The maintainer published [version 0.5.0](https://github.com/viktordanov/rs-memoria/releases/tag/v0.5.0), including both Linux archives and their checksum sidecars.
+The `viktordanov/rs-memoria@v0.5.0` reference resolves, and the generated job can install Memoria.
 
 ## Contents
 
@@ -47,7 +48,7 @@ An apply recomputes its plan from the bytes on disk at that moment. An earlier p
 
 The default destination is `.github/workflows/memoria.yml`. A custom `--path` must name one direct `.yml` or `.yaml` child of `.github/workflows`.
 
-The workflow body comes from one embedded template. The `@v0.5.0` reference in it resolves after publication:
+The workflow body comes from one embedded template. Its `@v0.5.0` reference selects the published release:
 
 ```yaml
 name: Memoria documentation
@@ -122,12 +123,13 @@ GitHub recommends a full commit SHA for an Action reference. The generated workf
 
 If you give `--runner ubuntu-24.04-arm`, the job runs on ARM64 and the Action selects the ARM64 archive automatically. You do not select an architecture yourself.
 
-Memoria does not contact GitHub during a preview or an apply. It cannot confirm that the release assets exist, and the preview says so. For version 0.5.0 the answer is already known: the release is not published yet.
+Memoria does not contact GitHub during a preview or an apply. The preview reports that it does not establish whether release assets exist.
+The maintainer published the required assets for version 0.5.0.
 
 ## 6. The setup Action
 
 ```yaml
-# This reference resolves after the maintainer publishes v0.5.0.
+# This reference selects the published v0.5.0 release.
 - uses: viktordanov/rs-memoria@v0.5.0
   with:
     version: '0.5.0'

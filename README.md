@@ -232,7 +232,7 @@ memoria integrations github install --apply
 
 The generated workflow calls the first-party `setup-memoria` Action, which downloads a verified prebuilt executable for the runner — x64 or ARM64 — instead of compiling Memoria from source. Then it runs `memoria check`. Memoria never adopts or overwrites a workflow file it does not own, and a pending check still means a person reviews the documentation locally.
 
-The first command is a preview. It works in any project, even one Memoria has never seen: it prints the file it would write, names anything still missing, and changes nothing. The second command writes, so it needs an initialized project — the generated job runs `memoria check`. Author the root README first, then run `memoria init --apply`. One thing is still missing on the other end: version 0.5.0 is not published, so the `@v0.5.0` reference and the release archives do not resolve yet. Generate the workflow now and commit it; the job starts working when the release lands. The [GitHub Actions guide](docs/github-actions.md) covers the pins, the checksum, the ownership record, and what each state means.
+The first command is a preview. It works in any project, even one Memoria has never seen: it prints the file it would write, names anything still missing, and changes nothing. The second command writes, so it needs an initialized project — the generated job runs `memoria check`. Author the root README first, then run `memoria init --apply`. [Version 0.5.0 is published](https://github.com/viktordanov/rs-memoria/releases/tag/v0.5.0), with the `@v0.5.0` Action reference and release archives for both Linux architectures. The [GitHub Actions guide](docs/github-actions.md) covers the pins, the checksum, the ownership record, and what each state means.
 
 ## Find the right guide
 
@@ -339,7 +339,7 @@ cargo build --release --locked
 
 Acceptance also builds the two Linux release archives — x64 and ARM64 — twice each inside a builder image pinned by digest in `scripts/linux-builders.json`, compares the resulting bytes, and runs the produced executable natively on its own architecture. `.github/workflows/setup-action.yml` exercises the setup Action itself on `ubuntu-24.04`, `ubuntu-latest`, and `ubuntu-24.04-arm` against a locally built archive, and records the image each job actually ran on.
 
-Those two workflows are configured, not yet demonstrated. No hosted run exists for either one. The x64 build and its double-build byte comparison were run locally; the ARM64 build, the native ARM64 run, the `ubuntu-latest` image confirmation, and the release publication are still open.
+Both hosted workflows passed for the 0.5.0 release: [Setup Action](https://github.com/viktordanov/rs-memoria/actions/runs/34605152262) and [Acceptance](https://github.com/viktordanov/rs-memoria/actions/runs/34605152306). The runs verified native execution and repeat-build byte equality on x64 and ARM64, plus Ubuntu 24.04 for the `ubuntu-latest` image. The [0.5.0 release](https://github.com/viktordanov/rs-memoria/releases/tag/v0.5.0) includes the published archives and checksum sidecars. Native macOS runtime remains unverified.
 
 ```sh
 python3 -m unittest discover -s tests/setup_action -p 'test_*.py'

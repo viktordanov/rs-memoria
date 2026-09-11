@@ -4,15 +4,21 @@ This file records user-visible changes in Memoria. The project maintainer owns r
 
 Contents:
 
-- [Unreleased (0.5.0)](#unreleased-050)
+- [0.5.0](#050---2026-09-11)
 - [Migration to 0.5.0](#migration-to-050)
 - [0.4.0](#040---2026-09-10)
 - [0.3.0](#030---2026-09-09)
 - [0.2.0](#020).
 
-## Unreleased (0.5.0)
+## 0.5.0 - 2026-09-11
 
-The maintainer tags this work as 0.5.0. The version number is a release decision, not a
+### Repository maintenance
+
+The maintainer removed co-author trailers from published Git history and re-signed the affected commits and release tags.
+Release source trees, published archives, and checksums remain unchanged. Commit IDs and tag signatures changed.
+Existing clones require reconciliation with the rewritten history. SHA-pinned consumers can retain their original pin or select its replacement.
+
+The maintainer released this work as 0.5.0. The version number is a release decision, not a
 consequence of a removed interface: read [Compatibility](#compatibility) for what actually
 changes for an existing user, and [Migration to 0.5.0](#migration-to-050) for the steps.
 
@@ -112,10 +118,8 @@ The apply needs an initialized project, because the generated job runs `memoria 
 already maintain your own Memoria workflow, keep it: Memoria never adopts a file it does not own,
 and it will refuse rather than overwrite yours.
 
-**One prerequisite is outside your control.** Version 0.5.0 is not published yet. Until the
-maintainer publishes the tag and both Linux archive pairs, the generated `@v0.5.0` reference and
-the release archives do not resolve, and the job cannot install Memoria. The workflow file itself
-is correct; commit it and the job starts working when the release lands.
+The maintainer published [version 0.5.0](https://github.com/viktordanov/rs-memoria/releases/tag/v0.5.0), including the tag and both Linux archives with their checksum sidecars.
+The generated `@v0.5.0` reference resolves, and the job can install Memoria from those archives.
 
 ## 0.4.0 - 2026-09-10
 
