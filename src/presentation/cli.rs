@@ -101,6 +101,122 @@ pub enum Command {
         #[command(subcommand)]
         command: AgentCommand,
     },
+    /// Manage the agent skill, the agent hook, and the GitHub workflow.
+    Integrations {
+        #[command(subcommand)]
+        command: IntegrationsCommand,
+    },
+}
+
+/// The skill lifecycle, without the hook level that `agent` nests inside it.
+///
+/// Hook operations have their own umbrella branch, so there is no
+/// `integrations skill hook` path and no `integrations agent` level.
+#[derive(Debug, Subcommand)]
+pub enum SkillCommand {
+    /// Install the managed skill package.
+    Install(AgentArgs),
+    /// Report the installed package without changing it.
+    Status(AgentArgs),
+    /// Replace an older managed package with the embedded one.
+    Upgrade(AgentArgs),
+    /// Remove the managed skill package and restore replaced content when safe.
+    Uninstall(AgentArgs),
+}
+
+impl SkillCommand {
+    /// The established `agent ...` request this spelling normalizes onto.
+    pub fn into_agent(self) -> AgentCommand {
+        match self {
+            SkillCommand::Install(args) => AgentCommand::Install(args),
+            SkillCommand::Status(args) => AgentCommand::Status(args),
+            SkillCommand::Upgrade(args) => AgentCommand::Upgrade(args),
+            SkillCommand::Uninstall(args) => AgentCommand::Uninstall(args),
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            SkillCommand::Install(_) => "agent install",
+            SkillCommand::Status(_) => "agent status",
+            SkillCommand::Upgrade(_) => "agent upgrade",
+            SkillCommand::Uninstall(_) => "agent uninstall",
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+pub enum IntegrationsCommand {
+    /// Install or remove the managed Memoria skill package for an agent.
+    Skill {
+        #[command(subcommand)]
+        command: SkillCommand,
+    },
+    /// Install, inspect, or remove the project-level agent Stop hook.
+    Hook {
+        #[command(subcommand)]
+        command: HookCommand,
+    },
+    /// Create and maintain the consumer GitHub Actions workflow.
+    ///
+    /// The workflow calls the first-party setup Action, which installs a
+    /// verified prebuilt Memoria executable on the runner. This command never
+    /// downloads a binary, and the Action never changes a project.
+    Github {
+        #[command(subcommand)]
+        command: GithubCommand,
+    },
+}
+
+#[derive(Debug, Args)]
+pub struct GithubArgs {
+    /// Workflow file. One direct .yml or .yaml child of .github/workflows.
+    #[arg(long, value_name = "FILE")]
+    pub path: Option<String>,
+    /// Exact stable Memoria version the workflow installs, 0.5.0 or later.
+    #[arg(long, value_name = "VERSION")]
+    pub version: Option<String>,
+    /// Action code reference: a full 40-character commit SHA or an exact vX.Y.Z tag.
+    #[arg(long, value_name = "REF")]
+    pub action_ref: Option<String>,
+    /// Runner label: ubuntu-24.04, ubuntu-latest, or ubuntu-24.04-arm.
+    #[arg(long, value_name = "LABEL")]
+    pub runner: Option<String>,
+    /// Perform the change. Without it the command previews and writes nothing.
+    #[arg(long)]
+    pub apply: bool,
+    /// Show the same preview explicitly. Cannot be combined with --apply.
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct GithubRemovalArgs {
+    /// Workflow file. One direct .yml or .yaml child of .github/workflows.
+    #[arg(long, value_name = "FILE")]
+    pub path: Option<String>,
+    /// Perform the change. Without it the command previews and writes nothing.
+    #[arg(long)]
+    pub apply: bool,
+    /// Show the same preview explicitly. Cannot be combined with --apply.
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum GithubCommand {
+    /// Preview or create the managed workflow and its ownership record.
+    Install(GithubArgs),
+    /// Report the managed workflow without changing it.
+    Status {
+        /// Workflow file. One direct .yml or .yaml child of .github/workflows.
+        #[arg(long, value_name = "FILE")]
+        path: Option<String>,
+    },
+    /// Preview or apply new versions for the managed workflow.
+    Upgrade(GithubArgs),
+    /// Preview or remove the managed workflow and its ownership record.
+    Uninstall(GithubRemovalArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -239,9 +355,57 @@ pub enum HookCommand {
     },
 }
 
+impl Cli {
+    /// Rewrite the new skill and hook spellings onto the established
+    /// `agent ...` requests.
+    ///
+    /// Normalization happens once, before every dispatch path: global skill
+    /// operations, the native hook endpoint, and ordinary commands all see the
+    /// same request they saw before this release. Arguments, defaults, JSON
+    /// data, command labels, diagnostic codes, exit behavior and side effects
+    /// therefore stay identical for both spellings.
+    pub fn normalized(self) -> Cli {
+        let command = match self.command {
+            Command::Integrations {
+                command: IntegrationsCommand::Skill { command },
+            } => Command::Agent {
+                command: command.into_agent(),
+            },
+            Command::Integrations {
+                command: IntegrationsCommand::Hook { command },
+            } => Command::Agent {
+                command: AgentCommand::Hook { command },
+            },
+            other => other,
+        };
+        Cli { command, ..self }
+    }
+}
+
 impl Command {
     pub fn name(&self) -> &'static str {
         match self {
+            // The new skill and hook spellings normalize onto these labels
+            // before dispatch. The arms below keep the mapping total.
+            Command::Integrations {
+                command: IntegrationsCommand::Skill { command },
+            } => command.name(),
+            Command::Integrations {
+                command: IntegrationsCommand::Hook { command },
+            } => match command {
+                HookCommand::Install(_) => "agent hook install",
+                HookCommand::Status { .. } => "agent hook status",
+                HookCommand::Uninstall(_) => "agent hook uninstall",
+                HookCommand::Run { .. } => "agent hook run",
+            },
+            Command::Integrations {
+                command: IntegrationsCommand::Github { command },
+            } => match command {
+                GithubCommand::Install(_) => "integrations github install",
+                GithubCommand::Status { .. } => "integrations github status",
+                GithubCommand::Upgrade(_) => "integrations github upgrade",
+                GithubCommand::Uninstall(_) => "integrations github uninstall",
+            },
             Command::Completions { .. } => "completions",
             Command::Explain { .. } => "explain",
             Command::State {

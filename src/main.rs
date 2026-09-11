@@ -9,18 +9,19 @@ use std::process::ExitCode;
 use clap::Parser as _;
 use memoria_application::error::{AppError, Detail, Diagnostic, Outcome};
 use memoria_application::ports::{
-    AgentScope, AgentTarget, PacketSource, Progress, Services, SkillOperation,
+    AgentScope, AgentTarget, PacketSource, Progress, Services, SkillOperation, WorkflowOperation,
 };
 use memoria_application::usecases;
 use memoria_infrastructure::config::TomlConfigurationReader;
 use memoria_infrastructure::{
     AtomicFileWriter, CommandClientProbe, EnvAgentLocations, FsHookStore, FsPacketInput,
-    FsProjectFiles, FsSkillStore, GitCli, GixRepositoryIgnore, JsonPacketCodec,
+    FsProjectFiles, FsSkillStore, FsWorkflowStore, GitCli, GixRepositoryIgnore, JsonPacketCodec,
     LockFileCoordinator, LockStateInspector, LockStateStore, PulldownMarkdownCodec,
     SelfStatusProcess, SystemClock, Xxh3Hasher,
 };
 use presentation::cli::{
-    AgentCommand, Cli, Command, Format, HookCommand, Scope, StateCommand, Target,
+    AgentCommand, Cli, Command, Format, GithubCommand, HookCommand, IntegrationsCommand, Scope,
+    StateCommand, Target,
 };
 use presentation::{json, text};
 
@@ -205,6 +206,10 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
         git_dir.clone(),
         Box::new(CommandClientProbe),
     );
+    // The managed consumer workflow lives in the selected worktree. Its
+    // private coordination files stay under the same Git metadata directory
+    // that bounds every other private Memoria path.
+    let workflows = FsWorkflowStore::new(root.clone(), git_dir.clone(), env!("CARGO_PKG_VERSION"));
     let progress = StderrProgress;
     let services = Services {
         files: &files,
@@ -223,6 +228,7 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
         skills: &skills,
         locations: &locations,
         hooks: &hooks,
+        workflows: &workflows,
         progress: &progress,
     };
 
@@ -449,6 +455,63 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
             let (data, human) = (outcome.data.to_detail(), text::agent(&outcome.data));
             Ok(output(outcome, data, human))
         }
+        Command::Integrations {
+            command: IntegrationsCommand::Github { command },
+        } => {
+            let request = github_args(command);
+            let outcome = usecases::github_workflow::run(&services, &request)?;
+            let (data, human) = (
+                outcome.data.to_detail(),
+                text::github_workflow(&outcome.data),
+            );
+            Ok(output(outcome, data, human))
+        }
+        Command::Integrations { .. } => {
+            unreachable!("skill and hook spellings normalize before dispatch")
+        }
+    }
+}
+
+/// Translate the GitHub workflow grammar into one application request.
+fn github_args(command: &GithubCommand) -> usecases::github_workflow::WorkflowArgs {
+    use usecases::github_workflow::WorkflowArgs;
+    match command {
+        GithubCommand::Install(args) => WorkflowArgs {
+            operation: WorkflowOperation::Install,
+            path: args.path.clone(),
+            version: args.version.clone(),
+            action_ref: args.action_ref.clone(),
+            runner: args.runner.clone(),
+            apply: args.apply,
+            dry_run: args.dry_run,
+        },
+        GithubCommand::Upgrade(args) => WorkflowArgs {
+            operation: WorkflowOperation::Upgrade,
+            path: args.path.clone(),
+            version: args.version.clone(),
+            action_ref: args.action_ref.clone(),
+            runner: args.runner.clone(),
+            apply: args.apply,
+            dry_run: args.dry_run,
+        },
+        GithubCommand::Status { path } => WorkflowArgs {
+            operation: WorkflowOperation::Status,
+            path: path.clone(),
+            version: None,
+            action_ref: None,
+            runner: None,
+            apply: false,
+            dry_run: false,
+        },
+        GithubCommand::Uninstall(args) => WorkflowArgs {
+            operation: WorkflowOperation::Uninstall,
+            path: args.path.clone(),
+            version: None,
+            action_ref: None,
+            runner: None,
+            apply: args.apply,
+            dry_run: args.dry_run,
+        },
     }
 }
 
@@ -633,7 +696,7 @@ fn json_requested(args: &[String]) -> bool {
 
 /// The command name for a usage-error envelope: the first known command word.
 fn command_word(args: &[String]) -> &'static str {
-    const KNOWN: [&str; 16] = [
+    const KNOWN: [&str; 17] = [
         "completions",
         "packet",
         "explain",
@@ -649,8 +712,35 @@ fn command_word(args: &[String]) -> &'static str {
         "check",
         "graph",
         "agent",
+        "integrations",
         "unknown",
     ];
+    let words = command_words(args);
+    let Some(first) = words.first() else {
+        return "unknown";
+    };
+    let found = KNOWN
+        .iter()
+        .find(|known| *known == first)
+        .copied()
+        .unwrap_or("unknown");
+    if found != "integrations" {
+        return found;
+    }
+    // An argument error reaches this path before normalization, so the alias
+    // has to be recognized here too. `integrations skill` and
+    // `integrations hook` are the established `agent` requests, and their
+    // envelopes must keep the established command label.
+    match words.get(1).map(String::as_str) {
+        Some("skill") | Some("hook") => "agent",
+        _ => "integrations",
+    }
+}
+
+/// The command words of an invocation, in order, without options or their
+/// values. Used before parsing, so it makes no grammar decision.
+fn command_words(args: &[String]) -> Vec<String> {
+    let mut words = Vec::new();
     let mut previous: Option<&str> = None;
     for arg in args.iter().skip(1) {
         let takes_value = matches!(previous, Some("--format") | Some("--root"));
@@ -658,13 +748,12 @@ fn command_word(args: &[String]) -> &'static str {
         if takes_value || arg.starts_with('-') {
             continue;
         }
-        return KNOWN
-            .iter()
-            .find(|k| *k == arg)
-            .copied()
-            .unwrap_or("unknown");
+        words.push(arg.clone());
+        if words.len() == 2 {
+            break;
+        }
     }
-    "unknown"
+    words
 }
 
 /// Write the final response. Any stdout failure, including a closed pipe, is
@@ -918,6 +1007,10 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    // The new skill and hook spellings become the established agent requests
+    // before any dispatch decision, so every early path and every output keeps
+    // its previous behavior.
+    let cli = cli.normalized();
     // A global agent operation resolves before project discovery: it works
     // outside Git repositories and without project configuration, so it
     // builds narrow agent services instead of a complete snapshot.

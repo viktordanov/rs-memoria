@@ -1,0 +1,41 @@
+name: setup-memoria
+description: Install a verified prebuilt Memoria executable on an Ubuntu runner and put it on PATH.
+author: viktordanov
+
+branding:
+  icon: book-open
+  color: blue
+
+inputs:
+  version:
+    description: Exact stable Memoria version to install, 0.5.0 or later. An optional leading v is accepted.
+    required: false
+    default: '0.5.0'
+  sha256:
+    description: >-
+      Optional SHA-256 digest of the release archive for the runner's architecture.
+      The published checksum sidecar is always required and always compared; this
+      input adds an independent expected value. A matrix over architectures must
+      pin one digest for each architecture.
+    required: false
+    default: ''
+
+outputs:
+  version:
+    description: The installed Memoria version.
+    value: ${{ steps.install.outputs.version }}
+  path:
+    description: The absolute path of the installed memoria executable.
+    value: ${{ steps.install.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - id: install
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_SHA256: ${{ inputs.sha256 }}
+      run: |
+        set -euo pipefail
+        python3 "${GITHUB_ACTION_PATH}/scripts/setup-memoria.py"

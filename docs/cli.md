@@ -12,7 +12,7 @@ Read the [workflow](workflow.md) for a first review with commands in task order.
 - [Terms, invocation, and paths](#terms-used-in-this-reference)
 - [Configuration and ownership](#configuration-and-ownership)
 - [Inspection commands and packets](#inspection-commands)
-- [Mutations and agent packages](#review-mutations)
+- [Mutations, agent packages, and integrations](#review-mutations)
 - [Diagnostics, exits, and limits](#json-and-diagnostics)
 
 ## Terms used in this reference
@@ -619,6 +619,20 @@ The state contains the latest review per README, rather than an append-only jour
 
 Source evidence: [acknowledgement](../crates/memoria-application/src/usecases/ack.rs#L193), [render](../crates/memoria-application/src/usecases/render.rs#L114), and [invalidation](../crates/memoria-application/src/usecases/invalidate.rs#L50).
 
+## Integrations
+
+```sh
+memoria integrations skill  install|status|upgrade|uninstall
+memoria integrations hook   install|status|uninstall|run
+memoria integrations github install|status|upgrade|uninstall
+```
+
+The umbrella groups the three integrations. The [integrations guide](integrations.md) maps the branches and their older names.
+
+The skill and hook branches are the established `memoria agent ...` commands under a new name. They take the same arguments, produce the same data, return the same diagnostics, and exit with the same status. The JSON envelope of an equivalent command reports the established `agent ...` label under both spellings.
+
+There is no `memoria integrations agent` level and no `memoria integrations skill hook` path. An installed hook launcher keeps the `memoria agent hook run` text, so an existing installation needs no migration.
+
 ## Agent packages
 
 ```sh
@@ -678,6 +692,61 @@ The next installation or removal recovers the transaction under the lock before 
 Recovery of an interrupted removal satisfies an uninstall request.
 
 Source evidence: [skill adapter](../crates/memoria-infrastructure/src/skill.rs#L618).
+
+</details>
+
+## GitHub workflow
+
+```sh
+memoria integrations github install   [--path <file>] [--version <version>] [--action-ref <ref>] [--runner <label>] [--apply | --dry-run]
+memoria integrations github status    [--path <file>]
+memoria integrations github upgrade   [--path <file>] [--version <version>] [--action-ref <ref>] [--runner <label>] [--apply | --dry-run]
+memoria integrations github uninstall [--path <file>] [--apply | --dry-run]
+```
+
+This branch creates and maintains one consumer workflow file. The workflow calls the first-party setup Action, which installs a verified prebuilt executable on the runner. The [GitHub Actions guide](github-actions.md) describes both parts.
+
+The default destination is `.github/workflows/memoria.yml`. A custom `--path` must name one direct `.yml` or `.yaml` child of `.github/workflows`. Memoria rejects an absolute path, a traversal, a control character, a symlink ancestor, a symlink destination, and a special file.
+
+Install, upgrade, and uninstall preview the change and write nothing without `--apply`. The option `--dry-run` selects the same preview. `--apply` and `--dry-run` together are an argument error. A preview creates no directory, no lock, no temporary file, and no record. An apply recomputes its plan from the current bytes, so an earlier preview never permits an overwrite of a later edit.
+
+`status` is always read-only and rejects `--apply`, `--dry-run`, `--version`, `--action-ref`, and `--runner`.
+
+Install and upgrade need an initialized project, because the generated job runs `memoria check`. The requirements are a regular root `README.md`, a `memoria.toml` that parses, and a readable `memoria.lock`. A preview works without them and reports each one as `github_prerequisite_missing`. An apply refuses with `github_prerequisites_missing` and exit 1, before the store takes a lock, recovers a transaction, or writes anything. A pending review is permitted: review follows the workflow change. Memoria never initializes a project and never acknowledges a review. Status and uninstall do not read the configuration at all, so they work in an uninitialized or broken project.
+
+Memoria records what it wrote in `.github/memoria-workflows/<filename>.json`. Both files belong in the consumer's Git history. Memoria owns a workflow only when a valid record names it. It never adopts a file without that record, even when the bytes match the current template.
+
+| State | Install apply | Upgrade apply | Uninstall apply |
+| --- | --- | --- | --- |
+| `absent` | Creates both files | `github_not_installed`, exit 1 | No change, exit 0 |
+| `current` | No change, exit 0 | No change, exit 0 | Removes both owned files |
+| `outdated` | `github_upgrade_required`, exit 1 | Rewrites both files | Removes both owned files |
+| `modified` | Preserves and fails | Preserves and fails | Preserves and fails |
+| `unmanaged` | Preserves and fails | Preserves and fails | Preserves and fails |
+| `conflict` | Preserves and fails | Preserves and fails | Preserves and fails |
+
+`--version` accepts an exact stable version, 0.5.0 or later, with an optional leading `v`. `--action-ref` accepts a full 40-character commit SHA or an exact `vX.Y.Z` tag. `--runner` accepts `ubuntu-24.04`, `ubuntu-latest`, and `ubuntu-24.04-arm`. An upgrade keeps the recorded runner and a recorded commit pin unless you change them explicitly, and it refuses a downgrade.
+
+The diagnostic codes are `github_not_installed`, `github_upgrade_required`, `github_prerequisites_missing`, `github_unmanaged`, `github_modified`, `github_ownership_conflict`, `github_destination_appeared`, `github_recovery_needed`, `github_recovery_pending`, `github_recovery_unavailable`, `github_busy`, `github_downgrade_refused`, `github_path_unsafe`, and `github_template_unsupported`. The preview also emits the warning `github_prerequisite_missing` and the hints `github_sibling_workflows` and `github_publication_unverified`.
+
+The workflow file and its ownership record are ordinary documentation inputs. A new workflow makes the owning README pending, so review follows the change. Memoria acknowledges nothing automatically.
+
+<details>
+<summary>Durable writes and recovery</summary>
+
+A mutation takes a private advisory lock under the worktree's Git metadata, keyed by the destination file name. It then records the expected and the intended bytes of both files in a durable intent record.
+
+The mutation moves each file it replaces into private recovery storage before the replacement appears. The move is an atomic rename on the same filesystem. Memoria refuses the mutation when the recovery directory is on another filesystem. After the move, Memoria compares the displaced bytes with the expected bytes. If they differ, Memoria puts the file back and reports `github_modified`.
+
+The restoration is itself no-clobber. A test for absence followed by a rename would leave a window in which another writer creates the destination and the rename destroys it. Memoria therefore restores with a hard link, which fails when the destination exists. If a file appeared there, both byte sequences survive: the appearing file stays at its path, the displaced bytes stay in recovery storage, and `github_recovery_pending` names both paths.
+
+Creation uses no-clobber semantics. A file that appears between the plan and the write causes `github_destination_appeared` instead of an overwrite.
+
+An interrupted mutation leaves its intent record. Every apply settles that record first, including an apply whose files already match the target. The apply recognizes two states: the expected bytes, which mean that nothing started, and the intended bytes, which mean that the change finished. Any third state preserves both files and reports `github_recovery_needed`. An intent record that does not decode, or that names another workflow or an unknown operation, is evidence rather than a transaction: Memoria preserves it byte for byte and refuses the change. A preview and a status never settle a record.
+
+The advisory lock serializes Memoria writers only. It does not stop an arbitrary editor. Displacement exists for that case: an editor that holds the old file keeps writing into the copy that Memoria preserved.
+
+Source evidence: [workflow adapter](../crates/memoria-infrastructure/src/github_workflow.rs#L1).
 
 </details>
 

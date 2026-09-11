@@ -22,6 +22,8 @@ The two integrations do different work:
 
 Both are optional. Memoria works completely without them.
 
+The preferred command names are `memoria integrations skill ...` and `memoria integrations hook ...`. The `memoria agent ...` names in this guide remain supported, with the same arguments, data, diagnostics, and exit statuses. The [integrations guide](integrations.md) maps the two spellings and describes the third branch, `memoria integrations github`.
+
 ## 2. Skill destinations
 
 The default scope is `local`, which means inside the selected Git worktree.
@@ -185,4 +187,4 @@ Installation does not modify `.gitignore`, host ignore files, or `.git/info/excl
 
 These items are outside this release: global hooks, other hook events, other agents, isolated Claude hooks for individual linked worktrees, automatic client trust, plugin installation, and automatic cleanup of installation locks.
 
-**Next:** invoke `memoria agent status --target codex` to see the current state without changing anything.
+**Next:** invoke `memoria integrations skill status --target codex` to see the current state without changing anything.

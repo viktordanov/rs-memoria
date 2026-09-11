@@ -1,0 +1,175 @@
+name: Setup Action
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: setup-action-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fixtures:
+    name: Action fixtures and metadata
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Record the runner image
+        run: |
+          set -euo pipefail
+          cat /etc/os-release
+          uname -s -r -m
+          python3 --version
+          curl --version | head -1
+
+      - name: Install the test-only YAML parser
+        run: python3 -m pip install --user --disable-pip-version-check pyyaml
+
+      - name: Run the Action fixtures
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python3 -m unittest discover -s tests/setup_action -p 'test_*.py' -v
+
+      - name: Lint every workflow
+        run: |
+          set -euo pipefail
+          version=1.7.12
+          archive="actionlint_${version}_linux_amd64.tar.gz"
+          base="https://github.com/rhysd/actionlint/releases/download/v${version}"
+          work="$RUNNER_TEMP/actionlint"
+          mkdir -p "$work"
+          curl --proto '=https' --tlsv1.2 --location --silent --show-error --fail \
+            --output "$work/$archive" "$base/$archive"
+          curl --proto '=https' --tlsv1.2 --location --silent --show-error --fail \
+            --output "$work/checksums.txt" "$base/actionlint_${version}_checksums.txt"
+          ( cd "$work" && grep " ${archive}\$" checksums.txt | sha256sum -c - )
+          tar -xzf "$work/$archive" -C "$work" actionlint
+          "$work/actionlint" .github/workflows/*.yml
+
+      - name: Check the shell scripts
+        run: |
+          set -euo pipefail
+          bash -n scripts/build-linux-release.sh
+          bash -n scripts/package-linux-release.sh
+          bash -n scripts/check-github-workflow-template.sh
+          shellcheck scripts/build-linux-release.sh scripts/package-linux-release.sh \
+            scripts/check-github-workflow-template.sh || true
+
+  runner:
+    name: Install on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The `ubuntu-latest` alias can move. This step records the image the
+      # job actually ran on, so the support claim rests on evidence.
+      - name: Record the runner image
+        run: |
+          set -euo pipefail
+          cat /etc/os-release
+          uname -s -r -m
+          echo "RUNNER_ARCH=$RUNNER_ARCH"
+
+      - name: Read the package version
+        id: package
+        run: |
+          set -euo pipefail
+          version="$(python3 - <<'PY'
+          import re
+          text = open("Cargo.toml", "r", encoding="utf-8").read()
+          section = text.split("[workspace.package]", 1)[1]
+          print(re.search(r'^version = "([^"]+)"', section, re.M).group(1))
+          PY
+          )"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # The release for this version does not exist while the change is under
+      # review, so the job builds the exact archive the Action would download.
+      - name: Build the release archive for this runner
+        run: |
+          set -euo pipefail
+          ./scripts/build-linux-release.sh \
+            --target '${{ matrix.target }}' \
+            --output "$RUNNER_TEMP/release"
+
+      # A fake transport serves the locally built archive at the production
+      # URL. The wrapper asserts the exact architecture-specific URL, so a
+      # wrong asset selection fails the job instead of passing silently.
+      - name: Serve the built archive at the release URL
+        env:
+          VERSION: ${{ steps.package.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          tools="$RUNNER_TEMP/fake-transport"
+          mkdir -p "$tools"
+          asset="memoria-${VERSION}-${TARGET}.tar.gz"
+          expected="https://github.com/viktordanov/rs-memoria/releases/download/v${VERSION}/${asset}"
+          real_curl="$(command -v curl)"
+          cat > "$tools/curl" <<SH
+          #!/usr/bin/env bash
+          set -euo pipefail
+          url="\${!#}"
+          output=""
+          previous=""
+          for argument in "\$@"; do
+            if [ "\$previous" = "--output" ]; then output="\$argument"; fi
+            previous="\$argument"
+          done
+          case "\$url" in
+            "${expected}") cp "$RUNNER_TEMP/release/${asset}" "\$output"; echo 200; exit 0 ;;
+            "${expected}.sha256") cp "$RUNNER_TEMP/release/${asset}.sha256" "\$output"; echo 200; exit 0 ;;
+          esac
+          echo "fake transport: unexpected URL \$url" >&2
+          exit 1
+          SH
+          chmod 755 "$tools/curl"
+          echo "$tools" >> "$GITHUB_PATH"
+          echo "the fake transport answers only ${expected}"
+          test "$real_curl" != "$tools/curl"
+
+      - name: Set up Memoria
+        id: memoria
+        uses: ./
+        with:
+          version: ${{ steps.package.outputs.version }}
+
+      - name: The executable is on PATH for later steps
+        env:
+          VERSION: ${{ steps.package.outputs.version }}
+          DECLARED_VERSION: ${{ steps.memoria.outputs.version }}
+          DECLARED_PATH: ${{ steps.memoria.outputs.path }}
+        run: |
+          set -euo pipefail
+          test "$DECLARED_VERSION" = "$VERSION"
+          test -x "$DECLARED_PATH"
+          test "$(command -v memoria)" = "$DECLARED_PATH"
+          test "$(memoria --version)" = "memoria ${VERSION}"
+
+      - name: The generated consumer workflow is valid here
+        run: |
+          set -euo pipefail
+          ./scripts/check-github-workflow-template.sh \
+            --binary "$(command -v memoria)" \
+            --output "$RUNNER_TEMP/generated-consumer.yml"
+          cat "$RUNNER_TEMP/generated-consumer.yml"

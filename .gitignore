@@ -1,3 +1,4 @@
 /target
 /dist
 /.memoria/write.lock
+__pycache__/

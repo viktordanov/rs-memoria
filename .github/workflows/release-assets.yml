@@ -98,3 +98,95 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
+
+  linux-build:
+    name: Build ${{ matrix.target }} natively
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+
+    steps:
+      - name: Check out the tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+
+      - name: Verify the tag matches the package version
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          release_version="${TAG#v}"
+          package_version="$(grep -A5 '^\[workspace.package\]$' Cargo.toml | grep -m1 '^version = ' | cut -d '"' -f 2)"
+          test "$TAG" != "$release_version"
+          test "$release_version" = "$package_version"
+
+      - name: Record the builder environment
+        run: |
+          set -euo pipefail
+          cat /etc/os-release
+          uname -s -r -m
+          docker version --format '{{.Server.Version}}'
+
+      # Two builds from the same source and the same pinned builder image must
+      # produce the same bytes. Equal archive metadata alone would not prove a
+      # reproducible compile, so the executables are compared too.
+      - name: Build the archive twice and compare
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          asset="memoria-${version}-${{ matrix.target }}.tar.gz"
+          for attempt in a b; do
+            ./scripts/build-linux-release.sh \
+              --target '${{ matrix.target }}' \
+              --version "$version" \
+              --output "dist-${attempt}"
+          done
+          cmp "dist-a/memoria" "dist-b/memoria"
+          cmp "dist-a/${asset}" "dist-b/${asset}"
+          ( cd dist-a && sha256sum -c "${asset}.sha256" )
+          mkdir -p dist
+          cp "dist-a/${asset}" "dist-a/${asset}.sha256" "dist-a/provenance.txt" dist/
+          mv "dist/provenance.txt" "dist/provenance-${{ matrix.target }}.txt"
+
+      # A cross-build or an emulated run would not prove that the published
+      # executable works on this architecture. The archive is installed and
+      # invoked natively here.
+      - name: Install and exercise the archive natively
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          asset="memoria-${version}-${{ matrix.target }}.tar.gz"
+          work="$RUNNER_TEMP/native"
+          mkdir -p "$work"
+          tar -xzf "dist/${asset}" -C "$work"
+          binary="$work/memoria-${version}-${{ matrix.target }}/memoria"
+          test -x "$binary"
+          file "$binary"
+          test "$("$binary" --version)" = "memoria ${version}"
+          ./scripts/check-next-change-set.sh --binary "$binary" --agent-tests simulated
+          ./scripts/check-github-workflow-template.sh \
+            --binary "$binary" --output "$RUNNER_TEMP/generated-consumer.yml"
+
+      - name: Upload the release archives
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: memoria-linux-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+            dist/provenance-*.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

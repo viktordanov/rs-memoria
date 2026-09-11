@@ -36,22 +36,23 @@ Keep a project's documented mental model connected to its code.
 Usage: memoria [OPTIONS] <COMMAND>
 
 Commands:
-  completions  Print a shell completion script without project discovery or installation
-  explain      Explain one README's whole-file freshness with verified local Git evidence
-  packet       Read exact sections from a saved canonical packet without project discovery
-  init         Validate root setup inputs, or create missing configuration and state with --apply
-  status       Show coverage, input size, and review state
-  guidance     Show the project documentation guidance that applies to a README
-  state        Inspect or compare committed state without changing it
-  lint         Check structure, configuration, markers, and link hints
-  review       Show the ordered review plan, or a focused packet for one README
-  render       Refresh declared import blocks only
-  ack          Record a review result against the exact packet snapshot
-  invalidate   Mark one README, a subtree, or the whole project for semantic review
-  check        Run read-only validation for CI
-  graph        Show documentation ownership, imports, navigation, and status
-  agent        Install or remove the managed Memoria skill and hooks for an agent
-  help         Print this message or the help of the given subcommand(s)
+  completions   Print a shell completion script without project discovery or installation
+  explain       Explain one README's whole-file freshness with verified local Git evidence
+  packet        Read exact sections from a saved canonical packet without project discovery
+  init          Validate root setup inputs, or create missing configuration and state with --apply
+  status        Show coverage, input size, and review state
+  guidance      Show the project documentation guidance that applies to a README
+  state         Inspect or compare committed state without changing it
+  lint          Check structure, configuration, markers, and link hints
+  review        Show the ordered review plan, or a focused packet for one README
+  render        Refresh declared import blocks only
+  ack           Record a review result against the exact packet snapshot
+  invalidate    Mark one README, a subtree, or the whole project for semantic review
+  check         Run read-only validation for CI
+  graph         Show documentation ownership, imports, navigation, and status
+  agent         Install or remove the managed Memoria skill and hooks for an agent
+  integrations  Manage the agent skill, the agent hook, and the GitHub workflow
+  help          Print this message or the help of the given subcommand(s)
 
 Options:
       --root <DIRECTORY>  Project root. Must be the Git worktree root. Defaults to discovery from the current directory
@@ -138,6 +139,15 @@ It validates the saved packet before it returns exact snapshot selections.
 The default human review and explanation use `presentation/review.rs`.
 `--full` retains detailed output.
 Existing canonical JSON remains complete.
+
+`Cli::normalized` rewrites the `integrations skill` and `integrations hook` spellings onto the established `agent` requests.
+It runs once, directly after argument parsing and before every dispatch decision.
+Each spelling therefore reaches the same code, the same JSON command label, and the same exit status.
+`integrations github` keeps its own grammar and reaches the workflow use case.
+
+An argument error happens before that rewrite, because the parser rejects the arguments first.
+`command_word` therefore recognizes the two aliases itself and reports the established `agent` label for them.
+The workflow branch keeps its own label, and an unknown `integrations` subcommand keeps the umbrella label.
 
 These other command paths resolve before project discovery:
 

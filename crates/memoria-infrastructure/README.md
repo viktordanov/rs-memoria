@@ -14,7 +14,7 @@ Read [fs.rs](src/fs.rs#L110) to start with file classification and reads.
 - [Role in the project](#role-in-the-project)
 - [Repository adapters](#repository-facts-enter-through-adapters), [local history](#bounded-local-history), and [state writes](#state-writes-preserve-a-clear-error-boundary)
 - [Formats and packet limits](#formats-and-packet-limits)
-- [Skill and hook installation](#skill-installation-has-its-own-transaction)
+- [Skill, hook, and workflow installation](#skill-installation-has-its-own-transaction)
 - [Bounded processes](#one-supervisor-owns-every-bounded-subprocess) and [the lock codec](#the-lock-codec-produces-one-canonical-artifact)
 
 ## Role in the project
@@ -100,6 +100,7 @@ An export is a marked README section that another README can copy.
 | `LockStateInspector` | It decodes a state file for read-only inspection. |
 | `GixRepositoryIgnore` | It matches repository ignore rules without host settings. |
 | `FsHookStore` | It installs and removes one owned native `Stop` hook. |
+| `FsWorkflowStore` | It renders, records, and removes one managed GitHub workflow. |
 | `Xxh3Hasher` | It calculates XXH3-64 hashes with the default secret and seed zero. |
 | `EnvAgentLocations` | It resolves absolute skill destinations for a target and scope. |
 | `SelfStatusProcess` | It runs one bounded status inspection without a shell. |
@@ -161,6 +162,40 @@ The TOML path matches an owned inline group by its exact hash, so a similar user
 `CommandClientProbe` measures the selected client before installation and enforces the frozen version floors.
 
 Source evidence: [skill.rs](src/skill.rs#L618), [hooks.rs](src/hooks.rs#L1), and [client_probe.rs](src/client_probe.rs#L1).
+
+## The workflow adapter owns one template
+
+`FsWorkflowStore` renders one deterministic workflow template and records what it wrote.
+The record holds the template version, the exact workflow path, the versions, the Action reference, the runner label, and the expected bytes.
+The adapter reads no YAML: it rebuilds the expected bytes from the recorded parameters and compares them exactly.
+A file without a valid record is unmanaged, even when its bytes match the current template.
+
+Each mutation takes a private advisory lock under the metadata directory, keyed by the destination file name.
+It then writes a durable intent that names the expected and the intended bytes of both files.
+An interrupted mutation resolves under the lock before any ordinary decision, and any unrecognized third state changes nothing.
+
+The adapter moves each file it replaces into private recovery storage before the replacement appears.
+The move is an atomic rename on the same filesystem, so an editor that holds the old file keeps writing into the preserved copy.
+If the displaced bytes differ from the expected bytes, the adapter puts them back and reports a conflict.
+Creation refuses to clobber: a destination that appears between the plan and the write fails the operation.
+
+The restoration is no-clobber for the same reason.
+A test for absence followed by a rename leaves a window in which another writer creates the destination and the rename destroys it.
+The adapter therefore restores with a hard link, which fails when the destination exists, so the decision and the move are one operation.
+When a file appeared there, both byte sequences survive and the conflict names both paths.
+
+An interrupted transaction settles before any ordinary decision, including on an apply that would write nothing.
+The adapter recognizes only the expected bytes and the intended bytes.
+Transaction data that does not decode, or that names another workflow or an unknown operation, is evidence rather than a transaction.
+The adapter preserves those bytes and refuses the change; it never invents an empty transaction from unreadable data.
+
+An advisory lock serializes Memoria writers only. It does not stop an arbitrary editor.
+The adapter therefore compares the bytes again immediately before every write and removal.
+
+A step hook exposes each of those boundaries to tests, in the same way that `fs.rs` exposes a fault hook.
+Production code passes `NO_STEPS`.
+
+Source evidence: [github_workflow.rs](src/github_workflow.rs#L1).
 
 ## One supervisor owns every bounded subprocess
 
