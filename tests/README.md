@@ -119,6 +119,9 @@ They need Python 3 and PyYAML. PyYAML is a test-only dependency. `scripts/setup-
 ## Test boundaries
 
 The harness invokes the executable that Cargo supplies through `CARGO_BIN_EXE_memoria`.
+A hook installation measures the version of the agent client it targets, so a test that installs a hook puts a stub client on `PATH`.
+`agent_hooks.rs` and `integrations.rs` each define that stub.
+Without it a test passes only on a machine that happens to have the real client installed.
 Each fixture runs with an isolated home and XDG configuration directory.
 Every Git invocation also runs with empty system and global configuration files.
 The harness clears inherited Git parameters, so a host signing rule cannot change a seed commit.
