@@ -101,9 +101,21 @@ trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/src" "$work/target" "$work/cargo"
 # The working tree is the build input, exactly as a clean tag checkout would
 # be. Git metadata and any local build directory stay out of the container.
-tar -C "$repository_root" \
-  --exclude=./.git --exclude=./target --exclude=./.github \
-  -cf - . | tar -x -C "$work/src"
+#
+# An output directory inside the repository would otherwise be copied while
+# this build writes into it, and tar would stop with "file changed as we read
+# it". Exclude it explicitly when it sits under the repository root.
+copy_excludes=(--exclude=./.git --exclude=./target --exclude=./.github)
+case "$output" in
+  "$repository_root"/*)
+    copy_excludes+=("--exclude=./${output#"$repository_root"/}")
+    ;;
+  "$repository_root")
+    echo "build-linux-release: --output must not be the repository root" >&2
+    exit 2
+    ;;
+esac
+tar -C "$repository_root" "${copy_excludes[@]}" -cf - . | tar -x -C "$work/src"
 
 echo "build-linux-release: target ${target}"
 echo "build-linux-release: image ${image}@${digest}"

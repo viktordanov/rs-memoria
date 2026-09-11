@@ -10,6 +10,38 @@ mod common;
 use common::{Project, diagnostic_codes, get, get_str, stdout};
 use memoria_infrastructure::json::{self, Json, Limits};
 
+/// Stub agent clients on `PATH`.
+///
+/// A hook installation measures the version of the client it targets. A
+/// hosted runner has no such client, so a test that installs a hook must
+/// supply one. This mirrors the helper in `agent_hooks.rs`.
+fn stub_clients(project: &Project) -> std::path::PathBuf {
+    let bin = project.home.path().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    for (name, version) in [("codex", "codex-cli 0.153.0"), ("claude", "2.1.259")] {
+        let path = bin.join(name);
+        std::fs::write(&path, format!("#!/bin/sh\necho '{version}'\n")).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    bin
+}
+
+/// Run one command with the stub clients on `PATH`.
+fn run_with_clients(project: &Project, args: &[&str]) -> std::process::Output {
+    let bin = stub_clients(project);
+    let path = format!(
+        "{}:{}",
+        bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    project
+        .command(&project.root, args)
+        .env("PATH", path)
+        .output()
+        .unwrap()
+}
+
 /// Run one command under both spellings and require identical envelopes.
 fn equivalent(project: &Project, new: &[&str], old: &[&str]) -> Json {
     let (new_code, new_value) = project.json(new);
@@ -161,7 +193,10 @@ fn hook_status_is_identical_under_both_spellings() {
 fn an_installed_launcher_keeps_the_legacy_hook_spelling() {
     let project = Project::seed();
     project.write(".claude/settings.json", "{}\n");
-    let output = project.run(&["integrations", "hook", "install", "--target", "claude"]);
+    let output = run_with_clients(
+        &project,
+        &["integrations", "hook", "install", "--target", "claude"],
+    );
     assert_eq!(output.status.code(), Some(0), "{}", stdout(&output));
 
     let (code, value) = project.json(&["agent", "hook", "status", "--target", "claude"]);
@@ -387,13 +422,11 @@ fn skill_and_hook_spellings_leave_review_state_untouched() {
             .code(),
         Some(0)
     );
-    assert_eq!(
-        project
-            .run(&["integrations", "hook", "install", "--target", "codex"])
-            .status
-            .code(),
-        Some(0)
+    let hook = run_with_clients(
+        &project,
+        &["integrations", "hook", "install", "--target", "codex"],
     );
+    assert_eq!(hook.status.code(), Some(0), "{}", stdout(&hook));
     assert_eq!(project.state(), before, "the lock must stay unchanged");
     let (code, _) = project.json(&["check"]);
     assert_eq!(code, 0, "installer spellings stay freshness-neutral");
