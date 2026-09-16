@@ -145,7 +145,7 @@ fn guidance_only_sidecars_are_context_not_policy() {
     assert_eq!(project.json(&["check"]).0, 0);
     // Packets still inherit the local guidance.
     project.append("src/execution/runner.rs", "// edit\n");
-    let (packet, _) = project.review_packet("src/execution/README.md");
+    let (packet, _) = project.review_full("src/execution/README.md");
     let value = parse_json(&fs::read(packet).unwrap());
     let Json::Array(guidance) = get(&value, &["data", "context", "guidance", "entries"]) else {
         panic!()
@@ -204,12 +204,12 @@ fn count_elements(value: &Json) -> u64 {
 // MEM-040
 #[test]
 fn packet_record_counts_match_the_complete_envelope() {
-    // Minimal packet in a fresh repository.
+    // The record count is a property of the transported full export.
     let project = Project::empty_repo();
     project.write("README.md", "# Root\n");
     project.commit_all("seed");
     assert_eq!(project.run(&["init", "--apply"]).status.code(), Some(0));
-    let output = project.run(&["review", "README.md", "--format", "json"]);
+    let output = project.run(&["review", "README.md", "--full", "--format", "json"]);
     assert_eq!(output.status.code(), Some(0));
     let envelope = json::parse(&output.stdout, Limits::PACKET).unwrap();
     assert_eq!(
@@ -221,7 +221,13 @@ fn packet_record_counts_match_the_complete_envelope() {
     project.baseline();
     project.commit_all("baseline");
     project.append("src/execution/runner.rs", "// edit\n");
-    let output = project.run(&["review", "src/execution/README.md", "--format", "json"]);
+    let output = project.run(&[
+        "review",
+        "src/execution/README.md",
+        "--full",
+        "--format",
+        "json",
+    ]);
     assert_eq!(output.status.code(), Some(0));
     let envelope = json::parse(&output.stdout, Limits::PACKET).unwrap();
     assert!(!matches!(

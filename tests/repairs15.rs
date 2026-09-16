@@ -45,8 +45,10 @@ fn git_oracle(project: &Project) -> BTreeSet<String> {
         .collect()
 }
 
+/// The full export: this helper reports the effective policy hash, which
+/// belongs to the complete input manifest rather than to the requirements.
 fn capture(project: &Project) -> (PathBuf, String, String) {
-    let output = project.run(&["review", "README.md", "--format", "json"]);
+    let output = project.run(&["review", "README.md", "--full", "--format", "json"]);
     assert_eq!(output.status.code(), Some(0), "{}", stdout(&output));
     let value = parse_json(&output.stdout);
     let path = project.packets.path().join(format!(

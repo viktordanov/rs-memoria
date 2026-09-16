@@ -33,8 +33,11 @@ A fixture is sample input for a test.
 It restores the fixture document names to `README.md` and `README.memoria.toml`.
 It creates a local Git repository for the test.
 
-A review packet contains one README and the exact input bytes for its review.
-Packets go into a separate temporary directory, outside that repository.
+A review artifact identifies the snapshot of one README's review. The default
+manifest states requirements. The full export adds the exact input bytes.
+`Project::review_packet` captures the manifest, and `Project::review_full`
+captures the export. Both write into a separate temporary directory, outside
+that repository.
 
 A document boundary groups the selected files that one README explains.
 The fixture names prevent sample READMEs from becoming real boundaries in this project.
@@ -54,18 +57,20 @@ An acknowledgement records who reviewed a README and why its explanation is corr
 The `check` command requires valid structure, current reviews, and current imported text.
 
 The baseline scenario starts with pending documents and empty import bodies.
-After import updates and packet acknowledgements, `memoria check` succeeds.
+After import updates and acknowledgements, `memoria check` succeeds.
 Navigation warnings remain visible without causing that check to fail.
 
 The source-change scenario makes one README owner pending while the READMEs that import its text wait.
 An acknowledgement with an unchanged export ends that review path.
-The snapshot-conflict scenario changes a file after packet creation.
-It expects exit 3, exact differences, and unchanged state bytes.
+The snapshot-conflict scenario changes a file after the review. It expects
+exit 3 and unchanged state bytes. A full export yields exact per-input
+differences. A manifest yields the changed digest categories, because it never
+carried the reviewed bytes.
 
 The portability scenario varies each host ignore source without changing a selected file.
 It expects unchanged policy hashes, unchanged state bytes, and a clean check.
 
-Source evidence: [workflow.rs](workflow.rs#L1), [portability.rs](portability.rs#L1), and [state_format.rs](state_format.rs#L1).
+Source evidence: [workflow.rs](workflow.rs), [portability.rs](portability.rs), and [state_format.rs](state_format.rs).
 
 ## Suite map
 
@@ -74,9 +79,10 @@ An invalidation requests a review with an explicit reason, even without a file c
 | Suite | Coverage |
 | --- | --- |
 | [workflow.rs](workflow.rs) | Ownership, review order, imports, and invalidation |
-| [review_context.rs](review_context.rs) | Saved views, P1 fallback, and verified historical coverage |
+| [review_context.rs](review_context.rs) | Saved export views, P1 fallback, and verified historical coverage |
+| [sections.rs](sections.rs) | Advisory mappings, review mode, fallback reasons, and snapshot safety |
 | [configuration.rs](configuration.rs) | Supported settings and explicit configuration errors |
-| [packets.rs](packets.rs) | Packet transport, limits, integrity, replay, and concurrency |
+| [packets.rs](packets.rs) | Artifact transport, limits, integrity, replay, and concurrency |
 | [edges.rs](edges.rs) | Discovery, paths, configuration, and corrupt state |
 | [portability.rs](portability.rs) | Host rules against repository policy, and clean clones |
 | [guidance.rs](guidance.rs) | Setup preview, guidance visibility, and advisory behavior |
@@ -131,18 +137,59 @@ Some corruption tests construct invalid state deliberately.
 The frozen `memoria.lock` vectors under `fixtures/state-v2` measure representation and size.
 They are not project review records, and no test uses them as one.
 
-Normal documentation review uses packets and the Memoria CLI.
+Normal documentation review uses review artifacts and the Memoria CLI.
 Test results do not establish whether a human explanation is correct.
 
 ## Review context regression cases
 
-`review_context.rs` exercises saved-packet retrieval, opt-in P1 preparation, and historical commit coverage through the CLI.
+`review_context.rs` exercises saved-export retrieval, legacy P1 preparation, and historical commit coverage through the CLI.
 Its shapes include small and large owners, deep ownership, ordinary Markdown inputs, and shared-export fan-out.
 It tests dirty acknowledgement, later exact matches, missing objects, shallow ancestry, and exhausted candidate or byte budgets.
 Path changes require full-review fallback.
 A semantic control needs an unchanged limit definition.
 The test keeps that context accessible and does not claim model quality.
-Existing packet, state, portability, process, and corruption suites retain their integrity checks.
+Existing artifact, state, portability, process, and corruption suites retain their integrity checks.
+
+## Snapshot safety cases
+
+`sections.rs` is the release gate for advisory sections. It states what the
+CLI must refuse, not what it saves.
+
+The suite covers the section grammar through the CLI, every fallback reason,
+baseline eligibility with and without verifiable bytes, and mapping validation
+with its advisory diagnostic. It checks that one invalid mapping withdraws
+every suggestion, and that a new mapping cannot reduce the required scope.
+
+It also checks the snapshot binding itself. Each bound component of the review
+context must change the token: an unrelated owned source, the README body, the
+mapping associations, the effective guidance, and the effective selection
+policy. A provider context change refuses a consumer artifact even when the
+imported export body stays byte-identical.
+
+Stale-acknowledgement refusal has its own cases. An edit outside the suggested
+sections, a guidance edit, and a section edit each refuse the captured
+artifact and write nothing.
+
+Three further groups guard the artifact contract itself:
+
+1. A manifest that violates its own schema cannot acknowledge. The cases are
+   an unsupported selection version, an absent README input, an inconsistent
+   selected-file count, a repeated reading identity, and a wrong document. A
+   full export's embedded requirements go through the same rules.
+2. An artifact from an earlier release is refused with regeneration
+   instructions, never converted and never called corrupt. A supported
+   version with tampered content still fails its integrity check.
+3. An added source and an added import each appear exactly once in the
+   suggested reads. A removed source never becomes a current read.
+
+`agent.rs` pins the empty-plan control flow of the installed skill: the empty
+plan reaches the clean check and never reaches the acknowledgement step.
+
+`sections.rs` also pins the complete manifest example in the CLI reference
+against the production decoder, so the documentation and the schema cannot
+drift apart.
+
+No reading-cost result may weaken any rule in this suite.
 
 ## Continue
 

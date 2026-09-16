@@ -13,7 +13,7 @@ Read [fs.rs](src/fs.rs#L110) to start with file classification and reads.
 
 - [Role in the project](#role-in-the-project)
 - [Repository adapters](#repository-facts-enter-through-adapters), [local history](#bounded-local-history), and [state writes](#state-writes-preserve-a-clear-error-boundary)
-- [Formats and packet limits](#formats-and-packet-limits)
+- [Formats and artifact limits](#formats-and-artifact-limits)
 - [Skill, hook, and workflow installation](#skill-installation-has-its-own-transaction)
 - [Bounded processes](#one-supervisor-owns-every-bounded-subprocess) and [the lock codec](#the-lock-codec-produces-one-canonical-artifact)
 
@@ -85,17 +85,18 @@ The lock file remains on disk.
 
 Source evidence: [state.rs:326](src/state.rs#L326), [fs.rs:202](src/fs.rs#L202), and [fs.rs:337](src/fs.rs#L337).
 
-## Formats and packet limits
+## Formats and artifact limits
 
-A review packet contains one README and the exact input bytes for its review.
-A codec converts between application values and a transport format, such as JSON.
-An export is a marked README section that another README can copy.
+A review manifest states what one README's review must read. A full export
+adds the exact input bytes. A codec converts between application values and a
+transport format, such as JSON. An export is a marked README section that
+another README can copy.
 
 | Adapter | Contract |
 | --- | --- |
-| `PulldownMarkdownCodec` | It identifies marker ranges and validates export text. |
+| `PulldownMarkdownCodec` | It identifies marker ranges, validates export text, and parses advisory sections. |
 | `TomlConfigurationReader` | It accepts the supported TOML configuration. |
-| `JsonPacketCodec` | It encodes and decodes packets under hard limits. |
+| `JsonPacketCodec` | It encodes and decodes both review artifacts under hard limits. |
 | `LockStateStore` | It reads and writes the binary `memoria.lock` file. |
 | `LockStateInspector` | It decodes a state file for read-only inspection. |
 | `GixRepositoryIgnore` | It matches repository ignore rules without host settings. |
@@ -107,15 +108,49 @@ An export is a marked README section that another README can copy.
 | `CommandClientProbe` | It measures one agent client version under a two-second bound. |
 | `Supervisor` | It owns every subprocess one bounded endpoint starts. |
 
-The packet codec writes envelope schema version 2 and accepts only that version.
-A different version fails with the received value in the message.
-The packet codec measures every part of the JSON envelope.
-This measurement includes diagnostics.
-It rejects an invalid digest or inconsistent record count before acknowledgement can continue.
-Packet limits apply to both human and JSON output.
-The binary obtains the encoded packet before it selects the output format.
+The codec writes envelope schema version 3 and accepts only that version.
+It writes manifest version 1 and packet version 3, and it accepts only those.
+A different version fails with the received value in the message and with
+instructions to produce a new artifact. The codec converts nothing.
 
-Source evidence: [packet.rs:268](src/packet.rs#L268) and [main.rs:145](../../src/main.rs#L145).
+The version header is inspected before the integrity domain is chosen. An
+artifact from an earlier release was hashed under that release's domain, so
+its digest can never match the current one. Checking the digest first would
+call an intact old artifact corrupt. The order therefore reports the version,
+and a supported version with tampered content still fails its integrity
+check.
+
+The two artifacts use separate integrity domains. A manifest digest uses
+`memoria.review-manifest.v1` under the key `artifact_digest`. A full export
+digest uses `memoria.packet.v3` under the key `packet_digest`. The same
+content therefore never produces the same digest for both kinds.
+
+The codec measures every part of the JSON envelope, including diagnostics.
+It rejects an invalid digest or an inconsistent record count before
+acknowledgement can continue. The limits apply to both human and JSON output.
+The binary encodes the artifact before it selects the output format.
+
+Source evidence: [packet.rs](src/packet.rs) and [main.rs](../../src/main.rs).
+
+### The Markdown parser separates two channels
+
+Structural problems and advisory problems reach different places. A malformed
+export or import marker is a structural error that invalidates the README. A
+malformed section marker is an advisory problem: it withdraws the README's
+focused-review advice and leaves the document valid.
+
+The parser reports a section problem under `section_issues`, never under
+`issues`. A section-like line that is not a well-formed declaration still
+reaches that channel, including a wrongly indented one. It never disappears in
+silence, because a mistyped mapping must not quietly narrow a review.
+
+The parser tracks section nesting separately from export and import nesting.
+An export can sit wholly inside a section. A section cannot sit inside or
+cross an export or an import. Marker text inside fenced or indented code stays
+inert: the inertness check reads the first non-blank byte of the line, because
+an indented code block's range begins after its indent.
+
+Source evidence: [markdown.rs](src/markdown.rs).
 
 ## Skill installation has its own transaction
 

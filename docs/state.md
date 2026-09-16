@@ -33,6 +33,16 @@ Each review record keeps these fields:
 - The token digest and the guidance digest that the reviewer saw.
 - The invalidation identifiers that the review acknowledged.
 
+The lock format stays at version 2 in this release. Release 0.6.0 changed the
+review token and the JSON artifacts. It changed neither the lock codec nor the
+stored record shape. An existing format-2 lock stays readable and stays a
+valid baseline candidate. Memoria performs no bulk invalidation, no state
+conversion, and no fabricated acknowledgement during the upgrade.
+
+The record stores no section result. Sections are advice, so they carry no
+state. The token digest field holds the new v3 digest without a codec
+change.
+
 Each active invalidation keeps its identifier, scope, reason, creation time, original targets, and the targets that are still pending.
 
 The file holds no absolute machine path, no source content, no full guidance text, no credentials, and no historical event stream. Reviewer names, notes, reasons, and Git context are ordinary committed project metadata.
@@ -160,7 +170,7 @@ The magic bytes contain NUL, so Git identifies the artifact as binary and refuse
 2. Inspect both versions with `memoria state inspect --file`.
 3. Select one intact version as the baseline, and put it at `memoria.lock`.
 4. Reissue the missing semantic invalidations with `memoria invalidate`.
-5. Review each lost or changed boundary through a fresh packet.
+5. Review each lost or changed boundary through a fresh review.
 
 At the end of the recovery, invoke `memoria lint`. Then invoke `memoria check`.
 

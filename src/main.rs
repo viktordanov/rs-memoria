@@ -12,6 +12,7 @@ use memoria_application::ports::{
     AgentScope, AgentTarget, PacketSource, Progress, Services, SkillOperation, WorkflowOperation,
 };
 use memoria_application::usecases;
+use memoria_application::usecases::prepare_review::Prepared;
 use memoria_infrastructure::config::TomlConfigurationReader;
 use memoria_infrastructure::{
     AtomicFileWriter, CommandClientProbe, EnvAgentLocations, FsHookStore, FsPacketInput,
@@ -40,7 +41,7 @@ struct CommandOutput {
     data: Detail,
     human: String,
     diagnostics: Vec<Diagnostic>,
-    /// Pre-encoded JSON for focused review packets.
+    /// Pre-encoded JSON for one README's review artifact.
     raw_json: Option<Vec<u8>>,
 }
 
@@ -318,7 +319,7 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
             if max_bytes.is_some() {
                 return Err(AppError::usage(
                     "max_bytes_invalid",
-                    "--max-bytes applies only to a focused packet; name a README",
+                    "--max-bytes applies only to one README's review. Name a README.",
                 ));
             }
             let outcome = usecases::plan::run(&services)?;
@@ -330,37 +331,51 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
             max_bytes,
             full,
         } => {
-            let mut outcome = usecases::prepare_review::run(&services, document, *max_bytes)?;
-            // Both presentations report the same complete-envelope record count.
-            outcome.data.record_count = services
-                .packets
-                .complete_record_count(&outcome.data, &outcome.diagnostics);
+            let mut outcome =
+                usecases::prepare_review::run(&services, document, *max_bytes, *full)?;
+            let encode_failure = |failure| match failure {
+                memoria_application::ports::PacketFailure::Invalid { code, message } => {
+                    AppError::validation(code, message)
+                }
+                memoria_application::ports::PacketFailure::Io(err) => {
+                    AppError::io("io_error", err.to_string())
+                }
+            };
             // The complete producer limits (records, depth, serialized size) are
             // enforced by encoding the envelope for every presentation; a refusal
             // never reaches the human view or emits a token either.
-            let encoded = services
-                .packets
-                .encode(&outcome.data, &outcome.diagnostics)
-                .map_err(|failure| match failure {
-                    memoria_application::ports::PacketFailure::Invalid { code, message } => {
-                        AppError::validation(code, message)
-                    }
-                    memoria_application::ports::PacketFailure::Io(err) => {
-                        AppError::io("io_error", err.to_string())
-                    }
-                })?;
+            let (data, human, encoded) = match &mut outcome.data {
+                Prepared::Full(packet) => {
+                    // Both presentations report the same complete-envelope
+                    // record count.
+                    packet.record_count = services
+                        .packets
+                        .complete_record_count(packet, &outcome.diagnostics);
+                    let encoded = services
+                        .packets
+                        .encode(packet, &outcome.diagnostics)
+                        .map_err(encode_failure)?;
+                    (packet.to_detail(), text::packet(packet), encoded)
+                }
+                Prepared::Manifest(manifest) => {
+                    let encoded = services
+                        .packets
+                        .encode_manifest(manifest, &outcome.diagnostics)
+                        .map_err(encode_failure)?;
+                    (
+                        manifest.to_detail(),
+                        presentation::review::manifest(manifest),
+                        encoded,
+                    )
+                }
+            };
             let raw = if cli.format == Format::Json {
                 Some(encoded)
             } else {
                 None
             };
-            let human = if *full {
-                text::packet(&outcome.data)
-            } else {
-                presentation::review::packet(&outcome.data)
-            };
             Ok(CommandOutput {
-                data: outcome.data.to_detail(),
+                data,
                 human,
                 diagnostics: outcome.diagnostics,
                 raw_json: raw,

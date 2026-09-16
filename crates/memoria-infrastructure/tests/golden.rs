@@ -2,18 +2,20 @@
 //! over manually encoded canonical bytes. Expected values are not produced
 //! by the production Rust encoder or hasher.
 
-use memoria_application::packet::compute_token;
+use memoria_application::packet::compute_token_v3;
 use memoria_application::ports::FingerprintHasher;
 use memoria_domain::canonical::{
-    encode_guidance, encode_inputs, encode_policy, encode_review_token,
+    ImportEdge, ReviewContext, encode_guidance, encode_inputs, encode_policy,
+    encode_review_baseline, encode_review_context, encode_review_token_v3,
 };
 use memoria_domain::{
     DirPath, DocumentId, EffectivePolicy, ExportId, FileInput, GitRuleScope, GuidanceDigest,
     GuidanceEntry, GuidanceKind, Hash64, ImportInput, InputManifest, PolicyRuleScope, ProjectPath,
+    SectionMapIdentity,
 };
 use memoria_infrastructure::Xxh3Hasher;
 use memoria_infrastructure::json::{Limits, parse};
-use memoria_infrastructure::packet::packet_digest;
+use memoria_infrastructure::packet::{manifest_digest, packet_digest};
 
 const INPUTS_HEX: &str = "00000000000000116d656d6f7269612e696e707574732e76320000000000000009524541444d452e6d6401020304050607080000000000000003111111111111111100000000000000010000000000000004612e7273000000000000000500000000000000220000000000000001000000000000000b622f524541444d452e6d64000000000000000773756d6d61727900000000000000090000000000000033";
 
@@ -65,67 +67,111 @@ fn canonical_inputs_bytes_and_digest_match_the_reference() {
     assert_eq!(Xxh3Hasher.hash(&bytes).to_hex(), "44559dfc629e9b86");
 }
 
+/// `memoria-review-token-v3` over the fixed fixture, encoded by hand from the
+/// documented primitives. `I` is the frozen inputs digest above; `B` and `C`
+/// are fixed literals so the layout is checked independently of the encoders.
+const TOKEN_V3_HEX: &str = "00000000000000176d656d6f7269612d7265766965772d746f6b656e2d76330000000000000009524541444d452e6d64000000000000000244559dfc629e9b86111213141516171821222324252627280000000000000002000000000000000100000000000000225573652053696d706c696669656420456e676c69736820657665727977686572652e000000000000000300000000000000224578706c61696e20746865206661696c757265206d6f64657320636c6561726c792e";
+
+/// `memoria-review-baseline-v1` with no prior record, encoded by hand.
+const BASELINE_V3_HEX: &str =
+    "000000000000001a6d656d6f7269612d7265766965772d626173656c696e652d763100";
+
+/// `memoria-review-context-v1` over the fixture context, encoded by hand.
+const CONTEXT_V3_HEX: &str = "00000000000000196d656d6f7269612d7265766965772d636f6e746578742d763100000000000000010000000000000009524541444d452e6d6400000000000000000000000000000001000000000000000b622f524541444d452e6d640000000000000000010203040506070800000000000000010000000000000004612e727300000000000000010000000000000001000000000000000b70657273697374656e636500000000000000010000000000000004612e72734db0aeae8d6990a60000000000000001000000000000000b622f524541444d452e6d64000000000000000773756d6d617279000000000000003300000000000000000000000000000000";
+
+fn fixture_context() -> ReviewContext {
+    ReviewContext {
+        selection_version: 1,
+        owner: "README.md".into(),
+        ancestor_boundaries: vec![],
+        descendant_boundaries: vec!["b/README.md".into()],
+        nested_repositories: vec![],
+        policy_hash: Hash64(0x0102030405060708),
+        owned_paths: vec!["a.rs".into()],
+        mapping: SectionMapIdentity::Valid(vec![("persistence".into(), vec!["a.rs".into()])]),
+        guidance: GuidanceDigest(FIXTURE_GUIDANCE),
+        imports: vec![ImportEdge {
+            provider: "b/README.md".into(),
+            export_id: "summary".into(),
+            hash: Hash64(0x33),
+        }],
+        consumer_edges: vec![],
+        providers: vec![],
+    }
+}
+
+fn unhex(text: &str) -> Vec<u8> {
+    (0..text.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap())
+        .collect()
+}
+
 #[test]
-fn review_token_matches_the_reference() {
-    let manifest = fixed_manifest();
+fn review_context_and_baseline_bytes_match_the_reference() {
+    assert_eq!(hex(&encode_review_baseline(None)), BASELINE_V3_HEX);
+    assert_eq!(
+        hex(&encode_review_context(&fixture_context())),
+        CONTEXT_V3_HEX
+    );
+    // The absent baseline is distinct from any present one.
+    assert_ne!(encode_review_baseline(None).len(), 0);
+}
+
+#[test]
+fn review_token_v3_matches_the_reference() {
     let doc = DocumentId::parse("README.md").unwrap();
     let covered = vec![
         (3, "Explain the failure modes clearly.".to_string()),
         (1, "Use Simplified English everywhere.".to_string()),
     ];
-    let bytes = encode_review_token(
+    let inputs_digest = Xxh3Hasher.hash(&encode_inputs(&fixed_manifest()));
+    assert_eq!(inputs_digest.to_hex(), "44559dfc629e9b86");
+    let baseline_digest = Hash64(0x1112131415161718);
+    let context_digest = Hash64(0x2122232425262728);
+
+    // The canonical bytes are frozen independently of the encoder; the
+    // digest comes from the XXH3-64 implementation the reference vectors
+    // above check against the C library.
+    let bytes = encode_review_token_v3(
         &doc,
         2,
-        &manifest,
-        GuidanceDigest(FIXTURE_GUIDANCE),
+        inputs_digest,
+        baseline_digest,
+        context_digest,
         &covered,
     );
-    assert_eq!(Xxh3Hasher.hash(&bytes).to_hex(), "035cb7e173b47e26");
-    let token = compute_token(
+    assert_eq!(hex(&bytes), TOKEN_V3_HEX);
+    let expected = Xxh3Hasher.hash(&unhex(TOKEN_V3_HEX)).to_hex();
+    let token = compute_token_v3(
         &Xxh3Hasher,
         &doc,
         2,
-        &manifest,
-        GuidanceDigest(FIXTURE_GUIDANCE),
+        inputs_digest,
+        baseline_digest,
+        context_digest,
         &covered,
     );
-    assert_eq!(token, "mrv2.035cb7e173b47e26");
+    assert_eq!(token, format!("mrv3.{expected}"));
     assert_eq!(token.len(), 21);
-    // Small and maximal manifests both produce 21-byte tokens.
+
+    // Small and maximal snapshots both produce 21-byte tokens.
     let empty = InputManifest::new(doc.clone(), Hash64(0), 0, Hash64(0), vec![], vec![]).unwrap();
     assert_eq!(
-        compute_token(&Xxh3Hasher, &doc, 0, &empty, GuidanceDigest::default(), &[]).len(),
-        21
-    );
-    let files: Vec<FileInput> = (0..5000)
-        .map(|i| FileInput {
-            path: ProjectPath::parse(&format!("f{i}.rs")).unwrap(),
-            bytes: i,
-            hash: Hash64(i),
-        })
-        .collect();
-    let large = InputManifest::new(
-        doc.clone(),
-        Hash64(u64::MAX),
-        u64::MAX,
-        Hash64(u64::MAX),
-        files,
-        vec![],
-    )
-    .unwrap();
-    assert_eq!(
-        compute_token(
+        compute_token_v3(
             &Xxh3Hasher,
             &doc,
-            u64::MAX,
-            &large,
-            GuidanceDigest(Hash64(u64::MAX)),
+            0,
+            Xxh3Hasher.hash(&encode_inputs(&empty)),
+            Hash64(0),
+            Hash64(0),
             &[]
         )
         .len(),
         21
     );
-    // The largest manifest the packet record cap permits (100,000 records) still yields 21 bytes.
+    // The largest manifest the record cap permits (100,000 records) still
+    // yields 21 bytes, because the token hashes digests, not content.
     let files: Vec<FileInput> = (0..99_999)
         .map(|i| FileInput {
             path: ProjectPath::parse(&format!("m/{i}.rs")).unwrap(),
@@ -141,50 +187,68 @@ fn review_token_matches_the_reference() {
     }];
     let maximal = InputManifest::new(doc.clone(), Hash64(0), 0, Hash64(0), files, imports).unwrap();
     assert_eq!(maximal.record_count(), 100_000);
-    let maximal_token = compute_token(
+    let maximal_token = compute_token_v3(
         &Xxh3Hasher,
         &doc,
         u64::MAX - 1,
-        &maximal,
-        GuidanceDigest(FIXTURE_GUIDANCE),
+        Xxh3Hasher.hash(&encode_inputs(&maximal)),
+        Hash64(u64::MAX),
+        Hash64(u64::MAX),
         &[(u64::MAX - 2, "x".repeat(1000))],
     );
     assert_eq!(maximal_token.len(), 21);
-    assert!(maximal_token.is_ascii() && maximal_token.starts_with("mrv2."));
-    // Different revisions, covered sets, and guidance all change the digest.
-    assert_ne!(
-        compute_token(
+    assert!(maximal_token.is_ascii() && maximal_token.starts_with("mrv3."));
+
+    // Every bound component changes the digest.
+    for changed in [
+        compute_token_v3(
             &Xxh3Hasher,
             &doc,
             3,
-            &manifest,
-            GuidanceDigest(FIXTURE_GUIDANCE),
-            &covered
+            inputs_digest,
+            baseline_digest,
+            context_digest,
+            &covered,
         ),
-        token
-    );
-    assert_ne!(
-        compute_token(
+        compute_token_v3(
             &Xxh3Hasher,
             &doc,
             2,
-            &manifest,
-            GuidanceDigest(FIXTURE_GUIDANCE),
-            &covered[..1]
+            Hash64(1),
+            baseline_digest,
+            context_digest,
+            &covered,
         ),
-        token
-    );
-    assert_ne!(
-        compute_token(
+        compute_token_v3(
             &Xxh3Hasher,
             &doc,
             2,
-            &manifest,
-            GuidanceDigest(Hash64(1)),
-            &covered
+            inputs_digest,
+            Hash64(1),
+            context_digest,
+            &covered,
         ),
-        token
-    );
+        compute_token_v3(
+            &Xxh3Hasher,
+            &doc,
+            2,
+            inputs_digest,
+            baseline_digest,
+            Hash64(1),
+            &covered,
+        ),
+        compute_token_v3(
+            &Xxh3Hasher,
+            &doc,
+            2,
+            inputs_digest,
+            baseline_digest,
+            context_digest,
+            &covered[..1],
+        ),
+    ] {
+        assert_ne!(changed, token);
+    }
 }
 
 #[test]
@@ -246,8 +310,27 @@ fn policy_digest_matches_the_reference() {
     );
 }
 
+/// `J({"a":[true,null,7],"b":"x"})` under each integrity domain, encoded by
+/// hand from the documented container tags and length prefixes.
+const PACKET_V3_J_HEX: &str = "00000000000000116d656d6f7269612e7061636b65742e7633060000000000000002000000000000000161050000000000000003020003000000000000000700000000000000016204000000000000000178";
+const MANIFEST_V1_J_HEX: &str = "000000000000001a6d656d6f7269612e7265766965772d6d616e69666573742e7631060000000000000002000000000000000161050000000000000003020003000000000000000700000000000000016204000000000000000178";
+
 #[test]
-fn packet_digest_matches_the_reference() {
+fn artifact_digests_match_the_reference() {
     let value = parse(br#"{"b":"x","a":[true,null,7]}"#, Limits::PACKET).unwrap();
-    assert_eq!(packet_digest(&Xxh3Hasher, &value), "8836c3ceb1fa882f");
+    // The canonical J bytes are frozen by hand; the digest comes from the
+    // XXH3-64 implementation the reference vectors above check.
+    assert_eq!(
+        packet_digest(&Xxh3Hasher, &value),
+        Xxh3Hasher.hash(&unhex(PACKET_V3_J_HEX)).to_hex()
+    );
+    assert_eq!(
+        manifest_digest(&Xxh3Hasher, &value),
+        Xxh3Hasher.hash(&unhex(MANIFEST_V1_J_HEX)).to_hex()
+    );
+    // Separate domains keep the two artifact kinds from sharing a digest.
+    assert_ne!(
+        packet_digest(&Xxh3Hasher, &value),
+        manifest_digest(&Xxh3Hasher, &value)
+    );
 }

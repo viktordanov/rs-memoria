@@ -9,6 +9,8 @@ use std::path::Path;
 use common::*;
 use memoria_infrastructure::json::Json;
 
+/// The effective policy hash, read from a full export: the complete input
+/// manifest is not part of the default review manifest.
 fn policy_hash(packet: &Path) -> String {
     get_str(
         &parse_json(&fs::read(packet).unwrap()),
@@ -51,6 +53,7 @@ fn whitespace_bearing_host_exclude_paths_change_selection_only() {
         project.baseline();
         project.append("src/execution/runner.rs", "// pending\n");
         let (packet, token) = project.review_packet("src/execution/README.md");
+        let full = project.review_full("src/execution/README.md").0;
         let before = project.state();
         // The host rules change; the selected sources and their bytes do not.
         // Host settings decide Git eligibility, never repository policy, so
@@ -91,8 +94,8 @@ fn whitespace_bearing_host_exclude_paths_change_selection_only() {
         // Identities stay logical and host-independent: a twin project with
         // different host rules hashes the same policy.
         project.append("src/execution/runner.rs", "// again\n");
-        let (fresh, _) = project.review_packet("src/execution/README.md");
-        assert_eq!(policy_hash(&packet), policy_hash(&fresh), "{label}");
+        let (fresh, _) = project.review_full("src/execution/README.md");
+        assert_eq!(policy_hash(&full), policy_hash(&fresh), "{label}");
         let twin = Project::seed();
         let twin_file = external
             .path()
@@ -105,7 +108,7 @@ fn whitespace_bearing_host_exclude_paths_change_selection_only() {
         assert_eq!(twin.run(&["init", "--apply"]).status.code(), Some(0));
         assert_eq!(twin.run(&["render"]).status.code(), Some(0));
         twin.append("src/execution/runner.rs", "// pending\n");
-        let (twin_packet, _) = twin.review_packet("src/execution/README.md");
+        let (twin_packet, _) = twin.review_full("src/execution/README.md");
         assert_eq!(policy_hash(&fresh), policy_hash(&twin_packet), "{label}");
     }
 }
@@ -152,7 +155,7 @@ fn quoted_policy_values_keep_comments_out_of_rules() {
         );
         let (_, status) = project.json(&["status"]);
         selected.insert(get_u64(&status, &["data", "selected_files"]));
-        let (packet, _) = project.review_packet("src/execution/README.md");
+        let (packet, _) = project.review_full("src/execution/README.md");
         hashes.insert(policy_hash(&packet));
     }
     assert_eq!(hashes.len(), 1, "one effective policy: {hashes:?}");
@@ -204,7 +207,7 @@ fn quoted_policy_values_keep_comments_out_of_rules() {
         );
         // The retrieval scope's leaf document imports from execution.
         project.ack_ok("src/execution/README.md");
-        let (packet, _) = project.review_packet("src/retrieval/naive/README.md");
+        let (packet, _) = project.review_full("src/retrieval/naive/README.md");
         hashes.insert(policy_hash(&packet));
         let (_, status) = project.json(&["status"]);
         let Json::Array(documents) = get(&status, &["data", "documents"]) else {

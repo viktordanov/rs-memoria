@@ -49,10 +49,11 @@ ignore = []
 include = []
 
 [documentation]
-# Project documentation guidance. Every focused review packet shows these
-# entries before the owned evidence. Guidance states your documentation
-# goals, your readers, and your writing standards. It is advisory context
-# for the reviewer. It never selects files and never decides freshness.
+# Project documentation guidance. Every review names these sources, and
+# `memoria guidance <README.md>` prints the text. Guidance states your
+# documentation goals, your readers, and your writing standards. It is
+# advisory context for the reviewer. It never selects files and never
+# decides freshness.
 guidance = []
 # Guidance files, relative to this file. Missing files are errors.
 guidance_files = []

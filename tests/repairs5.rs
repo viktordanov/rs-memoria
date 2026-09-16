@@ -94,7 +94,7 @@ fn inspection_never_executes_configured_clean_filters() {
             "{attributes}: inspection wrote nothing"
         );
         // Context is still meaningful: the worktree is reported dirty, and clean once committed.
-        let (packet, _) = project.review_packet("src/execution/README.md");
+        let (packet, _) = project.review_full("src/execution/README.md");
         let value = parse_json(&fs::read(&packet).unwrap());
         assert!(
             get_bool(&value, &["data", "context", "git", "worktree_dirty"]),
@@ -108,7 +108,7 @@ fn inspection_never_executes_configured_clean_filters() {
         project.commit_all("prose");
         // The harness's own `git add` legitimately applies the clean filter; Memoria must not.
         let _ = fs::remove_file(&sentinel);
-        let (packet, _) = project.review_packet("src/execution/README.md");
+        let (packet, _) = project.review_full("src/execution/README.md");
         let value = parse_json(&fs::read(&packet).unwrap());
         assert!(
             !get_bool(&value, &["data", "context", "git", "worktree_dirty"]),
@@ -228,7 +228,7 @@ fn quoted_guidance_with_escaped_quotes_and_hashes_are_accepted() {
     project.write("src/retrieval/README.memoria.toml", "include = [\n    \"fixtures/**\",\n]\n\n[documentation]\nguidance = [\n    \"Rank \\\"# first\\\"\",\n    \"quote 'ok'\",\n]\n");
     project.baseline();
     project.append("src/retrieval/engine.rs", "// edit\n");
-    let (packet, _) = project.review_packet("src/retrieval/README.md");
+    let (packet, _) = project.review_full("src/retrieval/README.md");
     let value = parse_json(&fs::read(packet).unwrap());
     let Json::Array(guidance) = get(&value, &["data", "context", "guidance", "entries"]) else {
         panic!()

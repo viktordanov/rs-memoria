@@ -10,7 +10,8 @@ use memoria_infrastructure::json::{self, Json};
 const FILES: usize = 100_001;
 
 /// A root README owning `FILES` untracked 100-byte sources: raw inputs above
-/// the default 8 MiB budget and, with the budget raised, above the record cap.
+/// the default 8 MiB budget and, with the budget raised, a full export above
+/// the record cap.
 fn oversized_project() -> Project {
     let project = Project::empty_repo();
     project.write("README.md", "# Root\n");
@@ -111,8 +112,9 @@ fn oversized_refusals_are_bounded_in_both_presentations() {
         get_str(&diagnostics[0], &["message"])
     );
     assert_eq!(project.state(), state, "read-only refusal");
-    // Explicit 32 MiB budget: the packet itself would exceed the record cap.
-    let (code, out) = review_json(&project, &["--max-bytes", "33554432"]);
+    // Explicit 32 MiB budget: the full export itself would exceed the
+    // record cap, because it carries every owned file.
+    let (code, out) = review_json(&project, &["--max-bytes", "33554432", "--full"]);
     let value = assert_bounded_refusal("explicit budget", code, &out, FILES as u64);
     let Json::Array(diagnostics) = get(&value, &["diagnostics"]) else {
         panic!()
@@ -123,10 +125,30 @@ fn oversized_refusals_are_bounded_in_both_presentations() {
         get_str(&diagnostics[0], &["message"])
     );
     assert_eq!(project.state(), state);
+    // The default manifest carries requirements, not inputs, so the same
+    // raised budget succeeds and the output stays proportional to the
+    // changes rather than to the boundary.
+    let (code, out) = review_json(&project, &["--max-bytes", "33554432"]);
+    assert_eq!(code, 0, "{}", String::from_utf8_lossy(&out));
+    let manifest = parse_json(&out);
+    assert_eq!(
+        get_u64(&manifest, &["data", "counts", "selected_files"]),
+        FILES as u64
+    );
+    let Json::Array(inputs) = get(&manifest, &["data", "inputs"]) else {
+        panic!()
+    };
+    assert_eq!(inputs.len(), 1, "only the whole-README pass is suggested");
+    assert!(
+        json::count_records(&manifest) < 100,
+        "{}",
+        json::count_records(&manifest)
+    );
+    assert_eq!(project.state(), state);
     // Human output: exit 1, no token, the same bounded counts on stderr.
     let output = project.run(&["review", "README.md"]);
     assert_eq!(output.status.code(), Some(1));
-    assert!(!stdout(&output).contains("mrv2."));
+    assert!(!stdout(&output).contains("mrv3."));
     let err = stderr(&output);
     assert!(err.contains("packet_too_large"), "{err}");
     assert!(err.contains("100001"), "{err}");

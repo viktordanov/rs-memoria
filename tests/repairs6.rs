@@ -30,8 +30,10 @@ fn run_with_deadline(project: &Project, args: &[&str], seconds: u64) -> std::pro
     }
 }
 
+/// The recorded worktree state, read from a full export: Git context
+/// belongs to the transported packet, not to the review requirements.
 fn dirty_flag(project: &Project, document: &str) -> bool {
-    let (packet, _) = project.review_packet(document);
+    let (packet, _) = project.review_full(document);
     let value = parse_json(&fs::read(packet).unwrap());
     get_bool(&value, &["data", "context", "git", "worktree_dirty"])
 }
@@ -84,7 +86,13 @@ fn raw_dirtiness_fallback_never_follows_links_or_opens_special_files() {
     project.append("src/execution/README.md", "\nMore.\n");
     let output = run_with_deadline(
         &project,
-        &["review", "src/execution/README.md", "--format", "json"],
+        &[
+            "review",
+            "src/execution/README.md",
+            "--full",
+            "--format",
+            "json",
+        ],
         30,
     );
     assert_eq!(output.status.code(), Some(0));
@@ -118,7 +126,13 @@ fn raw_dirtiness_fallback_never_follows_links_or_opens_special_files() {
     project.append("src/execution/README.md", "\nProse.\n");
     let output = run_with_deadline(
         &project,
-        &["review", "src/execution/README.md", "--format", "json"],
+        &[
+            "review",
+            "src/execution/README.md",
+            "--full",
+            "--format",
+            "json",
+        ],
         30,
     );
     assert_eq!(output.status.code(), Some(0));

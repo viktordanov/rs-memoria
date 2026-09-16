@@ -406,7 +406,7 @@ The exact scope syntax is proposed, but the capability is required.
 
 Memoria must store the invalidation in its state file.
 It must not edit every README just to insert the reason.
-The reason must appear in `status`, the review plan, and every affected focused review packet.
+The reason must appear in `status`, the review plan, and every affected review artifact.
 
 An explicitly invalidated README remains pending until it is reviewed against that invalidation.
 Acknowledgement clears only the invalidations that were included in the reviewed snapshot.
@@ -423,7 +423,7 @@ Explicit invalidation
 ```
 
 Both kinds of pending work may exist at the same time.
-The review packet must present all active reasons together.
+The review artifact must present all active reasons together.
 
 ### 4.5 Store the latest review
 
@@ -459,37 +459,113 @@ Both outcomes can make a review current.
 Also record the reviewed README content, excluding tool-owned metadata.
 Later document edits can then invalidate that review without affecting unrelated consumers.
 
-### 4.6 Prepare a focused review
+### 4.6 State the review requirements
 
 The review plan must group work by README, not create one task for every changed file.
 A hundred changed files under one owner are one review task, not a hundred separate reviews.
 
-Each task must explain the cause and provide the relevant context:
+The default result of a review is a small manifest of requirements. It must
+explain the cause and name the relevant context:
 
-- Owned files, changed paths, and available diffs.
-- Imported sections, exports, and affected consumers.
-- The previous review and applicable documentation guidance.
+- Changed input identities, and the previous review with its evidence state.
+- The review mode, the suggested sections, and the ordered fallback reasons.
+- The suggested reads, the guidance references, and the covered invalidations.
 
-Show input size before asking an agent to consume a large packet.
-Prefer a change summary and focused content over dumping the whole repository.
-Do not silently omit changed inputs.
+The manifest must carry no README body, no source body, no import body, no
+historical content, and no authored guidance prose. Ordinary file tools supply
+the reading. Memoria must add no read command, no range command, and no
+content API.
+
+Show input size before a review. Do not silently omit changed inputs. Keep the
+manifest proportional to the number of changes, not to the size of the
+boundary.
+
+`--full` must produce an explicit complete export with the same token. The
+export carries every reviewed byte for offline reading.
 
 A hash alone cannot reproduce old file contents.
-When the old content is unavailable, label the diff as unavailable and provide the current inputs.
+When the old content is unavailable, label the evidence as unavailable and provide the current inputs.
 Do not present a diff from a different snapshot as the reviewed diff.
+
+### 4.6.1 Map README sections to sources
+
+A README can declare optional advisory sections. A section maps one part of
+the prose to the sources it describes.
+
+```markdown
+<!-- memoria:section id="persistence" files="handle.go service.go" -->
+## Saving and synchronizing
+
+Save writes a local archive. Sync also uploads the archive.
+<!-- /memoria:section -->
+```
+
+Sections are advice and nothing more. They must not create ownership. They
+must not carry their own freshness. They must not narrow the input state that
+acknowledgement validates.
+
+The grammar is exact and small:
+
+| Element | Rule |
+| --- | --- |
+| Markers | Column zero. The attribute order is fixed. Trailing spaces, tabs, LF, and CRLF are permitted. No trailing prose. |
+| `id` | `[A-Za-z][A-Za-z0-9_-]{0,63}`. Case-sensitive and unique in one README. It implies no identity across READMEs. |
+| `files` | One or more literal paths relative to the README directory, separated by exactly one space. |
+| Body | Nonempty authored Markdown. The first block must be a Markdown heading. |
+| Nesting | Sections do not nest. An export or import can sit wholly inside a section. A section cannot sit inside or cross an export or import. |
+
+A path must resolve to a selected regular source file that this README owns.
+Memoria must reject a glob, an absolute path, a drive prefix, a backslash, a
+`.` or `..` component, an empty component, a control character, whitespace, a
+quote, a duplicate, a reserved file, a guidance file, a README boundary, an
+ignored input, a symlink, and a cross-owner path. This syntax cannot spell a
+filename that contains a space. Such a file stays a valid ordinary input.
+
+One source can belong to several sections. After that source changes, all of
+those sections become suggestions.
+
+Marker text inside fenced or indented code is inert. Section-like text inside
+a generated import body is inert for the consumer.
+
+One invalid mapping makes the whole README's advice unusable. Partial advice
+cannot narrow a review, because a reader cannot tell which mapping the author
+meant. Memoria must report `section_mapping_invalid` with the README path, the
+line, and a precise reason. The diagnostic is a warning. `lint` must not fail
+because of optional section advice alone. `review` must select the full
+baseline. `ack` can accept that full review when the structural requirements
+stay valid.
+
+Mapping identity uses the sorted section identifiers and each section's sorted
+normalized source set. Body edits, heading text, and moved line ranges do not
+change it. Any changed association requires a full baseline.
 
 ### 4.7 Review a fixed snapshot
 
 The CLI must identify the exact input snapshot that a reviewer receives.
 Acknowledgement must name that snapshot, not whatever happens to be current later.
 
-**Interface:** Return a review token with the packet. Require the same token when recording the result.
+**Interface:** Return a review token with the artifact. Require the same token when recording the result.
 
-Before writing the record, the CLI must check the inputs again.
-If they changed during review, it must reject the acknowledgement and explain the difference.
+The token must bind the complete input manifest, the complete prior review
+record, and the complete review context. The review context must bind the
+ownership topology, the effective selection policy and its selected path set,
+the section mapping associations, the effective guidance digest, and the
+transitive provider closure.
+
+Before writing the record, the CLI must rebuild every bound component and
+recompute the token. It must never validate only the suggested reads, the
+suggested sections, or the changed files. If any bound component changed
+during review, it must reject the acknowledgement and explain the difference.
 
 State writes must be atomic. Conflicting updates must not silently replace another review.
 An LLM may acknowledge directly, but it must supply a short reason. “Done” is not sufficient.
+
+A token and an artifact digest are consistency checks. They are not
+signatures. An ordinary reader can observe intermediate file contents that
+later change back. The CLI cannot prove which bytes that reader saw. It cannot
+remove the final filesystem race with an arbitrary external editor. It
+preserves stable collection, locked revalidation, and compare-and-save without
+claiming immutable direct reads.
 
 ### 4.8 Propagate only relevant changes
 
@@ -529,7 +605,7 @@ The exact names are proposed. These capabilities are required across the planned
 | `memoria init` | Create root configuration and guide initial setup. |
 | `memoria status` | Show coverage, input size, and review state. |
 | `memoria lint` | Check structure, configuration, markers, and link hints. |
-| `memoria review` | Show the ordered review plan. A document path selects a focused packet. |
+| `memoria review` | Show the ordered review plan. A document path states one README's review requirements. `--full` exports the complete content. |
 | `memoria render` | Refresh declared import blocks only. |
 | `memoria ack` | Record a selected document's review result against its snapshot. |
 | `memoria check` | Run read-only validation for CI. |
@@ -617,7 +693,7 @@ Never silently overwrite those edits with a backup.
 ### 5.6 Add project documentation guidance
 
 The root configuration may contain short writing rules and references to guidance files.
-Memoria must include the applicable guidance in each focused review packet.
+Memoria must include the applicable guidance references in each review artifact, and the complete guidance text in each full export.
 That guidance informs the reviewer. It does not change fingerprints or staleness.
 When a project wants existing documentation reviewed against a new rule, it should create an explicit invalidation with a reason.
 
@@ -666,7 +742,7 @@ A hook should use the deterministic check, not trigger an unexpected LLM review.
 Build the review loop before the convenience features.
 
 The pilot includes source selection, nearest-README ownership, raw XXH3-64 fingerprints, explicit section imports, the state file, and explicit semantic invalidation.
-It also includes review planning, focused packets, rendering, acknowledgement, and a deterministic final check.
+It also includes review planning, review artifacts, rendering, acknowledgement, and a deterministic final check.
 
 Use a three-level documentation example to test the full workflow.
 DIA is the first intended consumer, including corpus types, NaiveRAG, and shared execution documentation.
@@ -704,8 +780,8 @@ The internal document model may support other Markdown documents later. READMEs 
 | The whole project is explicitly invalidated with a reason. | Every README in scope becomes pending and receives the same semantic review reason. |
 | Only one subtree is explicitly invalidated. | READMEs outside that scope remain current unless another rule affects them. |
 | A README is reviewed against an explicit invalidation. | Acknowledgement clears that invalidation for that README without requiring a source change. |
-| A new invalidation is added after a review packet is created. | The older acknowledgement does not clear the new invalidation. |
-| Inputs change after the review packet is created. | Acknowledgement is rejected. |
+| A new invalidation is added after a review artifact is created. | The older acknowledgement does not clear the new invalidation. |
+| Inputs change after the review artifact is created. | Acknowledgement is rejected. |
 | A rebase changes commits but not reviewed content. | The review remains current. |
 | An exported summary changes. | Only its actual consumers become affected. |
 | Unrelated prose changes outside that export. | Consumers of that export stay current. |

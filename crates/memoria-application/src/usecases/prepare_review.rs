@@ -1,4 +1,8 @@
-//! `memoria review <README.md>`: one complete focused packet with its token.
+//! `memoria review <README.md>`: the review requirements, and on request the
+//! complete offline export of the same snapshot.
+//!
+//! The default artifact states what must be read. `--full` adds the bytes.
+//! Both carry the same token, because both describe one stable snapshot.
 
 use memoria_domain::{DocumentId, InputChange};
 
@@ -7,12 +11,48 @@ use crate::error::{AppError, Detail, DetailMap, Diagnostic, ExitClass, Outcome};
 use crate::packet::{
     ChangeEntry, ContentEncoding, DEFAULT_RAW_INPUT_LIMIT, DiffEntry, ExportEntry, FileContent,
     FocusedReviewPacket, ImportContent, MAX_DECODED_BYTES, MAX_RAW_INPUT_LIMIT, MAX_RECORDS,
-    PacketContent, PacketContext, compute_token, manifest_detail,
+    PacketBinding, PacketContent, PacketContext, manifest_detail,
 };
 use crate::ports::Services;
+use crate::review::ReviewManifest;
+use crate::review_context;
 use crate::snapshot::{self, Snapshot};
 
 use super::{diff_changes, parse_document};
+
+/// One prepared review. The small representation is always built; the full
+/// export is added only when the caller asked for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Prepared {
+    /// The default small manifest: requirements, never bodies.
+    Manifest(Box<ReviewManifest>),
+    /// The explicit full offline export.
+    Full(Box<FocusedReviewPacket>),
+}
+
+impl Prepared {
+    pub fn document(&self) -> &DocumentId {
+        match self {
+            Prepared::Manifest(manifest) => &manifest.document,
+            Prepared::Full(packet) => &packet.document,
+        }
+    }
+
+    pub fn token(&self) -> &str {
+        match self {
+            Prepared::Manifest(manifest) => &manifest.token,
+            Prepared::Full(packet) => &packet.token,
+        }
+    }
+
+    /// The review requirements both representations state.
+    pub fn requirements(&self) -> &ReviewManifest {
+        match self {
+            Prepared::Manifest(manifest) => manifest,
+            Prepared::Full(packet) => &packet.requirements,
+        }
+    }
+}
 
 /// Validate `--max-bytes`.
 pub fn resolve_limit(max_bytes: Option<u64>) -> Result<u64, AppError> {
@@ -91,34 +131,72 @@ pub fn run(
     services: &Services<'_>,
     raw_document: &str,
     max_bytes: Option<u64>,
-) -> Result<Outcome<FocusedReviewPacket>, AppError> {
+    full: bool,
+) -> Result<Outcome<Prepared>, AppError> {
     let document = parse_document(raw_document)?;
     let limit = resolve_limit(max_bytes)?;
     let snapshot = snapshot::build(services)?;
     snapshot.require_valid()?;
     readiness_error(&snapshot, &document)?;
-    let packet = build_packet(services, &snapshot, &document, limit)?;
-    Ok(Outcome::new(packet, snapshot.non_error_diagnostics()))
+    // The raw-input budget applies to both representations: a manifest does
+    // not remove input-collection limits or imply constant-memory building.
+    let manifest = snapshot.manifests.get(&document).cloned().ok_or_else(|| {
+        AppError::validation("document_not_found", format!("{document} has no manifest"))
+    })?;
+    let raw_input_bytes = manifest.raw_input_bytes();
+    if raw_input_bytes > limit {
+        return Err(refusal(
+            services,
+            &snapshot,
+            &document,
+            limit,
+            format!(
+                "raw review inputs are {raw_input_bytes} bytes, above the limit of {limit} bytes; pass --max-bytes up to {MAX_RAW_INPUT_LIMIT} or reduce the owner's inputs"
+            ),
+        )?);
+    }
+    let requirements = super::requirements::build(services, &snapshot, &document)?;
+    let prepared = if full {
+        Prepared::Full(Box::new(build_packet(
+            services,
+            &snapshot,
+            &document,
+            limit,
+            requirements,
+        )?))
+    } else {
+        Prepared::Manifest(Box::new(requirements))
+    };
+    Ok(Outcome::new(prepared, snapshot.non_error_diagnostics()))
 }
 
-/// Assemble the packet for a ready document.
-pub fn build_packet(
+/// A bounded size refusal: counts, no token, and no partial manifest.
+fn refusal(
     services: &Services<'_>,
     snapshot: &Snapshot,
     document: &DocumentId,
     limit: u64,
-) -> Result<FocusedReviewPacket, AppError> {
-    let hasher = services.hasher;
+    message: String,
+) -> Result<AppError, AppError> {
     let manifest = snapshot.manifests.get(document).cloned().ok_or_else(|| {
         AppError::validation("document_not_found", format!("{document} has no manifest"))
     })?;
-    let graph = snapshot.graph.as_ref().expect("valid snapshot has a graph");
+    Ok(refuse_with(services, document, &manifest, limit, message))
+}
+
+/// Every refusal is bounded before it exists: the full manifest is attached
+/// only when the complete refusal envelope (data plus the diagnostic) fits
+/// every hard limit; otherwise the refusal carries bounded counts and the
+/// diagnostic alone. A refusal never carries a token.
+fn refuse_with(
+    services: &Services<'_>,
+    document: &DocumentId,
+    manifest: &memoria_domain::InputManifest,
+    limit: u64,
+    message: String,
+) -> AppError {
     let raw_input_bytes = manifest.raw_input_bytes();
-    // Every refusal is bounded before it exists: the full manifest is
-    // attached only when the complete refusal envelope (data plus the
-    // diagnostic) fits every hard limit; otherwise the refusal carries
-    // bounded counts and the diagnostic alone.
-    let refuse = |message: String| -> AppError {
+    {
         let counts = DetailMap::default()
             .number("raw_input_bytes", raw_input_bytes)
             .number("limit", limit)
@@ -136,7 +214,7 @@ pub fn build_packet(
         let full = DetailMap::default()
             .text("kind", "packet_refused")
             .text("document", document.as_str())
-            .with("manifest", manifest_detail(&manifest))
+            .with("manifest", manifest_detail(manifest))
             .with("size", size.clone())
             .build();
         let envelope = services.packets.envelope_size(
@@ -166,12 +244,26 @@ pub fn build_packet(
                 .build()
         };
         AppError::new(ExitClass::Validation, diagnostic).with_data(data)
-    };
-    if raw_input_bytes > limit {
-        return Err(refuse(format!(
-            "raw review inputs are {raw_input_bytes} bytes, above the limit of {limit} bytes; pass --max-bytes up to {MAX_RAW_INPUT_LIMIT} or reduce the owner's inputs"
-        )));
     }
+}
+
+/// Assemble the full offline export for a ready document.
+pub fn build_packet(
+    services: &Services<'_>,
+    snapshot: &Snapshot,
+    document: &DocumentId,
+    limit: u64,
+    requirements: ReviewManifest,
+) -> Result<FocusedReviewPacket, AppError> {
+    let hasher = services.hasher;
+    let manifest = snapshot.manifests.get(document).cloned().ok_or_else(|| {
+        AppError::validation("document_not_found", format!("{document} has no manifest"))
+    })?;
+    let graph = snapshot.graph.as_ref().expect("valid snapshot has a graph");
+    let raw_input_bytes = manifest.raw_input_bytes();
+    let refuse = |message: String| -> AppError {
+        refuse_with(services, document, &manifest, limit, message)
+    };
 
     let readme_bytes = snapshot.document_bytes(document);
     let file_content = |path: &str, bytes: &[u8]| FileContent {
@@ -343,14 +435,14 @@ pub fn build_packet(
         .map(|inv| (inv.id, inv.reason.as_str().to_string()))
         .collect();
     let review_revision = snapshot.state.document_revision(document);
-    let token = compute_token(
-        hasher,
-        document,
-        review_revision,
-        &manifest,
-        guidance.digest,
-        &covered,
-    );
+    // The same stable snapshot produces the same token in both
+    // representations: the full export reuses the manifest's token and its
+    // canonical binding rather than recomputing a second one.
+    let token = requirements.token.clone();
+    let binding = PacketBinding {
+        context: review_context::build(hasher, snapshot, document),
+        baseline: previous.clone(),
+    };
 
     // Records are array elements across the whole envelope. The data subtree
     // is counted here; the codec adds the diagnostics array and publishes the
@@ -378,6 +470,8 @@ pub fn build_packet(
         },
         raw_input_bytes,
         record_count: 0,
+        requirements: requirements.clone(),
+        binding: binding.clone(),
     };
     let record_count = provisional.to_detail().list_elements();
     if record_count > MAX_RECORDS {
@@ -420,5 +514,7 @@ pub fn build_packet(
         },
         raw_input_bytes,
         record_count,
+        requirements,
+        binding,
     })
 }

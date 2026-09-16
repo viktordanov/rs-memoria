@@ -32,6 +32,12 @@ fn pending_execution(project: &Project) -> (std::path::PathBuf, String) {
     project.review_packet("src/execution/README.md")
 }
 
+/// The same pending snapshot as an explicit full export.
+fn pending_execution_full(project: &Project) -> (std::path::PathBuf, String) {
+    project.append("src/execution/runner.rs", "// pending\n");
+    project.review_full("src/execution/README.md")
+}
+
 #[test]
 fn tokens_are_fixed_size_and_deterministic() {
     let project = Project::seed();
@@ -43,12 +49,21 @@ fn tokens_are_fixed_size_and_deterministic() {
         "identical inputs produce identical tokens"
     );
     assert_eq!(token_a.len(), 21);
-    assert!(token_a.starts_with("mrv2."));
+    assert!(token_a.starts_with("mrv3."));
     let a = parse_json(&fs::read(&packet_a).unwrap());
     let b = parse_json(&fs::read(&packet_b).unwrap());
     assert_eq!(
-        get(&a, &["data", "manifest"]),
-        get(&b, &["data", "manifest"])
+        get(&a, &["data", "snapshot"]),
+        get(&b, &["data", "snapshot"])
+    );
+    // The same stable snapshot produces the same token in both
+    // representations.
+    let (full, full_token) = project.review_full("src/execution/README.md");
+    assert_eq!(full_token, token_a);
+    let full = parse_json(&fs::read(&full).unwrap());
+    assert_eq!(
+        get(&full, &["data", "requirements", "snapshot"]),
+        get(&a, &["data", "snapshot"])
     );
     // Any canonical snapshot change alters the digest.
     project.append("src/execution/runner.rs", "// again\n");
@@ -69,8 +84,10 @@ fn oversized_and_malformed_tokens_are_rejected_before_reading_the_packet() {
         token.to_uppercase(),
         format!("{} ", &token[..20]),
         format!("{}é", &token[..20]),
-        // The retired version 1 prefix is rejected before the packet is read.
+        // Retired prefixes are rejected before the artifact is read, with
+        // regeneration instructions rather than a conversion.
         format!("mrv1.{}", &token[5..]),
+        format!("mrv2.{}", &token[5..]),
         "mrv3.payload=eyJkb2MiOiJSRUFETUUifQ".to_string(),
     ];
     for bad in cases {
@@ -96,8 +113,8 @@ fn oversized_and_malformed_tokens_are_rejected_before_reading_the_packet() {
             vec!["token_invalid"]
         );
     }
-    // A syntactically valid but wrong token is a mismatch after packet validation.
-    let wrong = format!("mrv2.{}", "0".repeat(16));
+    // A syntactically valid but wrong token is a mismatch after validation.
+    let wrong = format!("mrv3.{}", "0".repeat(16));
     let output = ack_with(&project, "src/execution/README.md", &packet, &wrong);
     assert_eq!(output.status.code(), Some(2));
     assert_eq!(
@@ -162,6 +179,10 @@ fn file_and_stdin_transport_are_equivalent_and_replay_conflicts() {
                 if let Json::Object(fields) = record {
                     fields.remove("reviewed_at");
                     fields.remove("git");
+                    // The v3 token binds the complete prior record, whose
+                    // timestamp and commit differ between two independently
+                    // seeded projects.
+                    fields.remove("token_digest");
                 }
             }
         }
@@ -275,7 +296,7 @@ fn file_transport_rejects_bad_sources() {
 fn tampered_packets_are_rejected_and_canonical_reformatting_is_accepted() {
     let project = Project::seed();
     project.baseline();
-    let (packet, token) = pending_execution(&project);
+    let (packet, token) = pending_execution_full(&project);
     let original = parse_json(&fs::read(&packet).unwrap());
     let write = |name: &str, value: &Json| {
         let path = project.packets.path().join(name);
@@ -309,7 +330,7 @@ fn tampered_packets_are_rejected_and_canonical_reformatting_is_accepted() {
     // Every tampered variant fails before mutation.
     let project = Project::seed();
     project.baseline();
-    let (packet, token) = pending_execution(&project);
+    let (packet, token) = pending_execution_full(&project);
     let original = parse_json(&fs::read(&packet).unwrap());
     let state_before = project.state();
     let cases: Vec<(&str, Json, &str)> = vec![
@@ -319,7 +340,7 @@ fn tampered_packets_are_rejected_and_canonical_reformatting_is_accepted() {
                 set_path(
                     v,
                     &["data", "token"],
-                    Json::String(format!("mrv2.{}", "1".repeat(16))),
+                    Json::String(format!("mrv3.{}", "1".repeat(16))),
                 )
             }),
             "packet_integrity_failed",
@@ -357,15 +378,17 @@ fn tampered_packets_are_rejected_and_canonical_reformatting_is_accepted() {
             "packet_integrity_failed",
         ),
         (
-            // A version 1 envelope belongs to the previous release.
+            // A version 2 envelope belongs to the previous release. The
+            // version is reported before the integrity check, so an intact
+            // old artifact is never called corrupt.
             "schema",
-            mutate(&|v| set_path(v, &["schema_version"], Json::Number(1))),
-            "packet_integrity_failed",
+            mutate(&|v| set_path(v, &["schema_version"], Json::Number(2))),
+            "packet_schema_invalid",
         ),
         (
             "future schema",
-            mutate(&|v| set_path(v, &["schema_version"], Json::Number(3))),
-            "packet_integrity_failed",
+            mutate(&|v| set_path(v, &["schema_version"], Json::Number(4))),
+            "packet_schema_invalid",
         ),
         (
             "unknown field",
@@ -403,7 +426,7 @@ fn tampered_packets_are_rejected_and_canonical_reformatting_is_accepted() {
                 set_path(
                     v,
                     &["data", "token"],
-                    Json::String(format!("mrv2.{}", "1".repeat(16))),
+                    Json::String(format!("mrv3.{}", "1".repeat(16))),
                 )
             })),
             "packet_token_mismatch",
@@ -450,10 +473,11 @@ fn tampered_packets_are_rejected_and_canonical_reformatting_is_accepted() {
             "packet_schema_invalid",
         ),
         (
-            // Version 1 packets are rejected before acknowledgement.
+            // Version 2 packets are rejected before acknowledgement, with
+            // regeneration instructions and no conversion.
             "version",
             redigest(mutate(&|v| {
-                set_path(v, &["data", "packet_version"], Json::Number(1))
+                set_path(v, &["data", "packet_version"], Json::Number(2))
             })),
             "packet_schema_invalid",
         ),
@@ -490,8 +514,8 @@ fn tampered_packets_are_rejected_and_canonical_reformatting_is_accepted() {
     fs::write(
         &dup,
         to_pretty(&original).replacen(
-            "\"schema_version\": 2",
-            "\"schema_version\": 2, \"schema_version\": 2",
+            "\"schema_version\": 3",
+            "\"schema_version\": 3, \"schema_version\": 3",
             1,
         ),
     )
@@ -556,7 +580,7 @@ fn reorder_keys(text: &str) -> String {
 fn serialized_and_structural_limits_are_enforced_at_the_boundary() {
     let project = Project::seed();
     project.baseline();
-    let (packet, token) = pending_execution(&project);
+    let (packet, token) = pending_execution_full(&project);
     let cap: usize = 64 * 1024 * 1024;
     // Pad a valid envelope with trailing whitespace to exactly the cap, then one byte over.
     let mut bytes = fs::read(&packet).unwrap();
@@ -585,7 +609,7 @@ fn serialized_and_structural_limits_are_enforced_at_the_boundary() {
     assert_eq!(output.status.code(), Some(0), "{}", stdout(&output));
     let project = Project::seed();
     project.baseline();
-    let (packet, token) = pending_execution(&project);
+    let (packet, token) = pending_execution_full(&project);
     let mut bytes = fs::read(&packet).unwrap();
     bytes.resize(cap + 1, b' ');
     let over = project.packets.path().join("over.json");
@@ -625,7 +649,7 @@ fn serialized_and_structural_limits_are_enforced_at_the_boundary() {
     // Record and depth limits at the codec boundary.
     let deep = |n: usize| {
         format!(
-            "{{\"schema_version\":2,\"command\":\"review\",\"ok\":true,\"data\":{{\"packet_digest\":\"{}\"}},\"diagnostics\":[{}{}]}}",
+            "{{\"schema_version\":3,\"command\":\"review\",\"ok\":true,\"data\":{{\"packet_digest\":\"{}\"}},\"diagnostics\":[{}{}]}}",
             "0".repeat(16),
             "[".repeat(n),
             "]".repeat(n)
@@ -649,7 +673,7 @@ fn serialized_and_structural_limits_are_enforced_at_the_boundary() {
     );
     let records = |n: usize| {
         format!(
-            "{{\"schema_version\":2,\"command\":\"review\",\"ok\":true,\"data\":{{\"packet_digest\":\"{}\"}},\"diagnostics\":[{}]}}",
+            "{{\"schema_version\":3,\"command\":\"review\",\"ok\":true,\"data\":{{\"packet_digest\":\"{}\"}},\"diagnostics\":[{}]}}",
             "0".repeat(16),
             vec!["0"; n].join(",")
         )
@@ -728,7 +752,9 @@ fn packets_carry_binary_content_diffs_and_deleted_files() {
     project.commit_all("baseline");
     project.write("src/execution/blob.bin", [0xff, 0xfe, 0x00, 0x41]);
     project.append("src/execution/runner.rs", "// modified\n");
-    let (packet, _) = project.review_packet("src/execution/README.md");
+    // Content, hunks, and historical bodies live in the full export; the
+    // default manifest states requirements only.
+    let (packet, _) = project.review_full("src/execution/README.md");
     let value = parse_json(&fs::read(&packet).unwrap());
     let Json::Array(files) = get(&value, &["data", "content", "files"]) else {
         panic!()
@@ -757,7 +783,7 @@ fn packets_carry_binary_content_diffs_and_deleted_files() {
 
     // Uncommitted prior snapshot: acknowledgement stores no unverified commit.
     project.append("src/execution/runner.rs", "// later\n");
-    let (packet, _) = project.review_packet("src/execution/README.md");
+    let (packet, _) = project.review_full("src/execution/README.md");
     let value = parse_json(&fs::read(&packet).unwrap());
     let Json::Array(diffs) = get(&value, &["data", "context", "diffs"]) else {
         panic!()
@@ -773,7 +799,7 @@ fn packets_carry_binary_content_diffs_and_deleted_files() {
 
     // Deleted file remains listed with its previous identity and committed content.
     project.remove("src/execution/blob.bin");
-    let (packet, _) = project.review_packet("src/execution/README.md");
+    let (packet, _) = project.review_full("src/execution/README.md");
     let value = parse_json(&fs::read(&packet).unwrap());
     let Json::Array(changes) = get(&value, &["data", "context", "changes"]) else {
         panic!()

@@ -252,11 +252,15 @@ fn guidance_is_visible_for_current_and_pending_documents() {
             get_str(t, &["guidance_command"]) == "memoria guidance src/corpus/README.md"
         })
     );
-    // Canonical JSON and the explicit full human view carry the same guidance.
+    // The default manifest, the full export, and the guidance command all
+    // report the same effective digest.
     let (packet, _) = project.review_packet("src/corpus/README.md");
     let value = parse_json(&fs::read(&packet).unwrap());
+    assert_eq!(get_str(&value, &["data", "guidance", "digest"]), current);
+    let (full, _) = project.review_full("src/corpus/README.md");
+    let full = parse_json(&fs::read(&full).unwrap());
     assert_eq!(
-        get_str(&value, &["data", "context", "guidance", "digest"]),
+        get_str(&full, &["data", "context", "guidance", "digest"]),
         current
     );
     let brief = project.run(&["review", "src/corpus/README.md"]);
@@ -464,16 +468,42 @@ fn guidance_limits_and_unsafe_paths_fail_without_omission() {
         "version = 2\nignore = [\"**/generated/**\", \"**/fixtures/**\", \"huge.md\"]\n[documentation]\nguidance_files = [\"huge.md\"]\n",
     );
     project.append("src/execution/runner.rs", "// pending\n");
-    let output = project.run(&["review", "src/execution/README.md", "--format", "json"]);
+    // A full export transports every guidance byte, so the decoded budget
+    // refuses it, and the refusal carries counts rather than the text.
+    let output = project.run(&[
+        "review",
+        "src/execution/README.md",
+        "--full",
+        "--format",
+        "json",
+    ]);
     assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
     assert_eq!(
         diagnostic_codes(&parse_json(&output.stdout)),
         vec!["packet_too_large"],
-        "the packet budget counts every guidance byte"
+        "the full export budget counts every guidance byte"
     );
     assert!(
         !stdout(&output).contains("xxxxxxxxxx"),
         "the refusal never carries the guidance text"
+    );
+    // The default manifest transports no guidance prose at all, so it still
+    // states the requirements and names the oversized source to read.
+    let output = project.run(&["review", "src/execution/README.md", "--format", "json"]);
+    assert_eq!(output.status.code(), Some(0), "{}", stdout(&output));
+    let value = parse_json(&output.stdout);
+    assert!(
+        !stdout(&output).contains("xxxxxxxxxx"),
+        "a manifest never carries authored guidance text"
+    );
+    let Json::Array(references) = get(&value, &["data", "guidance", "references"]) else {
+        panic!()
+    };
+    assert!(
+        references
+            .iter()
+            .any(|entry| get_str(entry, &["source"]) == "huge.md"),
+        "{references:?}"
     );
 }
 
@@ -497,7 +527,7 @@ fn guidance_role_changes_preserve_real_selection_diffs() {
     assert_ne!(before, digest(&project, "src/corpus/README.md"));
     let (packet, _) = project.review_packet("src/corpus/README.md");
     let value = parse_json(&fs::read(&packet).unwrap());
-    let Json::Array(changes) = get(&value, &["data", "context", "changes"]) else {
+    let Json::Array(changes) = get(&value, &["data", "changes"]) else {
         panic!()
     };
     assert!(

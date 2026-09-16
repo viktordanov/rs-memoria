@@ -28,6 +28,43 @@ fn detection_dry_run_install_reinstall_and_uninstall() {
     assert!(get_bool(&install, &["data", "applied"]));
     let skill = project.read_string(".agents/skills/memoria/SKILL.md");
     assert!(skill.contains("memoria ack"));
+    // The installed package is the shipped file, byte for byte.
+    assert_eq!(
+        skill,
+        std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("skills/memoria/SKILL.md")
+        )
+        .unwrap()
+    );
+    // An empty plan must reach the clean check, never the acknowledgement
+    // step. There is no selected README and no saved artifact on that path.
+    let steps: Vec<&str> = skill
+        .lines()
+        .filter(|line| line.starts_with(char::is_numeric) && line.contains(". "))
+        .collect();
+    let empty_plan = steps
+        .iter()
+        .find(|line| line.contains("`data.tasks` is empty"))
+        .expect("the procedure handles an empty plan");
+    let target: usize = empty_plan
+        .split("go to step ")
+        .nth(1)
+        .and_then(|rest| rest.split('.').next())
+        .and_then(|n| n.trim().parse().ok())
+        .expect("the empty-plan branch names a step");
+    let destination = steps
+        .iter()
+        .find(|line| line.starts_with(&format!("{target}. ")))
+        .expect("the named step exists");
+    assert!(
+        destination.contains("memoria check"),
+        "an empty plan must reach the clean check: {destination}"
+    );
+    assert!(
+        !destination.contains("memoria ack"),
+        "an empty plan must not acknowledge: {destination}"
+    );
+    assert!(empty_plan.contains("Never acknowledge"), "{empty_plan}");
     assert!(project.exists(".agents/skills/memoria/.memoria-install.json"));
     // The installed package is guidance, not a review input.
     assert_eq!(project.json(&["check"]).0, 0);

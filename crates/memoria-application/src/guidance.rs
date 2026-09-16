@@ -24,7 +24,7 @@ impl EffectiveGuidance {
         self.entries.is_empty()
     }
 
-    /// The `data.context.guidance` shape used by focused packets and the
+    /// The `data.context.guidance` shape used by full exports and the
     /// `guidance` command.
     pub fn to_detail(&self) -> Detail {
         DetailMap::default()

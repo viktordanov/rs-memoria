@@ -31,7 +31,7 @@ pub enum Command {
         #[arg(long)]
         full: bool,
     },
-    /// Read exact sections from a saved canonical packet without project discovery.
+    /// Read exact sections from a saved full export without project discovery.
     Packet {
         #[command(subcommand)]
         command: PacketCommand,
@@ -63,14 +63,14 @@ pub enum Command {
     },
     /// Check structure, configuration, markers, and link hints.
     Lint,
-    /// Show the ordered review plan, or a focused packet for one README.
+    /// Show the ordered review plan, or the review requirements for one README.
     Review {
-        /// Project-relative README path for a focused packet.
+        /// Project-relative README path for one README's review requirements.
         document: Option<String>,
-        /// Raw input budget in bytes for the focused packet (default 8 MiB, at most 32 MiB).
+        /// Raw input budget in bytes for the reviewed inputs (default 8 MiB, at most 32 MiB).
         #[arg(long, value_name = "BYTES")]
         max_bytes: Option<u64>,
-        /// Show full human packet content. JSON is always complete.
+        /// Export the complete content packet instead of the default manifest.
         #[arg(long)]
         full: bool,
     },
@@ -82,7 +82,7 @@ pub enum Command {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Record a review result against the exact packet snapshot.
+    /// Record a review result against the exact reviewed snapshot.
     Ack(AckArgs),
     /// Mark one README, a subtree, or the whole project for semantic review.
     Invalidate {
@@ -221,7 +221,7 @@ pub enum GithubCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum PacketCommand {
-    /// Produce a non-canonical reading view of a validated saved packet.
+    /// Produce a non-canonical reading view of a validated saved full export.
     View {
         packet: String,
         #[arg(long, default_value = "summary", conflicts_with = "file")]
@@ -251,10 +251,10 @@ pub enum StateCommand {
 pub struct AckArgs {
     /// Project-relative README path.
     pub document: String,
-    /// Packet file from `memoria review <README.md> --format json`, or `-` for stdin.
+    /// Review manifest or full export from `memoria review <README.md> [--full] --format json`, or `-` for stdin.
     #[arg(long, value_name = "FILE|-")]
     pub packet: String,
-    /// The 21-byte token from the packet (`data.token`).
+    /// The 21-byte token from the artifact (`data.token`).
     #[arg(long, value_name = "TOKEN")]
     pub token: String,
     /// Who reviewed (1–128 characters). Overrides the opt-in MEMORIA_REVIEWER environment default.
@@ -263,7 +263,7 @@ pub struct AckArgs {
     /// `updated` or `no-update`.
     #[arg(long, value_name = "RESULT")]
     pub result: String,
-    /// Why this README is correct for this packet. After trim: 12–1000 Unicode characters,
+    /// Why this README is correct for this snapshot. After trim: 12–1000 Unicode characters,
     /// at least three words; CR/LF allowed, tabs and other controls forbidden. Generic notes are rejected.
     #[arg(long, value_name = "TEXT")]
     pub note: String,

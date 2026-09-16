@@ -1219,7 +1219,7 @@ fn canonical_v2_vectors_bind_guidance_only_in_review_context() {
     let project = Project::seed();
     project.baseline();
     project.append("src/execution/runner.rs", "// pending\n");
-    let (packet, token) = project.review_packet("src/execution/README.md");
+    let (packet, token) = project.review_full("src/execution/README.md");
     let first = parse_json(&std::fs::read(&packet).unwrap());
     let manifest = get(&first, &["data", "manifest"]).clone();
     let guidance_before = get_str(&first, &["data", "context", "guidance", "digest"]).to_string();
@@ -1231,7 +1231,7 @@ fn canonical_v2_vectors_bind_guidance_only_in_review_context() {
             "\"Use very short sentences.\",",
         ),
     );
-    let (packet, fresh_token) = project.review_packet("src/execution/README.md");
+    let (packet, fresh_token) = project.review_full("src/execution/README.md");
     let second = parse_json(&std::fs::read(&packet).unwrap());
     assert_ne!(
         get_str(&second, &["data", "context", "guidance", "digest"]),

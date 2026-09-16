@@ -171,15 +171,44 @@ pub struct MarkdownIssue {
     pub location: Option<SourceLocation>,
 }
 
+/// One advisory section mapping exactly as authored.
+///
+/// The parser validates only the grammar. Resolving `files` against the
+/// README's directory, and checking selection and ownership, belong to the
+/// application, which knows the project.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedSection {
+    /// The `id` attribute, before identifier validation.
+    pub id: String,
+    /// The `files` tokens in authored order, each already checked against the
+    /// literal-path grammar.
+    pub files: Vec<String>,
+    /// Text of the first heading in the body. A hint, never an identity.
+    pub heading: String,
+    /// Authored body, excluding both marker lines.
+    pub body: memoria_domain::ByteRange,
+    /// 1-based inclusive body line range, excluding both marker lines.
+    pub first_line: usize,
+    pub last_line: usize,
+    /// Location of the opening marker.
+    pub location: SourceLocation,
+}
+
 /// Declarations and links found in a README.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ParsedDocument {
     pub exports: Vec<Export>,
     pub imports: Vec<ParsedImport>,
+    /// Advisory section mappings, in authored order. Empty when the README
+    /// authored none or when `section_issues` is not empty.
+    pub sections: Vec<ParsedSection>,
     /// Raw link destinations outside export bodies and code.
     pub links: Vec<String>,
     /// Validation issues. Errors make the document invalid.
     pub issues: Vec<MarkdownIssue>,
+    /// Section problems. These are advisory: they never make a document
+    /// structurally invalid, they only withdraw its focused-review advice.
+    pub section_issues: Vec<MarkdownIssue>,
 }
 
 /// Markdown parsing with exact byte offsets.
@@ -343,16 +372,26 @@ pub trait PacketInput {
     fn read(&self, source: &PacketSource) -> Result<Vec<u8>, PacketFailure>;
 }
 
-/// Strict envelope encoding and decoding for focused review packets.
+/// Strict envelope encoding and decoding for review artifacts.
 pub trait ReviewPacketCodec {
-    /// Encode the successful `review` envelope, computing `packet_digest`.
+    /// Encode the successful full-export `review` envelope, computing
+    /// `packet_digest`.
     fn encode(
         &self,
         packet: &FocusedReviewPacket,
         diagnostics: &[crate::error::Diagnostic],
     ) -> Result<Vec<u8>, PacketFailure>;
-    /// Decode and validate schema, limits, and `packet_digest`.
-    fn decode(&self, bytes: &[u8]) -> Result<FocusedReviewPacket, PacketFailure>;
+    /// Encode the successful small-manifest `review` envelope, computing
+    /// `artifact_digest`.
+    fn encode_manifest(
+        &self,
+        manifest: &crate::review::ReviewManifest,
+        diagnostics: &[crate::error::Diagnostic],
+    ) -> Result<Vec<u8>, PacketFailure>;
+    /// Decode and validate schema, limits, and the artifact digest. Only the
+    /// current versions are accepted; an older one is refused with
+    /// regeneration instructions.
+    fn decode(&self, bytes: &[u8]) -> Result<crate::packet::ReviewArtifact, PacketFailure>;
     /// The complete-envelope record count (every array element across data
     /// and diagnostics) that `encode` would publish for this packet.
     fn complete_record_count(

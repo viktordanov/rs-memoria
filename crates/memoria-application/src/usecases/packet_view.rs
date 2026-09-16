@@ -41,7 +41,16 @@ pub fn run(
         PacketFailure::Invalid { code, message } => AppError::usage(code, message),
     };
     let bytes = input.read(source).map_err(failure)?;
-    let packet = codec.decode(&bytes).map_err(failure)?;
+    let artifact = codec.decode(&bytes).map_err(failure)?;
+    // A small manifest states requirements and carries no bodies. There is
+    // nothing for an offline content view to show, so say so plainly and
+    // point at the two ways to read the actual content.
+    let crate::packet::ReviewArtifact::Full(packet) = artifact else {
+        return Err(AppError::usage(
+            "packet_content_unavailable",
+            "This artifact is a review manifest: it lists what to read and carries no file content. Read the listed paths with ordinary file tools, or produce a full export with `memoria review PATH --full --format json`.",
+        ));
+    };
     super::ack::verify_packet_with_hasher(hasher, &packet)?;
     project(&packet, section, file, trust)
 }
@@ -99,7 +108,7 @@ fn project(
                     .number("raw_input_bytes", p.raw_input_bytes)
                     .with("invalidations", get(&data, "covered_invalidations"))
                     .text("guidance_digest", p.context.guidance.digest.to_hex())
-                    .text("review_obligation", "Full review unless the owner explicitly authorizes experimental P1. Retrieve required guidance and content.")
+                    .text("review_obligation", "The review mode of the current manifest governs the required scope. Legacy P1 never reduces it. Retrieve required guidance and content.")
                     .build()
             }
         }
@@ -169,7 +178,7 @@ fn incremental(p: &FocusedReviewPacket, data: &Detail, trust: bool) -> Detail {
     } else {
         files
     };
-    DetailMap::default().text("policy", "P1-experimental").bool("model_quality_gate_passed", false)
+    DetailMap::default().text("policy", "P1-legacy").bool("model_quality_gate_passed", false)
         .bool("full_review_required", !eligible).with("fallback_reasons", Detail::texts(reasons))
         .text("obligation", "Preparation is not review. Examine required content and guidance; justify reuse for every candidate, retrieve named dependent context, or use one full owner review. Save the actual examined/reused inventory and rationale separately. Acknowledge only the original full packet.")
         .with("readme", get(&content, "readme")).with("files", Detail::List(files))

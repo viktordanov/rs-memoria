@@ -119,7 +119,7 @@ fn parent_inspection_never_executes_submodule_filters() {
     let (packet, _) = {
         project.append("src/execution/README.md", "\nProse.\n");
         project.commit_all("prose");
-        project.review_packet("src/execution/README.md")
+        project.review_full("src/execution/README.md")
     };
     let value = parse_json(&fs::read(&packet).unwrap());
     assert!(
@@ -128,7 +128,7 @@ fn parent_inspection_never_executes_submodule_filters() {
     );
     fs::write(sub.join("a.txt"), "other\n").unwrap();
     let _ = fs::remove_file(&sentinel);
-    let (packet, _) = project.review_packet("src/execution/README.md");
+    let (packet, _) = project.review_full("src/execution/README.md");
     let value = parse_json(&fs::read(&packet).unwrap());
     assert!(
         !get_bool(&value, &["data", "context", "git", "worktree_dirty"]),
@@ -142,7 +142,7 @@ fn parent_inspection_never_executes_submodule_filters() {
     git_in(&project, &sub, &["commit", "-qm", "advance"]);
     project.git(&["add", "child"]);
     let _ = fs::remove_file(&sentinel);
-    let (packet, _) = project.review_packet("src/execution/README.md");
+    let (packet, _) = project.review_full("src/execution/README.md");
     let value = parse_json(&fs::read(&packet).unwrap());
     assert!(
         get_bool(&value, &["data", "context", "git", "worktree_dirty"]),
@@ -173,7 +173,7 @@ fn root_guidance_only_sidecar_is_context_not_policy() {
     assert_eq!(project.json(&["check"]).0, 0);
     // Every descendant inherits the root sidecar's instruction in its packet.
     project.append("src/retrieval/naive/search.rs", "// edit\n");
-    let (packet, _) = project.review_packet("src/retrieval/naive/README.md");
+    let (packet, _) = project.review_full("src/retrieval/naive/README.md");
     let value = parse_json(&fs::read(packet).unwrap());
     let Json::Array(guidance) = get(&value, &["data", "context", "guidance", "entries"]) else {
         panic!()
@@ -228,7 +228,7 @@ fn human_and_json_record_counts_are_the_same_complete_count() {
     project.write("child/README.md", "# Child\n");
     project.commit_all("seed");
     assert_eq!(project.run(&["init", "--apply"]).status.code(), Some(0));
-    let json_output = project.run(&["review", "README.md", "--format", "json"]);
+    let json_output = project.run(&["review", "README.md", "--full", "--format", "json"]);
     assert_eq!(json_output.status.code(), Some(0));
     let envelope = json::parse(&json_output.stdout, Limits::PACKET).unwrap();
     let independent = count_elements(&envelope);
@@ -240,7 +240,7 @@ fn human_and_json_record_counts_are_the_same_complete_count() {
         matches!(get(&envelope, &["diagnostics"]), Json::Array(d) if !d.is_empty()),
         "the navigation warning is present"
     );
-    let human = project.run(&["review", "README.md"]);
+    let human = project.run(&["review", "README.md", "--full"]);
     assert_eq!(human.status.code(), Some(0));
     assert_eq!(
         human_count(&human),
@@ -261,7 +261,13 @@ fn human_and_json_record_counts_are_the_same_complete_count() {
     project.canonical_loop();
     project.commit_all("baseline");
     project.append("src/execution/runner.rs", "// edit\n");
-    let json_output = project.run(&["review", "src/execution/README.md", "--format", "json"]);
+    let json_output = project.run(&[
+        "review",
+        "src/execution/README.md",
+        "--full",
+        "--format",
+        "json",
+    ]);
     let envelope = json::parse(&json_output.stdout, Limits::PACKET).unwrap();
     assert!(
         matches!(get(&envelope, &["diagnostics"]), Json::Array(d) if d.is_empty()),
@@ -276,6 +282,6 @@ fn human_and_json_record_counts_are_the_same_complete_count() {
         get_u64(&envelope, &["data", "size", "record_count"]),
         independent
     );
-    let human = project.run(&["review", "src/execution/README.md"]);
+    let human = project.run(&["review", "src/execution/README.md", "--full"]);
     assert_eq!(human_count(&human), independent);
 }

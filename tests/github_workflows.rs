@@ -113,9 +113,18 @@ fn the_lifecycle_installs_upgrades_and_uninstalls() {
     assert!(project.exists(WORKFLOW));
     assert!(project.exists(RECORD));
     let workflow = project.read_string(WORKFLOW);
-    assert!(workflow.contains("uses: viktordanov/rs-memoria@v0.5.0"));
+    // The generated workflow installs the version of the executable that
+    // wrote it, so the expectation tracks the crate version.
+    let version = env!("CARGO_PKG_VERSION");
+    assert!(
+        workflow.contains(&format!("uses: viktordanov/rs-memoria@v{version}")),
+        "{workflow}"
+    );
     assert!(workflow.contains("runs-on: ubuntu-24.04"));
-    assert!(workflow.contains("version: '0.5.0'"));
+    assert!(
+        workflow.contains(&format!("version: '{version}'")),
+        "{workflow}"
+    );
 
     // A repeated install is a successful no-op that writes nothing.
     let snapshot = project.tree_snapshot();
@@ -129,7 +138,10 @@ fn the_lifecycle_installs_upgrades_and_uninstalls() {
     let (code, status) = project.json(&["integrations", "github", "status"]);
     assert_eq!(code, 0);
     assert_eq!(plan_str(&status, "state"), "current");
-    assert_eq!(plan_str(&status, "installed_version"), "0.5.0");
+    assert_eq!(
+        plan_str(&status, "installed_version"),
+        env!("CARGO_PKG_VERSION")
+    );
     assert_eq!(plan_str(&status, "installed_runner"), "ubuntu-24.04");
 
     // An upgrade to another runner rewrites both files.

@@ -38,7 +38,7 @@ fn explain_never_reviewed_has_explicit_document_baseline_without_history() {
         assert_eq!(get(entry, &[field]), &Json::Null);
     }
     assert!(stdout(&project.run(&["explain", "README.md"])).contains("no_previous_review"));
-    let (_, packet) = project.json(&["review", "README.md"]);
+    let (_, packet) = project.json(&["review", "README.md", "--full"]);
     assert_eq!(
         get(&packet, &["data", "context", "diffs"]),
         &Json::Array(vec![])
@@ -78,7 +78,7 @@ fn explain_missing_git_baselines_keep_packet_reasons_and_null_observations() {
             let human = project.run(&["explain", "README.md"]);
             assert!(stdout(&human).contains(expected_code));
             assert!(!stdout(&human).contains("removed_file"));
-            let (_, packet) = project.json(&["review", "README.md"]);
+            let (_, packet) = project.json(&["review", "README.md", "--full"]);
             let Json::Array(diffs) = get(&packet, &["data", "context", "diffs"]) else {
                 panic!()
             };
@@ -114,7 +114,10 @@ fn explain_removed_input_does_not_borrow_another_boundarys_current_bytes() {
         .unwrap();
     assert!(get_str(file, &["text"]).contains("-prior owner evidence"));
     assert_eq!(get_str(file, &["reason_code"]), "removed_file");
-    assert!(get_str(file, &["reason"]).contains("packet emits no deletion hunk"));
+    assert!(
+        get_str(file, &["reason"])
+            .contains("full export carries the old body without a deletion hunk")
+    );
     assert_eq!(
         project.read_string("child/source.txt"),
         "prior owner evidence\n"
@@ -126,7 +129,7 @@ fn existing_summary_error_json_contract_is_unchanged() {
     let project = Project::empty_repo();
     let (code, result) = project.json(&["status", "--summary", "--explain", "README.md"]);
     assert_eq!(code, 2);
-    let expected = br#"{"command":"status","data":null,"diagnostics":[{"code":"summary_invalid","column":null,"details":{},"line":null,"message":"--summary emits bounded counts only; it cannot be combined with --explain","path":null,"severity":"error"}],"ok":false,"schema_version":2}"#;
+    let expected = br#"{"command":"status","data":null,"diagnostics":[{"code":"summary_invalid","column":null,"details":{},"line":null,"message":"--summary emits bounded counts only; it cannot be combined with --explain","path":null,"severity":"error"}],"ok":false,"schema_version":3}"#;
     assert_eq!(result, json::parse(expected, Limits::STATE).unwrap());
 }
 
@@ -199,7 +202,10 @@ fn explain_add_remove_binary_and_line_limits() {
     assert!(get_bool(removed, &["baseline_verified"]));
     assert!(get_str(removed, &["text"]).contains("-old"));
     assert_eq!(get_str(removed, &["reason_code"]), "removed_file");
-    assert!(get_str(removed, &["reason"]).contains("packet emits no deletion hunk"));
+    assert!(
+        get_str(removed, &["reason"])
+            .contains("full export carries the old body without a deletion hunk")
+    );
     let human = stdout(&project.run(&["explain", "README.md"]));
     for code in [
         "added_file",
@@ -209,7 +215,7 @@ fn explain_add_remove_binary_and_line_limits() {
     ] {
         assert!(human.contains(code));
     }
-    assert!(human.contains("packet emits no deletion hunk"));
+    assert!(human.contains("full export carries the old body without a deletion hunk"));
     assert!(!get_bool(
         evidence_for(&result, "added.txt"),
         &["baseline_verified"]
@@ -220,7 +226,7 @@ fn explain_add_remove_binary_and_line_limits() {
             &["baseline_verified"]
         ));
     }
-    let (_, packet) = project.json(&["review", "README.md"]);
+    let (_, packet) = project.json(&["review", "README.md", "--full"]);
     let Json::Array(diffs) = get(&packet, &["data", "context", "diffs"]) else {
         panic!()
     };
@@ -275,7 +281,7 @@ fn non_utf8_default_is_rejected_but_explicit_label_wins() {
         "--packet",
         "/missing",
         "--token",
-        "mrv2.0000000000000000",
+        "mrv3.0000000000000000",
         "--result",
         "no-update",
         "--note",
@@ -435,7 +441,7 @@ fn reviewer_default_override_and_validation_precede_packet_reads() {
         "--packet",
         "/missing/packet",
         "--token",
-        "mrv2.0000000000000000",
+        "mrv3.0000000000000000",
         "--result",
         "no-update",
         "--note",
@@ -520,7 +526,7 @@ fn explain_is_deterministic_read_only_and_matches_packet_hunks() {
         .find(|item| get_str(item, &["identity"]) == "source.txt")
         .unwrap();
     assert!(get_bool(file, &["baseline_verified"]));
-    let (_, packet) = project.json(&["review", "README.md"]);
+    let (_, packet) = project.json(&["review", "README.md", "--full"]);
     let Json::Array(diffs) = get(&packet, &["data", "context", "diffs"]) else {
         panic!()
     };

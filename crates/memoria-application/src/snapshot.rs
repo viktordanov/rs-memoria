@@ -8,6 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use memoria_domain::canonical;
+use memoria_domain::section::SectionMap;
 use memoria_domain::{
     ByteRange, DirPath, Document, DocumentId, DocumentStatus, EffectivePolicy, Exclusion, ExportId,
     FileInput, GitContext, GitRuleScope, Glob, GraphError, GuidanceDigest, GuidanceEntry,
@@ -111,6 +112,8 @@ pub struct Snapshot {
     pub policies: BTreeMap<DocumentId, EffectivePolicy>,
     pub policy_hashes: BTreeMap<DocumentId, Hash64>,
     pub manifests: BTreeMap<DocumentId, InputManifest>,
+    /// Advisory section mapping state for every discovered README.
+    pub sections: BTreeMap<DocumentId, SectionMap>,
     /// Effective guidance and its digest, for every discovered document.
     pub guidance: BTreeMap<DocumentId, guidance::EffectiveGuidance>,
     pub state: ReviewState,
@@ -832,6 +835,118 @@ fn build_scope(
     }
 }
 
+/// Resolve one README's authored sections against the project.
+///
+/// Advice survives only when every mapping resolves to a selected regular
+/// file this README owns. Anything else — an unselected, reserved, guidance,
+/// symlinked, missing, or cross-owner path — withdraws the whole README's
+/// advice, because partial advice cannot narrow a review.
+fn resolve_sections(
+    document: &DocumentId,
+    parsed_sections: &[crate::ports::ParsedSection],
+    parser_issues: &[crate::ports::MarkdownIssue],
+    ownership: &OwnershipTree,
+    selected: &BTreeMap<ProjectPath, Vec<u8>>,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> SectionMap {
+    let mut report = |message: String, location: Option<memoria_domain::SourceLocation>| {
+        let mut diagnostic =
+            Diagnostic::warning("section_mapping_invalid", message).at_path(document.as_str());
+        if let Some(location) = location {
+            diagnostic = diagnostic.at(location.line, location.column);
+        }
+        diagnostics.push(diagnostic);
+    };
+    let mut invalid = false;
+    for issue in parser_issues {
+        invalid = true;
+        report(issue.message.clone(), issue.location);
+    }
+    if invalid {
+        return SectionMap::Invalid;
+    }
+    if parsed_sections.is_empty() {
+        return SectionMap::Absent;
+    }
+    let dir = document.path().directory();
+    let mut mappings = Vec::new();
+    for section in parsed_sections {
+        let mut sources: Vec<ProjectPath> = Vec::new();
+        for raw in &section.files {
+            let resolved = match ProjectPath::resolve_relative(&dir, raw) {
+                Ok(path) => path,
+                Err(err) => {
+                    invalid = true;
+                    report(
+                        format!(
+                            "section {:?}: path {raw:?} is not a project path: {err}",
+                            section.id
+                        ),
+                        Some(section.location),
+                    );
+                    continue;
+                }
+            };
+            if !selected.contains_key(&resolved) {
+                invalid = true;
+                report(
+                    format!(
+                        "section {:?}: {resolved} is not a selected regular source file; a section can only name owned inputs",
+                        section.id
+                    ),
+                    Some(section.location),
+                );
+                continue;
+            }
+            match ownership.owner_of(&resolved) {
+                Some(owner) if owner == document => {}
+                Some(owner) => {
+                    invalid = true;
+                    report(
+                        format!(
+                            "section {:?}: {resolved} belongs to {owner}, not to this README",
+                            section.id
+                        ),
+                        Some(section.location),
+                    );
+                    continue;
+                }
+                None => {
+                    invalid = true;
+                    report(
+                        format!("section {:?}: {resolved} has no README owner", section.id),
+                        Some(section.location),
+                    );
+                    continue;
+                }
+            }
+            sources.push(resolved);
+        }
+        sources.sort();
+        sources.dedup();
+        let id = match memoria_domain::SectionId::parse(&section.id) {
+            Ok(id) => id,
+            Err(err) => {
+                invalid = true;
+                report(err.to_string(), Some(section.location));
+                continue;
+            }
+        };
+        mappings.push(memoria_domain::SectionMapping {
+            id,
+            heading: section.heading.clone(),
+            first_line: section.first_line,
+            last_line: section.last_line,
+            sources,
+        });
+    }
+    if invalid {
+        SectionMap::Invalid
+    } else {
+        SectionMap::Valid(mappings)
+    }
+}
+
 fn analyze(services: &Services<'_>, collected: Collected) -> Snapshot {
     let mut diagnostics = collected.diagnostics.clone();
     let hasher = services.hasher;
@@ -855,6 +970,7 @@ fn analyze(services: &Services<'_>, collected: Collected) -> Snapshot {
 
     // Documents.
     let mut documents: BTreeMap<DocumentId, Document> = BTreeMap::new();
+    let mut sections: BTreeMap<DocumentId, SectionMap> = BTreeMap::new();
     for document in &collected.documents {
         let bytes = &collected.document_bytes[document];
         let parsed = services.markdown.parse(document, bytes);
@@ -889,6 +1005,17 @@ fn analyze(services: &Services<'_>, collected: Collected) -> Snapshot {
             }
         }
         let links = resolve_links(document, &parsed.links, &collected.documents);
+        sections.insert(
+            document.clone(),
+            resolve_sections(
+                document,
+                &parsed.sections,
+                &parsed.section_issues,
+                &ownership,
+                &collected.file_bytes,
+                &mut diagnostics,
+            ),
+        );
         if invalid {
             // Keep the document visible with whatever parsed cleanly.
         }
@@ -1114,6 +1241,7 @@ fn analyze(services: &Services<'_>, collected: Collected) -> Snapshot {
         policies,
         policy_hashes,
         manifests,
+        sections,
         guidance: guidance_map,
         state,
         statuses,
@@ -1402,6 +1530,36 @@ impl Snapshot {
     /// Effective guidance from the root scope toward the document scope.
     /// Inline entries precede file entries within each scope, and each list
     /// preserves its authored order.
+    /// The advisory mapping state of a discovered README.
+    pub fn sections_of(&self, document: &DocumentId) -> &SectionMap {
+        static ABSENT: SectionMap = SectionMap::Absent;
+        self.sections.get(document).unwrap_or(&ABSENT)
+    }
+
+    /// Resolve the mapping a README would declare for arbitrary bytes.
+    ///
+    /// Used to compare a previous README's authored associations with the
+    /// current ones. Resolution uses the current ownership and selection, so
+    /// a project change that moved a path surfaces through its own fallback
+    /// reason rather than through a confusing mapping difference.
+    pub fn section_map_for_bytes(
+        &self,
+        services: &Services<'_>,
+        document: &DocumentId,
+        bytes: &[u8],
+    ) -> SectionMap {
+        let parsed = services.markdown.parse(document, bytes);
+        let mut ignored = Vec::new();
+        resolve_sections(
+            document,
+            &parsed.sections,
+            &parsed.section_issues,
+            &self.ownership,
+            &self.collected.file_bytes,
+            &mut ignored,
+        )
+    }
+
     pub fn applicable_guidance(&self, document: &DocumentId) -> Vec<Guidance> {
         let ancestors = document.directory().ancestors();
         let mut out = Vec::new();

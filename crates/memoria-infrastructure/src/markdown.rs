@@ -3,9 +3,12 @@
 
 use std::collections::BTreeMap;
 
-use memoria_application::ports::{MarkdownCodec, MarkdownIssue, ParsedDocument, ParsedImport};
+use memoria_application::ports::{
+    MarkdownCodec, MarkdownIssue, ParsedDocument, ParsedImport, ParsedSection,
+};
+use memoria_domain::section::validate_section_path;
 use memoria_domain::{ByteRange, DocumentId, Export, ExportId, SourceLocation};
-use pulldown_cmark::{Event, LinkType, Options, Parser, Tag};
+use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct PulldownMarkdownCodec;
@@ -16,6 +19,30 @@ enum Marker {
     ExportClose,
     ImportOpen(String),
     ImportClose,
+    /// Advisory section: the `id` attribute and the authored `files` tokens.
+    SectionOpen {
+        id: String,
+        files: Vec<String>,
+    },
+    SectionClose,
+}
+
+/// A marker problem, routed to the structural or the advisory channel.
+///
+/// Section problems never invalidate a README. They withdraw its focused
+/// advice and leave the reviewer with the full baseline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum MarkerError {
+    Structural(String),
+    Section(String),
+}
+
+impl MarkerError {
+    fn message(self) -> String {
+        match self {
+            MarkerError::Structural(m) | MarkerError::Section(m) => m,
+        }
+    }
 }
 
 fn line_of(text: &str, offset: usize) -> SourceLocation {
@@ -42,12 +69,55 @@ fn in_ranges(ranges: &[ByteRange], offset: usize) -> bool {
     ranges.iter().any(|r| r.start <= offset && offset < r.end)
 }
 
+/// Whether a line that is not a well-formed marker still looks like an
+/// attempt at a section declaration. Such a line must be reported, never
+/// dropped in silence, so a mistyped mapping cannot quietly narrow a review.
+fn looks_like_section(line: &str) -> bool {
+    let start = line.trim_start_matches([' ', '\t']);
+    start.starts_with("<!--") && start.contains("memoria:section")
+}
+
+/// Split the `files` attribute on exactly one ASCII space per separator and
+/// check every token against the literal-path grammar.
+fn parse_section_files(raw: &str) -> Result<Vec<String>, String> {
+    if raw.is_empty() {
+        return Err("section marker requires at least one path in `files`".to_string());
+    }
+    let mut files = Vec::new();
+    for token in raw.split(' ') {
+        if token.is_empty() {
+            return Err(
+                "section marker `files` paths must be separated by exactly one space".to_string(),
+            );
+        }
+        if let Err(err) = validate_section_path(token) {
+            return Err(format!("section path {token:?}: {err}"));
+        }
+        if files.contains(&token.to_string()) {
+            return Err(format!("section lists the path {token:?} more than once"));
+        }
+        files.push(token.to_string());
+    }
+    Ok(files)
+}
+
 /// Parse one marker line. `Ok(None)` when the line is not a marker at all.
-fn parse_marker(line: &str) -> Result<Option<Marker>, String> {
+fn parse_marker(line: &str) -> Result<Option<Marker>, MarkerError> {
     let trimmed = line.trim_end_matches([' ', '\t', '\r']);
+    let section_like = looks_like_section(line);
+    let wrap = |message: String| {
+        if section_like {
+            MarkerError::Section(message)
+        } else {
+            MarkerError::Structural(message)
+        }
+    };
     if !trimmed.starts_with("<!-- memoria:") && !trimmed.starts_with("<!-- /memoria:") {
         if trimmed.starts_with("<!--") && trimmed.contains("memoria:") {
-            return Err("marker must have the exact form `<!-- memoria:... -->` or `<!-- /memoria:... -->` at column zero".to_string());
+            return Err(wrap("marker must have the exact form `<!-- memoria:... -->` or `<!-- /memoria:... -->` at column zero".to_string()));
+        }
+        if section_like {
+            return Err(MarkerError::Section("section marker must have the exact form `<!-- memoria:section id=\"ID\" files=\"PATH\" -->` at column zero".to_string()));
         }
         return Ok(None);
     }
@@ -55,21 +125,55 @@ fn parse_marker(line: &str) -> Result<Option<Marker>, String> {
         .strip_prefix("<!-- ")
         .and_then(|s| s.strip_suffix(" -->"))
     else {
-        return Err("marker must end with ` -->` and contain no other trailing text".to_string());
+        return Err(wrap(
+            "marker must end with ` -->` and contain no other trailing text".to_string(),
+        ));
     };
     match inner {
         "/memoria:export" => return Ok(Some(Marker::ExportClose)),
         "/memoria:import" => return Ok(Some(Marker::ImportClose)),
+        "/memoria:section" => return Ok(Some(Marker::SectionClose)),
         _ => {}
     }
     if inner.starts_with('/') {
-        return Err(format!("unknown closing marker {inner:?}"));
+        return Err(wrap(format!("unknown closing marker {inner:?}")));
+    }
+    if let Some(rest) = inner.strip_prefix("memoria:section ") {
+        // Attribute order is fixed: `id` then `files`, each double-quoted.
+        let Some(rest) = rest.strip_prefix("id=\"") else {
+            return Err(MarkerError::Section(
+                "section marker requires `id=\"ID\"` as its first attribute".to_string(),
+            ));
+        };
+        let Some((id, rest)) = rest.split_once('"') else {
+            return Err(MarkerError::Section(
+                "section marker attribute id is not closed".to_string(),
+            ));
+        };
+        let Some(files) = rest
+            .strip_prefix(" files=\"")
+            .and_then(|s| s.strip_suffix('"'))
+        else {
+            return Err(MarkerError::Section(
+                "section marker requires `files=\"PATH[ PATH...]\"` as its second and last attribute".to_string(),
+            ));
+        };
+        if id.is_empty() || files.contains('"') {
+            return Err(MarkerError::Section(
+                "section marker attributes are malformed".to_string(),
+            ));
+        }
+        let files = parse_section_files(files).map_err(MarkerError::Section)?;
+        return Ok(Some(Marker::SectionOpen {
+            id: id.to_string(),
+            files,
+        }));
     }
     let (kind, attribute) = match inner.strip_prefix("memoria:export ") {
         Some(rest) => ("export", rest),
         None => match inner.strip_prefix("memoria:import ") {
             Some(rest) => ("import", rest),
-            None => return Err(format!("unknown marker {inner:?}")),
+            None => return Err(wrap(format!("unknown marker {inner:?}"))),
         },
     };
     let expected_key = if kind == "export" { "id" } else { "src" };
@@ -78,14 +182,14 @@ fn parse_marker(line: &str) -> Result<Option<Marker>, String> {
         .and_then(|s| s.strip_prefix("=\""))
         .and_then(|s| s.strip_suffix('"'))
     else {
-        return Err(format!(
+        return Err(wrap(format!(
             "{kind} marker requires exactly one double-quoted `{expected_key}` attribute"
-        ));
+        )));
     };
     if value.contains('"') || value.is_empty() {
-        return Err(format!(
+        return Err(wrap(format!(
             "{kind} marker attribute {expected_key} is malformed"
-        ));
+        )));
     }
     Ok(Some(if kind == "export" {
         Marker::ExportOpen(value.to_string())
@@ -329,6 +433,42 @@ fn links_outside_code(text: &str, code: &[ByteRange]) -> Vec<String> {
     links
 }
 
+/// The text of the body's first block when that block is a heading.
+///
+/// A section body must open with a CommonMark heading, ATX or setext. The
+/// heading text is a reading hint only; it never identifies the section.
+fn leading_heading(body: &str) -> Result<String, String> {
+    if body.trim().is_empty() {
+        return Err("section body must contain authored Markdown".to_string());
+    }
+    let mut text = String::new();
+    let mut depth = 0usize;
+    for event in Parser::new_ext(body, Options::empty()) {
+        match event {
+            Event::Start(Tag::Heading { .. }) if depth == 0 => depth = 1,
+            Event::Start(_) if depth == 0 => {
+                return Err(
+                    "the first block of a section body must be a Markdown heading".to_string(),
+                );
+            }
+            // Terminate at the end of the heading itself. An inline span such
+            // as emphasis also produces an end event, and stopping there would
+            // silently drop the text that follows it.
+            Event::End(TagEnd::Heading(..)) if depth == 1 => break,
+            Event::Text(t) | Event::Code(t) if depth == 1 => text.push_str(&t),
+            _ => {}
+        }
+    }
+    if depth == 0 {
+        return Err("the first block of a section body must be a Markdown heading".to_string());
+    }
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err("the section's first heading has no text".to_string());
+    }
+    Ok(text)
+}
+
 impl MarkdownCodec for PulldownMarkdownCodec {
     fn parse(&self, _document: &DocumentId, bytes: &[u8]) -> ParsedDocument {
         let mut parsed = ParsedDocument::default();
@@ -349,32 +489,166 @@ impl MarkdownCodec for PulldownMarkdownCodec {
             body_start: usize,
             location: SourceLocation,
         }
+        struct OpenSection {
+            id: String,
+            files: Vec<String>,
+            body_start: usize,
+            location: SourceLocation,
+        }
         let mut open: Option<Open> = None;
+        let mut open_section: Option<OpenSection> = None;
+        // Set when an opening section marker was refused, so its matching
+        // close reports nothing further. One mistake yields one message.
+        let mut section_recovering = false;
         let mut offset = 0;
         let mut exports: Vec<Export> = Vec::new();
         let mut export_ids: Vec<String> = Vec::new();
+        let mut sections: Vec<ParsedSection> = Vec::new();
+        let mut section_ids: Vec<String> = Vec::new();
+        let section_issue =
+            |issues: &mut Vec<MarkdownIssue>, message: String, location: SourceLocation| {
+                issues.push(MarkdownIssue {
+                    code: "section_mapping_invalid",
+                    message,
+                    location: Some(location),
+                });
+            };
         for raw_line in text.split_inclusive('\n') {
             let line_start = offset;
             offset += raw_line.len();
             let line = raw_line.strip_suffix('\n').unwrap_or(raw_line);
             let has_newline = raw_line.ends_with('\n');
-            if in_ranges(&code, line_start) {
+            // An indented code block's range begins after its indent, so the
+            // first non-blank byte, not the line start, decides inertness.
+            let content_start =
+                line_start + (line.len() - line.trim_start_matches([' ', '\t']).len());
+            if in_ranges(&code, content_start) {
                 continue;
             }
             let location = line_of(text, line_start);
             let marker = match parse_marker(line) {
                 Ok(None) => continue,
                 Ok(Some(marker)) => marker,
-                Err(message) => {
+                Err(MarkerError::Section(message)) => {
+                    section_issue(&mut parsed.section_issues, message, location);
+                    section_recovering = !line.contains("/memoria:section");
+                    continue;
+                }
+                Err(err) => {
                     parsed.issues.push(MarkdownIssue {
                         code: "marker_malformed",
-                        message,
+                        message: err.message(),
                         location: Some(location),
                     });
                     continue;
                 }
             };
             match marker {
+                Marker::SectionOpen { id, files } => {
+                    // Sections never nest, and never begin inside an export
+                    // or import block whose body a provider owns.
+                    if let Some(previous) = &open_section {
+                        section_issue(
+                            &mut parsed.section_issues,
+                            format!(
+                                "section opened while the section at line {} is still open; sections cannot nest or overlap",
+                                previous.location.line
+                            ),
+                            location,
+                        );
+                        section_recovering = true;
+                        continue;
+                    }
+                    if let Some(previous) = &open {
+                        section_issue(
+                            &mut parsed.section_issues,
+                            format!(
+                                "section cannot start inside the export or import block opened at line {}",
+                                previous.location.line
+                            ),
+                            location,
+                        );
+                        section_recovering = true;
+                        continue;
+                    }
+                    if !has_newline {
+                        section_issue(
+                            &mut parsed.section_issues,
+                            "an opening section marker must be followed by a line ending".into(),
+                            location,
+                        );
+                        continue;
+                    }
+                    open_section = Some(OpenSection {
+                        id,
+                        files,
+                        body_start: offset,
+                        location,
+                    });
+                }
+                Marker::SectionClose => {
+                    let Some(current) = open_section.take() else {
+                        if section_recovering {
+                            section_recovering = false;
+                        } else {
+                            section_issue(
+                                &mut parsed.section_issues,
+                                "closing section marker without an open section".into(),
+                                location,
+                            );
+                        }
+                        continue;
+                    };
+                    if let Some(inner) = &open {
+                        section_issue(
+                            &mut parsed.section_issues,
+                            format!(
+                                "section closes while the export or import block opened at line {} is still open; a section cannot cross that boundary",
+                                inner.location.line
+                            ),
+                            current.location,
+                        );
+                        continue;
+                    }
+                    if section_ids.contains(&current.id) {
+                        section_issue(
+                            &mut parsed.section_issues,
+                            format!("duplicate section id {:?}", current.id),
+                            current.location,
+                        );
+                        continue;
+                    }
+                    if let Err(err) = memoria_domain::SectionId::parse(&current.id) {
+                        section_issue(
+                            &mut parsed.section_issues,
+                            err.to_string(),
+                            current.location,
+                        );
+                        continue;
+                    }
+                    let body = ByteRange::new(current.body_start, line_start);
+                    let heading = match leading_heading(&text[body.start..body.end]) {
+                        Ok(heading) => heading,
+                        Err(message) => {
+                            section_issue(
+                                &mut parsed.section_issues,
+                                format!("section {:?}: {message}", current.id),
+                                current.location,
+                            );
+                            continue;
+                        }
+                    };
+                    section_ids.push(current.id.clone());
+                    sections.push(ParsedSection {
+                        id: current.id,
+                        files: current.files,
+                        heading,
+                        body,
+                        first_line: line_of(text, body.start).line,
+                        last_line: line_of(text, body.end.saturating_sub(1)).line,
+                        location: current.location,
+                    });
+                }
                 Marker::ExportOpen(_) | Marker::ImportOpen(_) => {
                     if let Some(previous) = &open {
                         parsed.issues.push(MarkdownIssue {
@@ -467,7 +741,22 @@ impl MarkdownCodec for PulldownMarkdownCodec {
                 location: Some(current.location),
             });
         }
+        if let Some(current) = open_section {
+            section_issue(
+                &mut parsed.section_issues,
+                "section is never closed".into(),
+                current.location,
+            );
+        }
         parsed.exports = exports;
+        // One invalid mapping withdraws the whole README's advice. Partial
+        // advice cannot narrow a review, because a reader cannot tell which
+        // mapping the author meant to write.
+        parsed.sections = if parsed.section_issues.is_empty() {
+            sections
+        } else {
+            Vec::new()
+        };
         parsed
     }
 }
@@ -478,6 +767,239 @@ mod tests {
 
     fn parse(text: &str) -> ParsedDocument {
         PulldownMarkdownCodec.parse(&DocumentId::parse("README.md").unwrap(), text.as_bytes())
+    }
+
+    fn section_codes(text: &str) -> Vec<String> {
+        parse(text)
+            .section_issues
+            .iter()
+            .map(|i| i.message.clone())
+            .collect()
+    }
+
+    #[test]
+    fn parses_an_advisory_section() {
+        let text = "# Doc\n\n<!-- memoria:section id=\"persistence\" files=\"handle.go service.go\" -->\n## Saving and synchronizing\n\nSave writes a local archive.\n<!-- /memoria:section -->\n";
+        let parsed = parse(text);
+        assert!(parsed.issues.is_empty(), "{:?}", parsed.issues);
+        assert!(
+            parsed.section_issues.is_empty(),
+            "{:?}",
+            parsed.section_issues
+        );
+        assert_eq!(parsed.sections.len(), 1);
+        let section = &parsed.sections[0];
+        assert_eq!(section.id, "persistence");
+        assert_eq!(section.files, vec!["handle.go", "service.go"]);
+        assert_eq!(section.heading, "Saving and synchronizing");
+        assert_eq!(section.location.line, 3);
+        // The body range and the line hints both exclude the two markers.
+        assert_eq!(
+            &text[section.body.start..section.body.end],
+            "## Saving and synchronizing\n\nSave writes a local archive.\n"
+        );
+        assert_eq!((section.first_line, section.last_line), (4, 6));
+    }
+
+    #[test]
+    fn a_formatted_heading_keeps_its_trailing_text() {
+        // An inline span inside the heading must not end the hint early.
+        for (body, expected) in [
+            ("## A *formatted* heading", "A formatted heading"),
+            ("## A **strong** heading", "A strong heading"),
+            ("## A `code` heading", "A code heading"),
+            (
+                "## A [linked](https://example.com/x) heading",
+                "A linked heading",
+            ),
+            ("## Plain heading", "Plain heading"),
+            ("## Trailing *emphasis*", "Trailing emphasis"),
+            ("Setext heading *here*\n===", "Setext heading here"),
+        ] {
+            let text = format!(
+                "<!-- memoria:section id=\"s\" files=\"a.rs\" -->\n{body}\n\nBody text.\n<!-- /memoria:section -->\n"
+            );
+            let parsed = parse(&text);
+            assert!(
+                parsed.section_issues.is_empty(),
+                "{body:?}: {:?}",
+                parsed.section_issues
+            );
+            assert_eq!(parsed.sections[0].heading, expected, "{body:?}");
+        }
+    }
+
+    #[test]
+    fn heading_validation_is_unchanged_by_the_termination_fix() {
+        // A body that does not open with a heading is still refused.
+        for body in [
+            "Plain paragraph.",
+            "- list item",
+            "> quote",
+            "```\ncode\n```",
+        ] {
+            let text = format!(
+                "<!-- memoria:section id=\"s\" files=\"a.rs\" -->\n{body}\n<!-- /memoria:section -->\n"
+            );
+            assert!(
+                !parse(&text).section_issues.is_empty(),
+                "{body:?} must not open a section"
+            );
+        }
+        // A heading with no text at all is still refused.
+        let text = "<!-- memoria:section id=\"s\" files=\"a.rs\" -->\n##\n\nBody.\n<!-- /memoria:section -->\n";
+        let parsed = parse(text);
+        assert!(
+            parsed
+                .section_issues
+                .iter()
+                .any(|i| i.message.contains("no text")),
+            "{:?}",
+            parsed.section_issues
+        );
+        // Only the first heading becomes the hint; a later one does not extend it.
+        let text = "<!-- memoria:section id=\"s\" files=\"a.rs\" -->\n## First *one*\n\nProse.\n\n## Second\n<!-- /memoria:section -->\n";
+        assert_eq!(parse(text).sections[0].heading, "First one");
+    }
+
+    #[test]
+    fn section_markers_accept_crlf_and_trailing_blanks() {
+        let text = "<!-- memoria:section id=\"a\" files=\"x.rs\" -->  \r\n# Title\r\nBody.\r\n<!-- /memoria:section -->\t\r\n";
+        let parsed = parse(text);
+        assert!(
+            parsed.section_issues.is_empty(),
+            "{:?}",
+            parsed.section_issues
+        );
+        assert_eq!(parsed.sections[0].heading, "Title");
+        assert_eq!(
+            (parsed.sections[0].first_line, parsed.sections[0].last_line),
+            (2, 3)
+        );
+    }
+
+    #[test]
+    fn section_markers_inside_code_are_literal() {
+        let text = "```markdown\n<!-- memoria:section id=\"x\" files=\"a.rs\" -->\n<!-- /memoria:section -->\n```\n\n    <!-- memoria:section id=\"y\" files=\"b.rs\" -->\n\ntext\n";
+        let parsed = parse(text);
+        assert!(parsed.issues.is_empty(), "{:?}", parsed.issues);
+        assert!(
+            parsed.section_issues.is_empty(),
+            "{:?}",
+            parsed.section_issues
+        );
+        assert!(parsed.sections.is_empty());
+    }
+
+    #[test]
+    fn malformed_section_markers_are_advisory_not_structural() {
+        for text in [
+            // Wrong indentation, still visible rather than silently dropped.
+            "text\n\n  <!-- memoria:section id=\"a\" files=\"x.rs\" -->\n# T\n  <!-- /memoria:section -->\n",
+            // Attribute order is fixed.
+            "<!-- memoria:section files=\"x.rs\" id=\"a\" -->\n# T\n<!-- /memoria:section -->\n",
+            // Unknown extra attribute.
+            "<!-- memoria:section id=\"a\" files=\"x.rs\" extra=\"1\" -->\n# T\n<!-- /memoria:section -->\n",
+            // Single quotes.
+            "<!-- memoria:section id='a' files='x.rs' -->\n# T\n<!-- /memoria:section -->\n",
+            // No space padding inside the comment.
+            "<!--memoria:section id=\"a\" files=\"x.rs\"-->\n# T\n<!-- /memoria:section -->\n",
+            // Empty files attribute.
+            "<!-- memoria:section id=\"a\" files=\"\" -->\n# T\n<!-- /memoria:section -->\n",
+            // Two spaces between paths.
+            "<!-- memoria:section id=\"a\" files=\"x.rs  y.rs\" -->\n# T\n<!-- /memoria:section -->\n",
+            // A glob is not a literal path.
+            "<!-- memoria:section id=\"a\" files=\"src/*.rs\" -->\n# T\n<!-- /memoria:section -->\n",
+            // Parent components are refused.
+            "<!-- memoria:section id=\"a\" files=\"../x.rs\" -->\n# T\n<!-- /memoria:section -->\n",
+            // Absolute paths are refused.
+            "<!-- memoria:section id=\"a\" files=\"/x.rs\" -->\n# T\n<!-- /memoria:section -->\n",
+            // The same path twice in one section.
+            "<!-- memoria:section id=\"a\" files=\"x.rs x.rs\" -->\n# T\n<!-- /memoria:section -->\n",
+            // The id grammar.
+            "<!-- memoria:section id=\"9a\" files=\"x.rs\" -->\n# T\n<!-- /memoria:section -->\n",
+            // Duplicate ids inside one README.
+            "<!-- memoria:section id=\"a\" files=\"x.rs\" -->\n# T\n<!-- /memoria:section -->\n<!-- memoria:section id=\"a\" files=\"y.rs\" -->\n# U\n<!-- /memoria:section -->\n",
+            // A body that does not open with a heading.
+            "<!-- memoria:section id=\"a\" files=\"x.rs\" -->\nPlain paragraph.\n<!-- /memoria:section -->\n",
+            // An empty body.
+            "<!-- memoria:section id=\"a\" files=\"x.rs\" -->\n<!-- /memoria:section -->\n",
+            // Never closed.
+            "<!-- memoria:section id=\"a\" files=\"x.rs\" -->\n# T\n",
+            // Closed without an opening.
+            "<!-- /memoria:section -->\n",
+            // Sections cannot nest.
+            "<!-- memoria:section id=\"a\" files=\"x.rs\" -->\n# T\n<!-- memoria:section id=\"b\" files=\"y.rs\" -->\n# U\n<!-- /memoria:section -->\n<!-- /memoria:section -->\n",
+        ] {
+            let parsed = parse(text);
+            assert!(
+                !parsed.section_issues.is_empty(),
+                "expected an advisory problem for {text:?}"
+            );
+            assert!(
+                parsed
+                    .section_issues
+                    .iter()
+                    .all(|i| i.code == "section_mapping_invalid"),
+                "{:?}",
+                parsed.section_issues
+            );
+            // Advice is withdrawn completely, and the README stays structurally valid.
+            assert!(parsed.sections.is_empty(), "{text:?}");
+            assert!(parsed.issues.is_empty(), "{text:?}: {:?}", parsed.issues);
+        }
+    }
+
+    #[test]
+    fn one_invalid_mapping_withdraws_every_section() {
+        let text = "<!-- memoria:section id=\"good\" files=\"x.rs\" -->\n# Good\n<!-- /memoria:section -->\n\n<!-- memoria:section id=\"bad\" files=\"../y.rs\" -->\n# Bad\n<!-- /memoria:section -->\n";
+        let parsed = parse(text);
+        assert_eq!(parsed.section_issues.len(), 1);
+        assert!(parsed.sections.is_empty());
+    }
+
+    #[test]
+    fn exports_may_sit_inside_a_section_but_never_cross_it() {
+        // An export wholly inside a section is allowed.
+        let ok = "<!-- memoria:section id=\"a\" files=\"x.rs\" -->\n# Title\n<!-- memoria:export id=\"summary\" -->\nText.\n<!-- /memoria:export -->\n<!-- /memoria:section -->\n";
+        let parsed = parse(ok);
+        assert!(parsed.issues.is_empty(), "{:?}", parsed.issues);
+        assert!(
+            parsed.section_issues.is_empty(),
+            "{:?}",
+            parsed.section_issues
+        );
+        assert_eq!(parsed.sections.len(), 1);
+        assert_eq!(parsed.exports.len(), 1);
+        // A section that starts inside an export is refused.
+        let inside = "<!-- memoria:export id=\"summary\" -->\n<!-- memoria:section id=\"a\" files=\"x.rs\" -->\n# T\n<!-- /memoria:section -->\n<!-- /memoria:export -->\n";
+        assert!(!parse(inside).section_issues.is_empty());
+        // A section that closes while an export is open crosses the boundary.
+        let crossing = "<!-- memoria:section id=\"a\" files=\"x.rs\" -->\n# T\n<!-- memoria:export id=\"summary\" -->\nText.\n<!-- /memoria:section -->\n<!-- /memoria:export -->\n";
+        let parsed = parse(crossing);
+        assert!(
+            parsed
+                .section_issues
+                .iter()
+                .any(|i| i.message.contains("cross")),
+            "{:?}",
+            parsed.section_issues
+        );
+    }
+
+    #[test]
+    fn section_like_text_in_prose_is_reported_not_dropped() {
+        // An HTML comment that mentions a section but is not one must surface.
+        assert!(!section_codes("<!-- memoria:section -->\n").is_empty());
+        // Ordinary prose naming the marker is not a declaration.
+        let prose = "Write `<!-- memoria:section id=\"a\" files=\"x.rs\" -->` at column zero.\n";
+        let parsed = parse(prose);
+        assert!(
+            parsed.section_issues.is_empty(),
+            "{:?}",
+            parsed.section_issues
+        );
+        assert!(parsed.issues.is_empty(), "{:?}", parsed.issues);
     }
 
     #[test]

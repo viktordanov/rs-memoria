@@ -86,9 +86,9 @@ fn bom_prefixed_ignore_comments_have_no_policy_meaning() {
         project.cause_codes("src/execution/README.md"),
         vec!["input_changed"]
     );
-    let (bom_packet, _) = project.review_packet("src/execution/README.md");
+    let (bom_packet, _) = project.review_full("src/execution/README.md");
     project.write(".gitignore", format!("*.log\n{rules}"));
-    let (plain_packet, _) = project.review_packet("src/execution/README.md");
+    let (plain_packet, _) = project.review_full("src/execution/README.md");
     assert_eq!(policy_hash(&bom_packet), policy_hash(&plain_packet));
     project.write(".gitignore", &rules);
     assert_eq!(project.json(&["check"]).0, 0);
@@ -140,7 +140,9 @@ fn deleting_the_packet_document_is_a_snapshot_conflict() {
             .0,
         0
     );
-    let (packet, token) = project.review_packet(document);
+    // Exact removal evidence, including the deletion hunk, needs the
+    // reviewed bytes that only a full export carries.
+    let (packet, token) = project.review_full(document);
     let before = project.state();
     project.remove(document);
     // JSON: the conflict class with the removed document and its inputs.
@@ -232,7 +234,8 @@ fn document_deleted_during_final_revalidation_is_a_snapshot_conflict() {
     project.baseline();
     let document = "src/disconnected/README.md";
     project.append("src/disconnected/item.rs", "// pending\n");
-    let (packet, token) = project.review_packet(document);
+    // The exact removal evidence needs the reviewed bytes.
+    let (packet, token) = project.review_full(document);
     let before = project.state();
     let shim_dir = tempfile::tempdir().unwrap();
     let real =

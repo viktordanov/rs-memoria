@@ -17,6 +17,7 @@ pub mod packet_view;
 pub mod plan;
 pub mod prepare_review;
 pub mod render;
+pub mod requirements;
 pub mod state_diff;
 pub mod state_inspect;
 pub mod status;

@@ -5,6 +5,12 @@
 The maintainer published [version 0.5.0](https://github.com/viktordanov/rs-memoria/releases/tag/v0.5.0), including both Linux archives and their checksum sidecars.
 The `viktordanov/rs-memoria@v0.5.0` reference resolves, and the generated job can install Memoria.
 
+CAUTION: Memoria 0.6.0 is not published. An install from an unreleased
+executable writes its own version into the workflow, and that reference cannot
+resolve until the maintainer publishes it. Until then, pass an explicit
+published version: `memoria integrations github install --version 0.5.0
+--action-ref v0.5.0 --apply`.
+
 ## Contents
 
 1. [Mental model](#1-mental-model)
@@ -48,7 +54,10 @@ An apply recomputes its plan from the bytes on disk at that moment. An earlier p
 
 The default destination is `.github/workflows/memoria.yml`. A custom `--path` must name one direct `.yml` or `.yaml` child of `.github/workflows`.
 
-The workflow body comes from one embedded template. Its `@v0.5.0` reference selects the published release:
+The workflow body comes from one embedded template. The `--version` and
+`--action-ref` values decide the two references. They default to the version
+of the executable that writes the file. The example that follows shows the
+published 0.5.0 release:
 
 ```yaml
 name: Memoria documentation

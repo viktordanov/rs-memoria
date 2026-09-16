@@ -246,10 +246,13 @@ fn packets_above_the_decoded_budget_are_refused_and_smaller_ones_round_trip() {
     let big = "A".repeat(9 * 1024 * 1024) + "\n";
     project.write("src/execution/big.txt", &big);
     project.commit_all("large baseline");
+    // The decoded-content cap applies to the representation that carries the
+    // bytes, so this exercise uses full exports throughout.
     let (packet, token) = {
         let output = project.run(&[
             "review",
             "src/execution/README.md",
+            "--full",
             "--max-bytes",
             "33554432",
             "--format",
@@ -282,6 +285,7 @@ fn packets_above_the_decoded_budget_are_refused_and_smaller_ones_round_trip() {
     let (code, refused) = project.json(&[
         "review",
         "src/execution/README.md",
+        "--full",
         "--max-bytes",
         "33554432",
     ]);
@@ -305,6 +309,7 @@ fn packets_above_the_decoded_budget_are_refused_and_smaller_ones_round_trip() {
     let output = project.run(&[
         "review",
         "src/execution/README.md",
+        "--full",
         "--max-bytes",
         "33554432",
         "--format",

@@ -1,18 +1,23 @@
-//! The focused review packet and its deterministic token.
+//! Review artifacts, their limits, and the deterministic v3 token.
 
 use memoria_domain::canonical;
-use memoria_domain::{DocumentId, GitContext, GuidanceDigest, Hash64, InputManifest, ReviewRecord};
+use memoria_domain::{DocumentId, GitContext, Hash64, InputManifest, ReviewRecord};
 
 use crate::error::{Detail, DetailMap};
 use crate::guidance::EffectiveGuidance;
 use crate::ports::FingerprintHasher;
 
-pub const PACKET_VERSION: u64 = 2;
+/// Full offline exports. Version 2 packets are not accepted: packets are
+/// ephemeral, so an old one is regenerated rather than converted.
+pub const PACKET_VERSION: u64 = 3;
 /// The version of every CLI JSON envelope. The release has one clean
-/// cutover: `schema_version: 2` for envelopes and packets alike.
-pub const ENVELOPE_SCHEMA_VERSION: u64 = 2;
-pub const TOKEN_PREFIX: &str = "mrv2.";
+/// cutover: `schema_version: 3` for envelopes, manifests, and packets alike.
+pub const ENVELOPE_SCHEMA_VERSION: u64 = 3;
+pub const TOKEN_PREFIX: &str = "mrv3.";
 pub const TOKEN_LENGTH: usize = 21;
+/// Token prefixes this release recognizes but refuses, so the diagnostic can
+/// name the release that produced them.
+pub const RETIRED_TOKEN_PREFIXES: [&str; 2] = ["mrv1.", "mrv2."];
 
 /// Default raw-input budget: 8 MiB.
 pub const DEFAULT_RAW_INPUT_LIMIT: u64 = 8 * 1024 * 1024;
@@ -142,6 +147,16 @@ pub struct PacketContext {
     pub diffs: Vec<DiffEntry>,
 }
 
+/// The canonical descriptors a full export carries so an offline reader can
+/// recompute the token's `C` and `B` without the project.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PacketBinding {
+    pub context: memoria_domain::ReviewContext,
+    /// The prior record used for `B`, repeated here so the binding is
+    /// self-sufficient.
+    pub baseline: Option<ReviewRecord>,
+}
+
 /// The complete snapshot handed to a reviewer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FocusedReviewPacket {
@@ -157,24 +172,111 @@ pub struct FocusedReviewPacket {
     pub context: PacketContext,
     pub raw_input_bytes: u64,
     pub record_count: u64,
+    /// The same review requirements a small manifest would state.
+    pub requirements: crate::review::ReviewManifest,
+    /// Canonical context descriptors for offline token validation.
+    pub binding: PacketBinding,
 }
 
-/// Compute the compact token for the snapshot fields.
+/// One decoded acknowledgement-capable artifact.
+///
+/// Both kinds bind the same snapshot and carry the same token. The small
+/// manifest states requirements; the full export adds the bytes. Neither
+/// narrows what acknowledgement revalidates against the live repository.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReviewArtifact {
+    Manifest(Box<crate::review::ReviewManifest>),
+    Full(Box<FocusedReviewPacket>),
+}
+
+impl ReviewArtifact {
+    pub fn document(&self) -> &DocumentId {
+        match self {
+            ReviewArtifact::Manifest(m) => &m.document,
+            ReviewArtifact::Full(p) => &p.document,
+        }
+    }
+
+    pub fn token(&self) -> &str {
+        match self {
+            ReviewArtifact::Manifest(m) => &m.token,
+            ReviewArtifact::Full(p) => &p.token,
+        }
+    }
+
+    pub fn review_revision(&self) -> u64 {
+        match self {
+            ReviewArtifact::Manifest(m) => m.review_revision,
+            ReviewArtifact::Full(p) => p.review_revision,
+        }
+    }
+
+    pub fn covered_invalidations(&self) -> &[(u64, String)] {
+        match self {
+            ReviewArtifact::Manifest(m) => &m.covered_invalidations,
+            ReviewArtifact::Full(p) => &p.covered_invalidations,
+        }
+    }
+
+    /// The review requirements both representations state.
+    pub fn requirements(&self) -> &crate::review::ReviewManifest {
+        match self {
+            ReviewArtifact::Manifest(m) => m,
+            ReviewArtifact::Full(p) => &p.requirements,
+        }
+    }
+
+    /// The complete reviewed input manifest, when the artifact carries one.
+    /// A small manifest deliberately does not copy every unchanged hash.
+    pub fn manifest(&self) -> Option<&InputManifest> {
+        match self {
+            ReviewArtifact::Manifest(_) => None,
+            ReviewArtifact::Full(p) => Some(&p.manifest),
+        }
+    }
+
+    pub fn full(&self) -> Option<&FocusedReviewPacket> {
+        match self {
+            ReviewArtifact::Manifest(_) => None,
+            ReviewArtifact::Full(p) => Some(p),
+        }
+    }
+
+    pub fn kind(&self) -> &'static str {
+        match self {
+            ReviewArtifact::Manifest(_) => crate::review::MANIFEST_KIND,
+            ReviewArtifact::Full(_) => "focused_review",
+        }
+    }
+}
+
+/// Compute the v3 token from the three bound digests.
+///
+/// `I`, `B`, and `C` are the complete input manifest, the complete prior
+/// review record, and the complete review context. The same stable snapshot
+/// produces the same token in the small and the full representation.
 #[allow(clippy::too_many_arguments)]
-pub fn compute_token(
+pub fn compute_token_v3(
     hasher: &dyn FingerprintHasher,
     document: &DocumentId,
     review_revision: u64,
-    manifest: &InputManifest,
-    guidance: GuidanceDigest,
+    inputs_digest: Hash64,
+    baseline_digest: Hash64,
+    context_digest: Hash64,
     covered: &[(u64, String)],
 ) -> String {
-    let bytes =
-        canonical::encode_review_token(document, review_revision, manifest, guidance, covered);
+    let bytes = canonical::encode_review_token_v3(
+        document,
+        review_revision,
+        inputs_digest,
+        baseline_digest,
+        context_digest,
+        covered,
+    );
     format!("{TOKEN_PREFIX}{}", hasher.hash(&bytes).to_hex())
 }
 
-/// Validate the fixed 21-byte token grammar `^mrv2\.[0-9a-f]{16}$`.
+/// Validate the fixed 21-byte token grammar `^mrv3\.[0-9a-f]{16}$`.
 pub fn validate_token_text(token: &str) -> Result<Hash64, String> {
     if token.len() != TOKEN_LENGTH {
         return Err(format!(
@@ -186,6 +288,16 @@ pub fn validate_token_text(token: &str) -> Result<Hash64, String> {
         return Err("token must be ASCII".to_string());
     }
     let Some(hex) = token.strip_prefix(TOKEN_PREFIX) else {
+        // Old tokens are refused with regeneration instructions. Nothing is
+        // converted, reinterpreted, or silently upgraded.
+        if RETIRED_TOKEN_PREFIXES
+            .iter()
+            .any(|prefix| token.starts_with(prefix))
+        {
+            return Err(format!(
+                "token {token:?} comes from an earlier release; run `memoria review` again and use the new {TOKEN_PREFIX} token"
+            ));
+        }
         return Err(format!("token must start with {TOKEN_PREFIX:?}"));
     };
     Hash64::parse(hex)
@@ -428,6 +540,29 @@ impl FocusedReviewPacket {
                     .build(),
             )
             .with(
+                // The complete manifest-v1 data object, minus its own
+                // artifact digest: the full `packet_digest` already covers it.
+                "requirements",
+                self.requirements.requirements_detail(),
+            )
+            .with(
+                "binding",
+                DetailMap::default()
+                    .with(
+                        "context",
+                        crate::review_context::context_detail(&self.binding.context),
+                    )
+                    .with(
+                        "baseline",
+                        self.binding
+                            .baseline
+                            .as_ref()
+                            .map(review_record_detail)
+                            .unwrap_or(Detail::Null),
+                    )
+                    .build(),
+            )
+            .with(
                 "size",
                 DetailMap::default()
                     .number("raw_input_bytes", self.raw_input_bytes)
@@ -444,16 +579,25 @@ mod tests {
 
     #[test]
     fn token_grammar() {
-        assert!(validate_token_text("mrv2.ef46db3751d8e999").is_ok());
-        assert!(validate_token_text("mrv2.EF46DB3751D8E999").is_err());
-        assert!(validate_token_text("mrv2.ef46db3751d8e99").is_err());
-        assert!(validate_token_text("mrv2.ef46db3751d8e9999").is_err());
-        // Version 1 packets are rejected before acknowledgement.
-        assert!(validate_token_text("mrv1.ef46db3751d8e999").is_err());
-        assert!(validate_token_text("mrv2.ef46db3751d8e99 ").is_err());
-        assert!(validate_token_text("mrv2.ef46db3751d8e99é").is_err());
+        assert!(validate_token_text("mrv3.ef46db3751d8e999").is_ok());
+        assert!(validate_token_text("mrv3.EF46DB3751D8E999").is_err());
+        assert!(validate_token_text("mrv3.ef46db3751d8e99").is_err());
+        assert!(validate_token_text("mrv3.ef46db3751d8e9999").is_err());
+        assert!(validate_token_text("mrv3.ef46db3751d8e99 ").is_err());
+        assert!(validate_token_text("mrv3.ef46db3751d8e99é").is_err());
         assert!(validate_token_text(&"a".repeat(256)).is_err());
         assert!(validate_token_text(&"a".repeat(257)).is_err());
+    }
+
+    #[test]
+    fn retired_tokens_ask_for_a_fresh_review() {
+        // Old tokens are refused with regeneration instructions, never
+        // converted and never silently upgraded.
+        for retired in ["mrv1.ef46db3751d8e999", "mrv2.ef46db3751d8e999"] {
+            let message = validate_token_text(retired).unwrap_err();
+            assert!(message.contains("earlier release"), "{message}");
+            assert!(message.contains("memoria review"), "{message}");
+        }
     }
 
     #[test]

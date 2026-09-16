@@ -82,7 +82,9 @@ impl Isolated {
 
     /// Capture a packet for the root README (ready: it has no providers).
     fn packet(&self) -> (PathBuf, String, String) {
-        let output = self.run(&["review", "README.md", "--format", "json"]);
+        // The full export carries the complete input manifest this helper
+        // reports the policy hash from.
+        let output = self.run(&["review", "README.md", "--full", "--format", "json"]);
         assert_eq!(output.status.code(), Some(0), "{}", stdout(&output));
         let value = parse_json(&output.stdout);
         let path = self.project.packets.path().join(format!(

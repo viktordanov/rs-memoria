@@ -21,9 +21,11 @@ pub mod path;
 pub mod policy;
 pub mod review;
 pub mod schedule;
+pub mod section;
 pub mod selection;
 pub mod text;
 
+pub use canonical::{ConsumerEdge, ImportEdge, ProviderDescriptor, ReviewContext};
 pub use document::{ByteRange, Document, Export, ExportId, Import, SourceLocation};
 pub use glob::{Glob, GlobError};
 pub use graph::{GraphError, ImportGraph, NavigationGraph};
@@ -40,4 +42,7 @@ pub use review::{
     Timestamp,
 };
 pub use schedule::{DocumentStatus, PendingCause, schedule};
+pub use section::{
+    InvalidSectionId, SectionId, SectionMap, SectionMapIdentity, SectionMapping, SectionPathError,
+};
 pub use selection::{Exclusion, RuleKind, RuleScope, SelectionDecision, SelectionStep};

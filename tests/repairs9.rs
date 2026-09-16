@@ -106,47 +106,61 @@ fn human_review_refuses_packets_above_the_record_cap_like_json() {
         assert_eq!(project.run(&["init", "--apply"]).status.code(), Some(0));
         project
     };
-    // Calibrate: every instruction is one record; the navigation diagnostic adds one.
-    let probe = make(10);
-    let output = probe.run(&["review", "README.md", "--format", "json"]);
-    assert_eq!(output.status.code(), Some(0));
-    let envelope = json::parse(&output.stdout, Limits::PACKET).unwrap();
-    let base = get_u64(&envelope, &["data", "size", "record_count"]) - 10;
+    // The record cap governs the transported full export. Calibrate its cost
+    // from two probes rather than assuming it: a guidance entry is counted
+    // once in the packet's context and once in its embedded requirements.
+    let count = |instructions: usize| -> u64 {
+        let project = make(instructions);
+        let output = project.run(&["review", "README.md", "--full", "--format", "json"]);
+        assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+        let envelope = json::parse(&output.stdout, Limits::PACKET).unwrap();
+        get_u64(&envelope, &["data", "size", "record_count"])
+    };
+    let (small, large) = (count(10), count(20));
+    let per_instruction = (large - small) / 10;
+    assert!(per_instruction >= 1, "each entry costs at least one record");
+    let base = small - 10 * per_instruction;
     assert!(
         base >= 1,
         "the disconnected child produces a diagnostic element"
     );
-    let exact = 100_000 - base as usize;
+    let remaining = 100_000 - base;
+    assert_eq!(
+        remaining % per_instruction,
+        0,
+        "the cap is reachable exactly with {per_instruction} records per entry"
+    );
+    let exact = (remaining / per_instruction) as usize;
     // Exactly 100,000 records: both formats succeed with the same count.
     let project = make(exact);
-    let output = project.run(&["review", "README.md", "--format", "json"]);
+    let output = project.run(&["review", "README.md", "--full", "--format", "json"]);
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
     let envelope = json::parse(&output.stdout, Limits::PACKET).unwrap();
     assert_eq!(
         get_u64(&envelope, &["data", "size", "record_count"]),
         100_000
     );
-    let human = project.run(&["review", "README.md"]);
+    let human = project.run(&["review", "README.md", "--full"]);
     assert_eq!(human.status.code(), Some(0));
     assert!(
         stdout(&human).contains("in 100000 record(s)"),
         "{}",
         stdout(&human)
     );
-    assert!(stdout(&human).contains("Token           mrv2."));
-    // 100,001 records: both formats refuse without a token.
+    assert!(stdout(&human).contains("Token           mrv3."));
+    // Above the cap: both formats refuse without a token.
     let project = make(exact + 1);
-    let (code, refused) = project.json(&["review", "README.md"]);
+    let (code, refused) = project.json(&["review", "README.md", "--full"]);
     assert_eq!(code, 1);
     assert_eq!(diagnostic_codes(&refused), vec!["packet_too_large"]);
     assert!(matches!(
         get(&refused, &["data"]),
         Json::Null | Json::Object(_)
     ));
-    let human = project.run(&["review", "README.md"]);
+    let human = project.run(&["review", "README.md", "--full"]);
     assert_eq!(human.status.code(), Some(1), "{}", stdout(&human));
     assert!(
-        !stdout(&human).contains("mrv2."),
+        !stdout(&human).contains("mrv3."),
         "no token in human output: {}",
         stdout(&human)
     );

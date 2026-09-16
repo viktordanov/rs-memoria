@@ -224,6 +224,44 @@ fn missing_historical_blobs_never_invoke_a_remote_helper() {
         objects_before,
         "no objects were written"
     );
+    // The default manifest states the same fact as a fallback reason: the
+    // reviewed bytes could not be verified, so the review is a full baseline.
+    let value = parse_json(&output.stdout);
+    assert_eq!(
+        get_str(&value, &["data", "baseline", "evidence_status"]),
+        "unavailable"
+    );
+    assert_eq!(
+        get_str(&value, &["data", "review", "mode"]),
+        "full_baseline"
+    );
+    let Json::Array(reasons) = get(&value, &["data", "review", "fallback_reasons"]) else {
+        panic!()
+    };
+    assert!(
+        reasons
+            .iter()
+            .any(|r| get_str(r, &["code"]) == "baseline_unavailable"),
+        "{reasons:?}"
+    );
+    // The full export keeps the same evidence and still calls no helper.
+    let output = project
+        .command(
+            &project.root,
+            &[
+                "review",
+                "src/execution/README.md",
+                "--full",
+                "--format",
+                "json",
+            ],
+        )
+        .env("PATH", &path)
+        .env("GIT_ALLOW_PROTOCOL", "reviewtest")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    assert!(!sentinel.exists());
     let value = parse_json(&output.stdout);
     let Json::Array(diffs) = get(&value, &["data", "context", "diffs"]) else {
         panic!()

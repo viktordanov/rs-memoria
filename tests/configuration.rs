@@ -101,12 +101,15 @@ fn legacy_sidecars_are_ordinary_files_without_rules_or_guidance() {
             "selected"
         );
     }
+    // The default manifest names the effective guidance sources without
+    // copying their prose.
     let (packet, _) = project.review_packet("src/retrieval/README.md");
     let value = parse_json(&std::fs::read(packet).unwrap());
-    let Json::Array(entries) = get(&value, &["data", "context", "guidance", "entries"]) else {
+    let Json::Array(references) = get(&value, &["data", "guidance", "references"]) else {
         panic!()
     };
-    assert!(entries.iter().all(|entry| {
+    assert!(!references.is_empty());
+    assert!(references.iter().all(|entry| {
         let source = get_str(entry, &["source"]);
         !source.ends_with(".yml") && !source.ends_with(".yaml")
     }));
@@ -129,7 +132,33 @@ fn toml_sidecar_restores_files_and_reports_exact_guidance_sources() {
     );
     let (packet, _) = project.review_packet("src/retrieval/README.md");
     let value = parse_json(&std::fs::read(packet).unwrap());
-    let Json::Array(entries) = get(&value, &["data", "context", "guidance", "entries"]) else {
+    let Json::Array(references) = get(&value, &["data", "guidance", "references"]) else {
+        panic!()
+    };
+    // The default manifest names every effective source in authored order
+    // and carries none of their prose.
+    for source in [
+        "memoria.toml",
+        "src/retrieval/README.memoria.toml",
+        "src/retrieval/rules.txt",
+    ] {
+        assert!(
+            references
+                .iter()
+                .any(|entry| get_str(entry, &["source"]) == source),
+            "missing {source}: {references:?}"
+        );
+    }
+    assert!(
+        references
+            .iter()
+            .all(|entry| matches!(entry, Json::Object(map) if !map.contains_key("text"))),
+        "a manifest never copies authored guidance prose"
+    );
+    // The exact text stays one ordinary command away.
+    let (code, guidance) = project.json(&["guidance", "src/retrieval/README.md"]);
+    assert_eq!(code, 0, "{guidance:?}");
+    let Json::Array(entries) = get(&guidance, &["data", "entries"]) else {
         panic!()
     };
     for (source, text) in [
@@ -145,11 +174,15 @@ fn toml_sidecar_restores_files_and_reports_exact_guidance_sources() {
             "missing {source}: {entries:?}"
         );
     }
-    // The same effective guidance is visible without a review packet.
-    let (code, guidance) = project.json(&["guidance", "src/retrieval/README.md"]);
-    assert_eq!(code, 0, "{guidance:?}");
     assert_eq!(
         get_str(&guidance, &["data", "digest"]),
-        get_str(&value, &["data", "context", "guidance", "digest"])
+        get_str(&value, &["data", "guidance", "digest"])
     );
+    // The full export still carries the complete prose for offline reading.
+    let (full, _) = project.review_full("src/retrieval/README.md");
+    let full = parse_json(&std::fs::read(full).unwrap());
+    let Json::Array(full_entries) = get(&full, &["data", "context", "guidance", "entries"]) else {
+        panic!()
+    };
+    assert_eq!(full_entries.len(), entries.len());
 }

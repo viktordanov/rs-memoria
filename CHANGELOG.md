@@ -4,11 +4,113 @@ This file records user-visible changes in Memoria. The project maintainer owns r
 
 Contents:
 
+- [0.6.0](#060---2026-09-16)
+- [Migration to 0.6.0](#migration-to-060)
 - [0.5.0](#050---2026-09-11)
 - [Migration to 0.5.0](#migration-to-050)
 - [0.4.0](#040---2026-09-10)
 - [0.3.0](#030---2026-09-09)
 - [0.2.0](#020).
+
+## 0.6.0 - 2026-09-16
+
+### The default review output changed
+
+`memoria review <README.md>` now returns a small review manifest in human and
+JSON output alike. The manifest states what the review must read and why it
+cannot read less. It carries no README body, no source body, no import body,
+no historical content, and no authored guidance prose.
+
+Read the listed paths with your ordinary file tools. Memoria adds no read
+command, no range command, and no content API.
+
+`memoria review <README.md> --full` produces the previous complete export. It
+carries every reviewed byte and the same token.
+
+Both artifacts acknowledge. `memoria ack --packet` accepts either one.
+
+### Added
+
+- **Advisory section mappings.** A README can map one part of its prose to the sources it describes with `<!-- memoria:section id="ID" files="a.rs b.rs" -->` ... `<!-- /memoria:section -->`. A section is a reading hint. It creates no ownership and no separate freshness. One invalid mapping withdraws the advice of the whole README and produces the `section_mapping_invalid` warning. `lint` does not fail because of section advice alone.
+- **Review mode and fallback reasons.** `data.review.mode` is `focused_candidate` or `full_baseline`. `data.review.fallback_reasons` names every cause, with one of eleven fixed codes.
+- **Baseline evidence state.** `data.baseline.evidence_status` is `verified`, `partial`, or `unavailable`. Unverifiable reviewed bytes select the full baseline instead of a fabricated diff.
+- **Full exports state their own requirements.** `data.requirements` repeats the manifest, and `data.binding` carries the canonical context descriptors. A reader can recompute the token from the file alone.
+
+### Changed
+
+- Every CLI JSON envelope moves to `schema_version: 3` in one cutover. The native hook protocol is separate and unchanged.
+- The review token becomes `mrv3.<16 hex>`. It binds the complete input manifest, the complete prior review record, and a new review context. The context binds the ownership boundaries, the effective selection policy and its selected path set, the section mapping associations, the effective guidance digest, and the transitive provider closure.
+- A provider edit can now invalidate a consumer token even when the imported export body stays equal. That edit does not make the consumer stale by itself. Freshness and scheduling are unchanged.
+- The full export becomes `packet_version: 3`.
+- `memoria packet view` accepts a current full export only. For a manifest it reports `packet_content_unavailable` and names the two ways to read the content.
+- `--full` now selects the representation in both output formats. It is no longer a human-only presentation flag.
+- The decoded-content limit of 32 MiB applies to the full export, which transports the bytes. The raw-input limits of 8 MiB and 32 MiB still apply to both artifacts.
+- Legacy P1 projection stays available for full exports. It never reduces the scope that `data.review.mode` requires.
+
+### Removed
+
+- The shipped skill no longer proposes a one-percentage-point degradation ceiling at 95% confidence or a 50% median token reduction. Those targets are withdrawn, and no completed evaluation supported them. Reading cost and missed changes are observations with stated limits, never release promises.
+
+### Compatibility
+
+CAUTION: Old review artifacts do not work with 0.6.0. Produce new ones.
+
+- A version 2 envelope, a version 2 packet, and an `mrv1` or `mrv2` token are refused with instructions to run `memoria review` again. Memoria converts nothing, migrates nothing, and upgrades nothing automatically. Review artifacts are ephemeral, so regeneration is the whole procedure.
+- **The state format is unchanged.** `memoria.lock` keeps format version 2 and its codec. An existing lock stays readable and stays a valid baseline candidate. There is no bulk invalidation, no state conversion, and no fabricated acknowledgement.
+- No review becomes stale because of this upgrade. An outstanding artifact captured before the upgrade must be regenerated.
+- An older executable cannot parse section comments correctly. Upgrade every executable before you author sections. Do not mix versions in one review workflow.
+
+## Migration to 0.6.0
+
+### 1. Install the new version
+
+```sh
+cargo install --locked --git https://github.com/viktordanov/rs-memoria --tag v0.6.0
+memoria --version
+```
+
+### 2. Discard review artifacts captured before the upgrade
+
+If you saved a review artifact and did not acknowledge it, delete it. Then run
+`memoria review <README.md> --format json` again for a current manifest.
+
+If you skip this step, `memoria ack` refuses the old artifact with exit 2 and
+tells you to produce a new one. Nothing is written.
+
+### 3. Adopt the new default output
+
+If a script reads `data.content`, `data.context`, or `data.manifest` from
+`memoria review <README.md> --format json`, add `--full` to that invocation.
+The full export keeps those fields.
+
+If a script only needs the token or the changed identities, read the manifest
+instead. It is smaller and it carries the same token.
+
+If you skip this step, the script reads absent fields.
+
+### 4. Map README sections to sources, if you want the advice
+
+This step is optional. Memoria works exactly as before without a single
+section.
+
+```markdown
+<!-- memoria:section id="persistence" files="handle.go service.go" -->
+## Saving and synchronizing
+
+Save writes a local archive. Sync also uploads the archive.
+<!-- /memoria:section -->
+```
+
+Add the markers, then invoke `memoria lint`. A mistyped mapping produces a
+`section_mapping_invalid` warning with the line and the reason. `lint` still
+exits 0.
+
+The advice starts after the next acknowledgement of that README. A new mapping
+requires one full baseline first, because a changed association cannot reduce
+the required scope.
+
+If you skip this step, every review selects the full baseline, exactly as in
+0.5.0.
 
 ## 0.5.0 - 2026-09-11
 

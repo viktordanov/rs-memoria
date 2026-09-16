@@ -18,7 +18,8 @@ fn export_changes_during_final_validation_report_exact_differences() {
     let project = Project::seed();
     project.baseline();
     project.append("README.md", "\nMore root prose.\n");
-    let (packet, token) = project.review_packet("README.md");
+    // Exact differences need the reviewed bytes the full export carries.
+    let (packet, token) = project.review_full("README.md");
     let before = project.state();
     let shim_dir = tempfile::tempdir().unwrap();
     let real =
@@ -334,7 +335,7 @@ fn quoted_guidance_with_colons_are_accepted_everywhere() {
     project.write("src/retrieval/README.memoria.toml", "include = [\n    \"fixtures/**\",\n]\n\n[documentation]\nguidance = [\n    \"Retrieval: explain ranking first.\",\n]\n");
     project.baseline();
     project.append("src/retrieval/engine.rs", "// edit\n");
-    let (packet, _) = project.review_packet("src/retrieval/README.md");
+    let (packet, _) = project.review_full("src/retrieval/README.md");
     let value = parse_json(&fs::read(packet).unwrap());
     let Json::Array(guidance) = get(&value, &["data", "context", "guidance", "entries"]) else {
         panic!()
@@ -349,7 +350,7 @@ fn quoted_guidance_with_colons_are_accepted_everywhere() {
     // The single-line array form is equivalent and does not change staleness.
     let state = project.state();
     project.write("memoria.toml", "version = 2\nignore = [\n    \"**/generated/**\",\n    \"**/fixtures/**\",\n]\n\n[documentation]\nguidance = [\"Style: use short sentences.\", 'Tone: plain words.']\nguidance_files = [\n    \".agents/writing.md\",\n]\n");
-    let (packet, _) = project.review_packet("src/retrieval/README.md");
+    let (packet, _) = project.review_full("src/retrieval/README.md");
     let value = parse_json(&fs::read(packet).unwrap());
     let Json::Array(guidance) = get(&value, &["data", "context", "guidance", "entries"]) else {
         panic!()

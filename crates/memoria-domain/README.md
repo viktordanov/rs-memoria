@@ -12,9 +12,9 @@ Read [ownership.rs](src/ownership.rs#L18) to start with the rule that assigns fi
 
 - [Role in the project](#role-in-the-project)
 - [Files and shared text](#files-and-shared-text-have-different-relationships)
-- [Manifest comparison](#manifests-make-changes-visible)
-- [Review states and acknowledgement](#pending-and-waiting-describe-different-states)
-- [Boundaries and next step](#boundaries-and-errors)
+- [Manifests and the review context](#manifests-make-changes-visible)
+- [Section mappings](#sections-map-prose-to-sources)
+- [Review states, acknowledgement, and next step](#pending-and-waiting-describe-different-states)
 
 ## Role in the project
 
@@ -64,7 +64,59 @@ The policy scopes hold repository `.gitignore` paths only.
 Host ignore sources have no identity here, so they cannot enter a policy hash.
 The encoder names the algorithms it assumes: `git-worktree-v2`, `repository-ignore-v1`, and `nearest-readme-v1`.
 
-Source evidence: [manifest.rs](src/manifest.rs#L73), [policy.rs](src/policy.rs#L1), and [canonical.rs](src/canonical.rs#L1).
+Source evidence: [manifest.rs](src/manifest.rs), [policy.rs](src/policy.rs), and [canonical.rs](src/canonical.rs).
+
+## The review context binds more than the inputs
+
+A review token identifies one snapshot. `encode_review_token_v3` accepts three
+digests, and it encodes them with four more values in one frozen order:
+
+| Encoded value | Contents |
+| --- | --- |
+| Domain and document | The separation string `memoria-review-token-v3`, then the owner identity. |
+| Review revision | The current review revision of that owner. |
+| `I`, `B`, `C` | The digests of the complete input manifest, the complete prior review record, and the review context. |
+| Invalidations | The covered invalidations, sorted by id, with their exact reasons. |
+
+The application hashes the encoded bytes. The token is `mrv3.` and the sixteen
+lowercase hexadecimal digits of that hash. The domain crate computes no hash of
+its own.
+
+`ReviewContext` holds the descriptors that reach beyond the manifest:
+
+| Component | Bound state |
+| --- | --- |
+| Ownership | The owner, its ancestor and descendant boundaries, and the nested-repository boundaries that delimit its coverage. |
+| Selection | The effective policy hash, the selected owned path set, and the selection version. |
+| Mapping | The validity state and the sorted associations from section identifier to sources. |
+| Guidance | The effective ordered guidance digest. |
+| Graph | The import edges with current export hashes, the direct consumer edges, and the transitive provider closure. |
+
+Each provider descriptor carries its input digest, guidance digest, review
+revision, active invalidations, and resolved import edges. The closure is
+deliberately conservative. A provider edit can change a consumer token even
+when the imported export body stays equal.
+
+Every collection sorts before encoding, so traversal order never reaches a
+token. The frozen byte layouts live with their tests in
+[canonical.rs](src/canonical.rs).
+
+## Sections map prose to sources
+
+`SectionMap` is one README's advisory mapping state: `Absent`, `Valid`, or
+`Invalid`. `Invalid` is total. Partial advice cannot narrow a review, because
+a reader cannot tell which mapping the author meant.
+
+`SectionMap::identity` gives the comparable association set: the sorted
+identifiers, each with its sorted source set. Body edits, heading text, and
+moved line ranges do not change it. Any changed association requires a full
+baseline.
+
+A section creates no ownership and no separate freshness. The domain validates
+the identifier grammar and the literal-path grammar. The application resolves
+each path against the project and rejects anything this README does not own.
+
+Source evidence: [section.rs](src/section.rs).
 
 ## Pending and waiting describe different states
 
@@ -79,7 +131,7 @@ A ready document is pending and has no provider that prevents its review.
 
 ## An acknowledgement advances one review
 
-A review packet captures the README and its input bytes for one review.
+A review artifact identifies the snapshot of one README and its inputs.
 An acknowledgement records the reviewer, result, and reason that the explanation is correct.
 A revision is the counter that increases after each acknowledgement for that README.
 
@@ -90,9 +142,11 @@ The application owns the lock, readiness validation, and durable save.
 
 The record stores the guidance digest as a value.
 The domain does not decide whether that guidance is good or compatible.
-The application compares the packet context with the current context before it calls the aggregate.
+The application rebuilds the complete context and recomputes the token before
+it calls the aggregate. A small artifact narrows the reading list. It never
+narrows the validated state.
 
-Source evidence: [schedule.rs](src/schedule.rs#L38) and [review.rs](src/review.rs#L1).
+Source evidence: [schedule.rs](src/schedule.rs) and [review.rs](src/review.rs).
 
 ## Boundaries and errors
 
@@ -107,12 +161,13 @@ The application maps these errors to diagnostics and exit classes.
 | `selection`, `ownership`, `policy` | Selected inputs and their owners |
 | `graph`, `schedule` | Dependencies, navigation, and review order |
 | `manifest`, `canonical` | Input comparisons and stable byte encodings |
+| `section` | Advisory mapping identities, path grammar, and mapping identity |
 | `guidance` | The guidance digest value type and its entry kinds |
 | `review` | Review records and invalidation transitions |
 
 The [crate manifest](Cargo.toml) declares no runtime dependencies.
-The [crate exports](src/lib.rs#L13) identify the implemented modules.
+The [crate exports](src/lib.rs) identify the implemented modules.
 
 ## Continue
 
-Read [ownership.rs:18](src/ownership.rs#L18) to trace one file to its owner.
+Read [ownership.rs](src/ownership.rs) to trace one file to its owner.

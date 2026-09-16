@@ -555,13 +555,13 @@ fn relative_global_excludes_resolve_from_the_worktree_root() {
     // an identical project with different host settings hashes the same
     // policy for the same document.
     project.append("src/corpus/types.rs", "// pending\n");
-    let (packet_a, _) = project.review_packet("src/corpus/README.md");
+    let (packet_a, _) = project.review_full("src/corpus/README.md");
     let twin = Project::seed();
     twin.write(".git/local-excludes", "unrelated-name/\n");
     twin.git(&["config", "core.excludesFile", ".git/local-excludes"]);
     assert_eq!(twin.run(&["init", "--apply"]).status.code(), Some(0));
     assert_eq!(twin.run(&["render"]).status.code(), Some(0));
-    let (packet_b, _) = twin.review_packet("src/corpus/README.md");
+    let (packet_b, _) = twin.review_full("src/corpus/README.md");
     let hash_of = |packet: &Path| {
         get_str(
             &parse_json(&fs::read(packet).unwrap()),
@@ -669,7 +669,9 @@ fn changed_imports_are_reported_with_exact_differences_and_text() {
     let project = Project::seed();
     project.baseline();
     project.append("README.md", "\nRoot prose edit.\n");
-    let (packet, token) = project.review_packet("README.md");
+    // Exact packet-time hunks are a guarantee of the full export: it carries
+    // the reviewed bytes a difference can be computed against.
+    let (packet, token) = project.review_full("README.md");
     let before = project.state();
     let execution = project.read_string("src/execution/README.md");
     project.write(
@@ -868,7 +870,7 @@ fn usage_errors_honor_requested_json_output() {
         let value = parse_json(&output.stdout);
         // Usage errors use the same schema 2 envelope as every other
         // machine response.
-        assert_eq!(get_u64(&value, &["schema_version"]), 2, "{args:?}");
+        assert_eq!(get_u64(&value, &["schema_version"]), 3, "{args:?}");
         assert_eq!(get_str(&value, &["command"]), command, "{args:?}");
         assert!(!get_bool(&value, &["ok"]));
         assert_eq!(diagnostic_codes(&value), vec!["usage_error"], "{args:?}");
@@ -1042,7 +1044,9 @@ fn stale_policy_and_file_set_snapshots_are_rejected_with_exact_entries() {
     let project = Project::seed();
     project.baseline();
     project.append("src/execution/runner.rs", "// pending\n");
-    let (packet, token) = project.review_packet("src/execution/README.md");
+    // Exact entries need the reviewed bytes, so this is a full-export
+    // guarantee. A small manifest reports the changed digest categories.
+    let (packet, token) = project.review_full("src/execution/README.md");
     let before = project.state();
     // Policy change with an unchanged file set.
     project.write(

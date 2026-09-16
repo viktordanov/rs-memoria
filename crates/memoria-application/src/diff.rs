@@ -1,4 +1,4 @@
-//! Line-oriented text diff for review packets and conflict explanations.
+//! Line-oriented text diff for full exports and conflict explanations.
 
 /// Upper bound on lines per side before the diff is omitted.
 pub const MAX_DIFF_LINES: usize = 20_000;

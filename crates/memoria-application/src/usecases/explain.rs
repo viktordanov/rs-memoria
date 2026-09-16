@@ -243,7 +243,7 @@ pub fn run(
         };
         if verified && change.kind == "file" && change.after.is_none() {
             code = Some("removed_file");
-            let mut context = "This input was removed from the requested boundary. The existing review packet emits no deletion hunk; this explanation retains verified deletion evidence.".to_string();
+            let mut context = "This input was removed from the requested boundary. A full export carries the old body without a deletion hunk. This explanation retains the verified deletion evidence.".to_string();
             if let Some(unavailable) = reason {
                 context.push(' ');
                 context.push_str(&unavailable);

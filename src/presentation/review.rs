@@ -1,84 +1,112 @@
-//! Change-first reading views; canonical JSON and detailed views stay separate.
-use memoria_application::{
-    error::Detail, packet::FocusedReviewPacket, usecases::explain::ExplainReport,
-};
+//! The default manifest view and the freshness explanation.
+//!
+//! Canonical JSON and the detailed full export stay in their own modules.
+use memoria_application::review::{ReviewManifest, ReviewMode};
+use memoria_application::{error::Detail, usecases::explain::ExplainReport};
 use std::fmt::Write as _;
 
-pub fn packet(p: &FocusedReviewPacket) -> String {
+/// The default human view: what to read, and why it cannot be less.
+///
+/// It carries no file content. Ordinary file tools supply the reading.
+pub fn manifest(m: &ReviewManifest) -> String {
     let mut out = format!(
-        "Review required: {}\nToken           {} (reading view, not an acknowledgement packet)\n",
-        p.document, p.token
+        "Review required: {}\nToken           {}\n",
+        m.document, m.token
     );
-    if p.context.previous_review.is_none() {
-        out.push_str("Reason: first review; examine the full boundary.\n");
-    }
-    for (_, reason) in &p.covered_invalidations {
-        let _ = writeln!(out, "Semantic review: {reason}");
-    }
-    for c in &p.context.changes {
-        let _ = writeln!(out, "{} {} {}", c.change, c.kind, c.identity);
-    }
-    for d in &p.context.diffs {
-        let _ = writeln!(
-            out,
-            "Evidence {}: {}{}",
-            d.identity,
-            d.status,
-            d.reason
-                .as_deref()
-                .or(match d.status.as_str() {
-                    "binary" => Some("The content is binary; inspect the saved bodies."),
-                    "too_large" =>
-                        Some("The diff exceeds the line limit; inspect the saved bodies."),
-                    "removed" => Some("The old body is saved; explain supplies deletion hunks."),
-                    "added" => Some("No previous input exists; inspect the new saved body."),
-                    "unavailable" => Some(
-                        "No usable text hunk is available; inspect the saved history and content."
-                    ),
-                    _ => None,
-                })
-                .map(|r| format!(" — {r}"))
-                .unwrap_or_default()
-        );
-        if let Some(text) = &d.text {
-            out.push_str(text);
+    match &m.baseline {
+        None => out.push_str("Baseline: none; this is a first review of the complete boundary.\n"),
+        Some(baseline) => {
+            let _ = writeln!(
+                out,
+                "Baseline: revision {} by {} ({}), evidence {}",
+                baseline.revision,
+                baseline.reviewer,
+                baseline.result,
+                baseline.evidence_status.as_str()
+            );
         }
     }
-    let unchanged = p
-        .content
-        .files
-        .iter()
-        .filter(|f| {
-            !p.context
-                .changes
-                .iter()
-                .any(|c| c.kind == "file" && c.identity == f.path)
-        })
-        .count();
+    for (id, reason) in &m.covered_invalidations {
+        let _ = writeln!(out, "Semantic review [{id}]: {reason}");
+    }
+    for c in &m.changes {
+        let _ = writeln!(out, "{} {} {}", c.change, c.kind, c.identity);
+    }
+    match m.mode {
+        ReviewMode::FocusedCandidate => {
+            out.push_str(
+                "Scope: focused candidate. Eligibility only; it does not certify the prior review.\n",
+            );
+            for section in &m.sections {
+                let _ = writeln!(
+                    out,
+                    "  Section {} \"{}\" lines {}-{}: {}",
+                    section.id,
+                    section.heading,
+                    section.first_line,
+                    section.last_line,
+                    section.sources.join(", ")
+                );
+            }
+        }
+        ReviewMode::FullBaseline => {
+            out.push_str("Scope: full baseline. Read the complete current boundary.\n");
+            for reason in &m.fallback_reasons {
+                let _ = writeln!(
+                    out,
+                    "  {} [{}]: {}",
+                    reason.code,
+                    reason.identity.as_deref().unwrap_or("-"),
+                    reason.message
+                );
+            }
+        }
+    }
+    out.push_str("Read:\n");
+    for input in &m.inputs {
+        let identity = match &input.export_id {
+            Some(export) => format!("{}#{}", input.path, export),
+            None => input.path.clone(),
+        };
+        let _ = writeln!(
+            out,
+            "  {} ({}, {} bytes)",
+            identity,
+            input.role.as_str(),
+            input.bytes
+        );
+    }
     let _ = writeln!(
         out,
-        "Scope: {} files ({} unchanged), {} imports, {} raw bytes",
-        p.content.files.len(),
-        unchanged,
-        p.content.imports.len(),
-        p.raw_input_bytes
+        "Whole README pass: required at hash {}",
+        m.inputs
+            .first()
+            .map(|i| i.hash.to_hex())
+            .unwrap_or_default()
     );
     let _ = writeln!(
         out,
-        "Input size      {} raw bytes in {} record(s)",
-        p.raw_input_bytes, p.record_count
+        "Boundary: {} selected files, {} imports, {} raw bytes",
+        m.selected_files, m.imports, m.raw_input_bytes
     );
     let _ = writeln!(
         out,
-        "Guidance: {} entries, digest {} — memoria guidance {}",
-        p.context.guidance.entries.len(),
-        p.context.guidance.digest.to_hex(),
-        p.document
+        "Guidance: {} references, digest {}{} — memoria guidance {}",
+        m.guidance_references.len(),
+        m.guidance_digest.to_hex(),
+        match m.guidance_changed_since_review {
+            Some(true) => ", changed since the last review",
+            _ => "",
+        },
+        m.document
     );
+    for step in memoria_application::review::WORKFLOW_STEPS {
+        let _ = writeln!(out, "  - {step}");
+    }
     let _ = writeln!(
         out,
-        "Full review remains required unless the owner opts into experimental P1.\nSave canonical packet outside the project: memoria review {} --format json > /tmp/review.json\nRead saved inputs: memoria packet view /tmp/review.json --section content\nDetailed human output: memoria review {} --full",
-        p.document, p.document
+        "Save this manifest outside the project: memoria review {} --format json > /tmp/review.json\nRead the listed paths with ordinary file tools; ranges above are hints, not the reviewed state.\nAfter any edit, obtain a fresh manifest and reconcile before `memoria ack`.\nFull offline export: memoria review {} --full --format json",
+        m.document, m.document
     );
     out
 }

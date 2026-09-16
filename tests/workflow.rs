@@ -343,9 +343,9 @@ fn guidance_changes_do_not_stale_documents() {
     );
     assert_eq!(project.json(&["check"]).0, 0);
     assert_eq!(project.state(), before);
-    // Future packets carry the new instructions.
+    // Future full exports carry the new instructions.
     project.append("src/execution/runner.rs", "// edit\n");
-    let (packet, _) = project.review_packet("src/execution/README.md");
+    let (packet, _) = project.review_full("src/execution/README.md");
     let value = parse_json(&std::fs::read(packet).unwrap());
     let Json::Array(guidance) = get(&value, &["data", "context", "guidance", "entries"]) else {
         panic!()
@@ -555,7 +555,10 @@ fn input_change_after_packet_creation_rejects_acknowledgement() {
     let project = Project::seed();
     project.baseline();
     project.append("src/execution/runner.rs", "// v1\n");
-    let (packet, token) = project.review_packet("src/execution/README.md");
+    // Exact per-input differences need the reviewed bytes, so the exact
+    // half of this contract belongs to the full export. The manifest's own
+    // refusal is checked below.
+    let (packet, token) = project.review_full("src/execution/README.md");
     let before = project.state();
     project.append("src/execution/runner.rs", "// v2\n");
     let output = project.run(&[
@@ -590,6 +593,46 @@ fn input_change_after_packet_creation_rejects_acknowledgement() {
     assert_eq!(get_str(&changes[0], &["change"]), "changed");
     assert!(get_str(&changes[0], &["diff"]).contains("+// v2"));
     assert!(get(&changes[0], &["before_hash"]) != get(&changes[0], &["after_hash"]));
+    assert_eq!(project.state(), before);
+
+    // The default manifest refuses the same change and names the category it
+    // can prove, without promising packet-time hunks it never carried.
+    let (manifest, manifest_token) = project.review_packet("src/execution/README.md");
+    project.append("src/execution/runner.rs", "// v3\n");
+    let output = project.run(&[
+        "ack",
+        "src/execution/README.md",
+        "--packet",
+        manifest.to_str().unwrap(),
+        "--token",
+        &manifest_token,
+        "--reviewer",
+        "fixture",
+        "--result",
+        "no-update",
+        "--note",
+        NOTE,
+        "--format",
+        "json",
+    ]);
+    assert_eq!(output.status.code(), Some(3), "{}", stdout(&output));
+    let value = parse_json(&output.stdout);
+    assert_eq!(diagnostic_codes(&value), vec!["snapshot_changed"]);
+    let Json::Array(diagnostics) = get(&value, &["diagnostics"]) else {
+        panic!()
+    };
+    assert_eq!(
+        get_str(&diagnostics[0], &["details", "artifact_kind"]),
+        "review_manifest"
+    );
+    let Json::Array(changed) = get(&diagnostics[0], &["details", "changed"]) else {
+        panic!()
+    };
+    assert_eq!(changed, &vec![Json::String("inputs".into())]);
+    assert_ne!(
+        get_str(&diagnostics[0], &["details", "reviewed_inputs_digest"]),
+        get_str(&diagnostics[0], &["details", "current_inputs_digest"])
+    );
     assert_eq!(project.state(), before);
 
     // README edits also require a fresh packet, even for `updated`.

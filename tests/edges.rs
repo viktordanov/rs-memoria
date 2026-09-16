@@ -428,14 +428,14 @@ fn usage_and_exit_status_contract() {
     assert_eq!(code, 1);
     assert_eq!(diagnostic_codes(&value), vec!["document_not_found"]);
     // JSON envelope shape. The release has one clean cutover, so every
-    // envelope advertises schema version 2, on success and on failure.
+    // envelope advertises schema version 3, on success and on failure.
     let (_, value) = project.json(&["status"]);
-    assert_eq!(get_u64(&value, &["schema_version"]), 2);
+    assert_eq!(get_u64(&value, &["schema_version"]), 3);
     assert_eq!(get_str(&value, &["command"]), "status");
     assert!(get_bool(&value, &["ok"]));
     assert!(matches!(get(&value, &["diagnostics"]), Json::Array(_)));
     let (_, failure) = project.json(&["review", "src/nothing/README.md"]);
-    assert_eq!(get_u64(&failure, &["schema_version"]), 2);
+    assert_eq!(get_u64(&failure, &["schema_version"]), 3);
     assert!(!get_bool(&failure, &["ok"]));
     for command in [
         vec!["guidance"],
@@ -450,8 +450,8 @@ fn usage_and_exit_status_contract() {
         let (_, value) = project.json(&command);
         assert_eq!(
             get_u64(&value, &["schema_version"]),
-            2,
-            "{command:?}: every envelope uses schema version 2"
+            3,
+            "{command:?}: every envelope uses schema version 3"
         );
     }
     // Human diagnostics go to stderr; stdout stays clean for JSON.

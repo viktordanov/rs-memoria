@@ -4,8 +4,11 @@ use memoria_domain::{AckError, AckRequest, InputChange, ReviewNote, ReviewResult
 
 use crate::diff::{DiffText, diff_bytes};
 use crate::error::{AppError, Detail, DetailMap, Diagnostic, ExitClass, Outcome};
-use crate::packet::{ContentEncoding, FocusedReviewPacket, compute_token, validate_token_text};
+use crate::packet::{
+    ContentEncoding, FocusedReviewPacket, ReviewArtifact, compute_token_v3, validate_token_text,
+};
 use crate::ports::{PacketFailure, PacketSource, Services};
+use crate::review_context;
 use crate::snapshot::{self, Snapshot};
 
 use super::invalidate::state_error;
@@ -181,12 +184,23 @@ pub fn verify_packet_with_hasher(
             )));
         }
     }
-    let expected = compute_token(
+    // The full export carries the canonical descriptors for `C` and `B`, so
+    // its token is recomputable from the file alone. This proves internal
+    // consistency only; the live repository still decides validity.
+    let inputs_digest = hasher.hash(&memoria_domain::canonical::encode_inputs(manifest));
+    let baseline_digest = hasher.hash(&memoria_domain::canonical::encode_review_baseline(
+        packet.binding.baseline.as_ref(),
+    ));
+    let context_digest = hasher.hash(&memoria_domain::canonical::encode_review_context(
+        &packet.binding.context,
+    ));
+    let expected = compute_token_v3(
         hasher,
         &packet.document,
         packet.review_revision,
-        manifest,
-        packet.context.guidance.digest,
+        inputs_digest,
+        baseline_digest,
+        context_digest,
         &packet.covered_invalidations,
     );
     if expected != packet.token {
@@ -195,7 +209,62 @@ pub fn verify_packet_with_hasher(
             "the packet token does not match its own snapshot fields",
         ));
     }
+    // The embedded requirements must describe the same snapshot the packet
+    // does, so a full export and a small manifest cannot disagree.
+    let requirements = &packet.requirements;
+    if requirements.document != packet.document
+        || requirements.review_revision != packet.review_revision
+        || requirements.token != packet.token
+        || requirements.covered_invalidations != packet.covered_invalidations
+    {
+        return Err(AppError::usage(
+            "packet_content_mismatch",
+            "the packet's requirements describe a different snapshot than the packet itself",
+        ));
+    }
+    if requirements.snapshot.inputs_digest != inputs_digest
+        || requirements.snapshot.baseline_digest != baseline_digest
+        || requirements.snapshot.context_digest != context_digest
+    {
+        return Err(AppError::usage(
+            "packet_content_mismatch",
+            "the packet's requirements report digests that its own binding does not produce",
+        ));
+    }
+    // A full export carries the complete inventory, so its own counts are
+    // checkable without the project.
+    if let Some(message) = counts_mismatch(requirements, manifest) {
+        return Err(AppError::usage("packet_content_mismatch", message));
+    }
     Ok(())
+}
+
+/// Compare an artifact's reported boundary counts with a complete manifest.
+///
+/// A small manifest cannot reconstruct an omitted inventory by itself, so the
+/// comparison uses the complete manifest that is already available: the
+/// packet's own for a full export, and the rebuilt live one at acknowledgement.
+fn counts_mismatch(
+    requirements: &crate::review::ReviewManifest,
+    manifest: &memoria_domain::InputManifest,
+) -> Option<String> {
+    let expected = (
+        manifest.files().len() as u64,
+        manifest.imports().len() as u64,
+        manifest.raw_input_bytes(),
+    );
+    let reported = (
+        requirements.selected_files,
+        requirements.imports,
+        requirements.raw_input_bytes,
+    );
+    if reported == expected {
+        return None;
+    }
+    Some(format!(
+        "the artifact reports {} selected files, {} imports and {} raw input bytes, but the boundary has {}, {} and {}",
+        reported.0, reported.1, reported.2, expected.0, expected.1, expected.2
+    ))
 }
 
 pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>, AppError> {
@@ -219,21 +288,23 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
         .packet_input
         .read(&args.packet)
         .map_err(packet_error)?;
-    let packet = services.packets.decode(&bytes).map_err(packet_error)?;
+    let artifact = services.packets.decode(&bytes).map_err(packet_error)?;
     drop(bytes);
-    verify_packet(services, &packet)?;
-    if packet.token != args.token {
+    if let Some(packet) = artifact.full() {
+        verify_packet(services, packet)?;
+    }
+    if artifact.token() != args.token {
         return Err(AppError::usage(
             "token_mismatch",
-            "--token does not equal the packet token",
+            "--token does not equal the artifact token",
         ));
     }
-    if packet.document != document {
+    if artifact.document() != &document {
         return Err(AppError::usage(
             "packet_document_mismatch",
             format!(
-                "the packet describes {} but the command names {document}",
-                packet.document
+                "the artifact describes {} but the command names {document}",
+                artifact.document()
             ),
         ));
     }
@@ -242,15 +313,23 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
     let _guard = acquire_lock(services)?;
     let snapshot = snapshot::build(services)?;
     snapshot.require_valid()?;
-    // The packet proved the document existed at capture; in an otherwise
+    // The artifact proved the document existed at capture; in an otherwise
     // valid project its disappearance is a snapshot conflict, reported with
-    // the packet baseline, never a request or project validation error.
+    // the artifact baseline, never a request or project validation error.
     let Some(status) = snapshot.status_of(&document) else {
-        return Err(snapshot_changed(
-            &snapshot,
-            &packet,
-            &memoria_domain::ManifestDiff::removed(&packet.manifest),
-        ));
+        return Err(match artifact.manifest() {
+            Some(manifest) => snapshot_changed(
+                &snapshot,
+                artifact
+                    .full()
+                    .expect("a manifest belongs to a full export"),
+                &memoria_domain::ManifestDiff::removed(manifest),
+            ),
+            None => AppError::conflict(
+                "snapshot_changed",
+                format!("{document} is no longer a discovered README; obtain a fresh review"),
+            ),
+        });
     };
     // Changed inputs are reported with their exact differences before any
     // readiness diagnostic, so a changed import is never hidden behind
@@ -258,14 +337,26 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
     let current_manifest = snapshot.manifests.get(&document).cloned().ok_or_else(|| {
         AppError::validation("document_not_found", format!("{document} has no manifest"))
     })?;
-    let diff = packet.manifest.diff(&current_manifest);
-    if !diff.is_empty() {
-        return Err(snapshot_changed(&snapshot, &packet, &diff));
+    if let Some(packet) = artifact.full() {
+        let diff = packet.manifest.diff(&current_manifest);
+        if !diff.is_empty() {
+            return Err(snapshot_changed(&snapshot, packet, &diff));
+        }
     }
-    // Guidance is review context, not freshness. A change after packet
-    // creation invalidates the reviewed context without marking a current
+    if artifact.full().is_none() {
+        // A small artifact carries no reviewed manifest to diff, so the
+        // reviewed input digest stands in for it. Reporting it here keeps a
+        // changed input from hiding behind a readiness diagnostic.
+        inputs_conflict(services, &snapshot, &document, &artifact)?;
+    }
+    // Guidance is review context, not freshness. A change after the artifact
+    // was created invalidates the reviewed context without marking a current
     // document stale, so it is a conflict and never a state write.
-    guidance_conflict(&snapshot, &packet)?;
+    guidance_conflict(
+        &snapshot,
+        artifact.document(),
+        artifact.requirements().guidance_digest,
+    )?;
     if status.waiting() {
         let waiting: Vec<String> = status
             .waiting_on
@@ -285,6 +376,18 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
                     .build(),
             ),
         ));
+    }
+
+    // The real gate for both representations: rebuild every bound component
+    // from the repository and recompute the complete v3 token. A small
+    // artifact never shrinks what is validated here.
+    revalidate_token(services, &snapshot, &document, &artifact)?;
+    // The token now proves the artifact describes this exact snapshot, so a
+    // disagreement about the boundary counts is a malformed artifact rather
+    // than a changed project. Checking it here keeps an ordinary stale
+    // artifact reported as the conflict it is.
+    if let Some(message) = counts_mismatch(artifact.requirements(), &current_manifest) {
+        return Err(AppError::usage("packet_content_mismatch", message));
     }
 
     let coverage = super::history::History::new(services)
@@ -308,23 +411,29 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
         .hasher
         .hash(&memoria_domain::canonical::encode_inputs(&current_manifest));
     let token_digest =
-        validate_token_text(&packet.token).map_err(|m| AppError::usage("token_invalid", m))?;
+        validate_token_text(artifact.token()).map_err(|m| AppError::usage("token_invalid", m))?;
     services.progress.note(&format!(
         "ack: {document} revision {} -> {} ({})",
-        packet.review_revision,
-        packet.review_revision + 1,
+        artifact.review_revision(),
+        artifact.review_revision() + 1,
         result.as_str()
     ));
     let outcome = state
         .acknowledge(AckRequest {
             document: document.clone(),
-            packet_revision: packet.review_revision,
-            packet_manifest: packet.manifest.clone(),
+            packet_revision: artifact.review_revision(),
+            // A small manifest does not copy every unchanged input hash. The
+            // recomputed token already proved the complete input manifest is
+            // the reviewed one, so the current manifest is that manifest.
+            packet_manifest: artifact
+                .manifest()
+                .cloned()
+                .unwrap_or_else(|| current_manifest.clone()),
             current_manifest,
-            covered: packet.covered_invalidations.clone(),
+            covered: artifact.covered_invalidations().to_vec(),
             input_fingerprint,
             token_digest,
-            guidance: packet.context.guidance.digest,
+            guidance: memoria_domain::GuidanceDigest(artifact.requirements().guidance_digest),
             reviewed_at: services.clock.now(),
             reviewer: reviewer.clone(),
             result,
@@ -332,15 +441,23 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
             git: reviewed_git,
         })
         .map_err(|err| match err {
-            AckError::SnapshotChanged(diff) => snapshot_changed(&snapshot, &packet, &diff),
+            AckError::SnapshotChanged(diff) => match artifact.full() {
+                Some(packet) => snapshot_changed(&snapshot, packet, &diff),
+                None => AppError::conflict(
+                    "snapshot_changed",
+                    format!(
+                        "the review inputs changed after the artifact was created; run `memoria review {document}` again and reconcile"
+                    ),
+                ),
+            },
             AckError::RevisionConflict { packet: p, current } => AppError::new(
                 ExitClass::Conflict,
-                Diagnostic::error("revision_conflict", format!("the packet was created for document revision {p}, but the current revision is {current}; obtain a fresh packet"))
+                Diagnostic::error("revision_conflict", format!("the artifact was created for document revision {p}, but the current revision is {current}; obtain a fresh review"))
                     .at_path(document.as_str())
                     .with_details(DetailMap::default().number("packet_revision", p).number("current_revision", current).build()),
             ),
-            AckError::InvalidationNotActive { id } => AppError::conflict("invalidation_not_active", format!("invalidation {id} covered by the packet is no longer active for {document}")),
-            AckError::InvalidationReasonMismatch { id, .. } => AppError::conflict("invalidation_reason_mismatch", format!("invalidation {id} has a different stored reason than the packet")),
+            AckError::InvalidationNotActive { id } => AppError::conflict("invalidation_not_active", format!("invalidation {id} covered by the artifact is no longer active for {document}")),
+            AckError::InvalidationReasonMismatch { id, .. } => AppError::conflict("invalidation_reason_mismatch", format!("invalidation {id} has a different stored reason than the artifact")),
             AckError::Counter(err) => AppError::io("state_corrupt", err.to_string()),
         })?;
 
@@ -350,25 +467,45 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
     // Exact differences come first, exactly as in the initial phase: a
     // changed export is reported with its identity, sizes, hashes, and
     // packet-baseline text even when it also made a provider pending.
-    match recheck.manifests.get(&document) {
-        Some(manifest) if manifest == &packet.manifest => {}
-        Some(manifest) => {
+    match (artifact.full(), recheck.manifests.get(&document)) {
+        (Some(packet), Some(manifest)) if manifest == &packet.manifest => {}
+        (Some(packet), Some(manifest)) => {
             return Err(snapshot_changed(
                 &recheck,
-                &packet,
+                packet,
                 &packet.manifest.diff(manifest),
             ));
         }
-        None => {
+        (Some(packet), None) => {
             return Err(snapshot_changed(
                 &recheck,
-                &packet,
+                packet,
                 &memoria_domain::ManifestDiff::removed(&packet.manifest),
             ));
         }
+        // A disappearing README is a snapshot conflict for a small artifact
+        // too, and it is reported before any context diagnostic.
+        (None, None) => {
+            return Err(AppError::new(
+                ExitClass::Conflict,
+                Diagnostic::error(
+                    "snapshot_changed",
+                    format!(
+                        "{document} was removed during acknowledgement; run `memoria review` again"
+                    ),
+                )
+                .at_path(document.as_str()),
+            ));
+        }
+        (None, Some(_)) => {}
     }
-    // The same guidance check runs again under the write lock.
-    guidance_conflict(&recheck, &packet)?;
+    // Every bound component is rebuilt and compared once more immediately
+    // before the compare-and-save, so a concurrent change cannot slip in
+    // between the transition and the durable write.
+    guidance_conflict(&recheck, &document, artifact.requirements().guidance_digest)?;
+    if artifact.full().is_none() {
+        inputs_conflict(services, &recheck, &document, &artifact)?;
+    }
     if let Some(final_status) = recheck.status_of(&document)
         && final_status.waiting()
     {
@@ -394,6 +531,9 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
             ),
         ));
     }
+    // The complete v3 token is recomputed once more immediately before the
+    // durable write, after the precise readiness diagnostics above.
+    revalidate_token(services, &recheck, &document, &artifact)?;
     services
         .state
         .save(&state, expected.as_deref())
@@ -414,11 +554,16 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
 }
 
 /// Refuse acknowledgement when the effective guidance changed after the
-/// packet was created. The reviewer regenerates the packet; no review state
-/// changes and the document does not become stale.
-fn guidance_conflict(snapshot: &Snapshot, packet: &FocusedReviewPacket) -> Result<(), AppError> {
-    let current = snapshot.guidance_of(&packet.document);
-    if current.digest == packet.context.guidance.digest {
+/// artifact was created. The reviewer obtains a fresh artifact and
+/// reconciles; no review state changes and the document does not become
+/// stale.
+fn guidance_conflict(
+    snapshot: &Snapshot,
+    document: &memoria_domain::DocumentId,
+    reviewed: memoria_domain::Hash64,
+) -> Result<(), AppError> {
+    let current = snapshot.guidance_of(document);
+    if current.digest.0 == reviewed {
         return Ok(());
     }
     Err(AppError::new(
@@ -426,15 +571,169 @@ fn guidance_conflict(snapshot: &Snapshot, packet: &FocusedReviewPacket) -> Resul
         Diagnostic::error(
             "guidance_changed",
             format!(
-                "project documentation guidance changed after the packet was created; run `memoria review {}` again for a fresh packet",
-                packet.document
+                "project documentation guidance changed after the review artifact was created; run `memoria review {document}` again and reconcile"
             ),
         )
-        .at_path(packet.document.as_str())
+        .at_path(document.as_str())
         .with_details(
             DetailMap::default()
-                .text("packet_digest", packet.context.guidance.digest.to_hex())
+                .text("reviewed_digest", reviewed.to_hex())
                 .text("current_digest", current.digest.to_hex())
+                .build(),
+        ),
+    ))
+}
+
+/// Refuse a small artifact whose reviewed input digest no longer matches.
+///
+/// The exact per-input differences are only available when the artifact
+/// carried the reviewed bytes. A manifest reports the category and points at
+/// the commands that show the current state.
+fn inputs_conflict(
+    services: &Services<'_>,
+    snapshot: &Snapshot,
+    document: &memoria_domain::DocumentId,
+    artifact: &ReviewArtifact,
+) -> Result<(), AppError> {
+    let current = snapshot
+        .manifests
+        .get(document)
+        .map(|manifest| {
+            services
+                .hasher
+                .hash(&memoria_domain::canonical::encode_inputs(manifest))
+        })
+        .unwrap_or(memoria_domain::Hash64(0));
+    let reviewed = artifact.requirements().snapshot.inputs_digest;
+    if reviewed == current {
+        return Ok(());
+    }
+    Err(AppError::new(
+        ExitClass::Conflict,
+        Diagnostic::error(
+            "snapshot_changed",
+            format!(
+                "the review inputs changed after the manifest was created; run `memoria review {document}` again and reconcile. `memoria explain {document}` shows the current differences"
+            ),
+        )
+        .at_path(document.as_str())
+        .with_details(
+            DetailMap::default()
+                .with("changed", Detail::texts(vec!["inputs".to_string()]))
+                .text("artifact_kind", artifact.kind())
+                .text("reviewed_inputs_digest", reviewed.to_hex())
+                .text("current_inputs_digest", current.to_hex())
+                .build(),
+        ),
+    ))
+}
+
+/// Rebuild every bound component and recompute the complete v3 token.
+///
+/// This is the acknowledgement gate for both representations. It never
+/// validates only the suggested inputs, the suggested sections, or the
+/// changed files: the complete input manifest and the complete review
+/// context are recomputed from the repository.
+fn revalidate_token(
+    services: &Services<'_>,
+    snapshot: &Snapshot,
+    document: &memoria_domain::DocumentId,
+    artifact: &ReviewArtifact,
+) -> Result<(), AppError> {
+    let bound = review_context::token_inputs(services.hasher, snapshot, document);
+    // The artifact's own covered set enters the recomputation. A target
+    // invalidation raised after the review stays pending instead of blocking
+    // this acknowledgement; the state transition refuses a covered reason
+    // that is no longer active or whose text changed.
+    let covered = artifact.covered_invalidations();
+    let revision = snapshot.state.document_revision(document);
+    // A replayed artifact is a revision conflict, not an anonymous snapshot
+    // change. Report the precise cause before the general one.
+    if artifact.review_revision() != revision {
+        return Err(AppError::new(
+            ExitClass::Conflict,
+            Diagnostic::error(
+                "revision_conflict",
+                format!(
+                    "the artifact was created for document revision {}, but the current revision is {revision}; obtain a fresh review",
+                    artifact.review_revision()
+                ),
+            )
+            .at_path(document.as_str())
+            .with_details(
+                DetailMap::default()
+                    .number("packet_revision", artifact.review_revision())
+                    .number("current_revision", revision)
+                    .build(),
+            ),
+        ));
+    }
+    let expected = compute_token_v3(
+        services.hasher,
+        document,
+        revision,
+        bound.inputs_digest,
+        bound.baseline_digest,
+        bound.context_digest,
+        covered,
+    );
+    if expected == artifact.token() {
+        return Ok(());
+    }
+    // Name the categories that moved, so the reviewer knows what to reread.
+    let reviewed = &artifact.requirements().snapshot;
+    let mut changed: Vec<String> = Vec::new();
+    if reviewed.inputs_digest != bound.inputs_digest {
+        changed.push("inputs".into());
+    }
+    if reviewed.context_digest != bound.context_digest {
+        changed.push("context".into());
+    }
+    if reviewed.guidance_digest != bound.context.guidance.0 {
+        changed.push("guidance".into());
+    }
+    if reviewed.baseline_digest != bound.baseline_digest {
+        changed.push("baseline".into());
+    }
+    if changed.is_empty() {
+        changed.push("token".into());
+    }
+    Err(AppError::new(
+        ExitClass::Conflict,
+        Diagnostic::error(
+            "snapshot_changed",
+            format!(
+                "the review snapshot changed after the artifact was created ({}); run `memoria review {document}` again and reconcile",
+                changed.join(", ")
+            ),
+        )
+        .at_path(document.as_str())
+        .with_details(
+            DetailMap::default()
+                .with("changed", Detail::texts(changed))
+                .text("artifact_kind", artifact.kind())
+                .text("reviewed_token", artifact.token())
+                .text("current_token", expected)
+                .with(
+                    "reviewed",
+                    DetailMap::default()
+                        .text("inputs_digest", reviewed.inputs_digest.to_hex())
+                        .text("context_digest", reviewed.context_digest.to_hex())
+                        .text("guidance_digest", reviewed.guidance_digest.to_hex())
+                        .text("baseline_digest", reviewed.baseline_digest.to_hex())
+                        .number("review_revision", artifact.review_revision())
+                        .build(),
+                )
+                .with(
+                    "current",
+                    DetailMap::default()
+                        .text("inputs_digest", bound.inputs_digest.to_hex())
+                        .text("context_digest", bound.context_digest.to_hex())
+                        .text("guidance_digest", bound.context.guidance.to_hex())
+                        .text("baseline_digest", bound.baseline_digest.to_hex())
+                        .number("review_revision", revision)
+                        .build(),
+                )
                 .build(),
         ),
     ))

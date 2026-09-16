@@ -144,7 +144,9 @@ fn tracked_files_remain_inputs_under_host_excludes() {
     let before = policy_hash(&project, "README.md");
     project.append("app.rs", "// changed\n");
     assert_eq!(project.cause_codes("README.md"), vec!["input_changed"]);
-    let (packet, _) = project.review_packet("README.md");
+    // The complete input manifest lives in the full export; the default
+    // manifest reports only what must be read.
+    let (packet, _) = project.review_full("README.md");
     let value = parse_json(&fs::read(&packet).unwrap());
     let Json::Array(files) = get(&value, &["data", "manifest", "files"]) else {
         panic!()
@@ -172,7 +174,7 @@ fn repository_rules_remain_deterministic_inputs() {
     // leaf that waits on nothing. Compare that document with its own record.
     let ready = project.next_ready().expect("a ready document");
     let recorded = policy_hash(&project, &ready);
-    let (packet, _) = project.review_packet(&ready);
+    let (packet, _) = project.review_full(&ready);
     assert_ne!(
         get_str(
             &parse_json(&fs::read(&packet).unwrap()),
@@ -308,7 +310,7 @@ fn same_size_edits_renames_and_deletions_remain_visible() {
     fs::rename(&path, project.root.join("src/execution/renamed.rs")).unwrap();
     let (packet, _) = project.review_packet("src/execution/README.md");
     let value = parse_json(&fs::read(&packet).unwrap());
-    let Json::Array(changes) = get(&value, &["data", "context", "changes"]) else {
+    let Json::Array(changes) = get(&value, &["data", "changes"]) else {
         panic!()
     };
     let kinds: Vec<String> = changes

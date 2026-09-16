@@ -7,7 +7,7 @@ An adapter supplies an external operation, such as file access, through an appli
 The composition root constructs these adapters and connects them to application functions.
 The application and domain determine review state.
 
-Read [main.rs](main.rs#L82) to start with the command dispatch.
+Read [main.rs](main.rs) to start with the command dispatch.
 
 ## On this page
 
@@ -38,15 +38,15 @@ Usage: memoria [OPTIONS] <COMMAND>
 Commands:
   completions   Print a shell completion script without project discovery or installation
   explain       Explain one README's whole-file freshness with verified local Git evidence
-  packet        Read exact sections from a saved canonical packet without project discovery
+  packet        Read exact sections from a saved full export without project discovery
   init          Validate root setup inputs, or create missing configuration and state with --apply
   status        Show coverage, input size, and review state
   guidance      Show the project documentation guidance that applies to a README
   state         Inspect or compare committed state without changing it
   lint          Check structure, configuration, markers, and link hints
-  review        Show the ordered review plan, or a focused packet for one README
+  review        Show the ordered review plan, or the review requirements for one README
   render        Refresh declared import blocks only
-  ack           Record a review result against the exact packet snapshot
+  ack           Record a review result against the exact reviewed snapshot
   invalidate    Mark one README, a subtree, or the whole project for semantic review
   check         Run read-only validation for CI
   graph         Show documentation ownership, imports, navigation, and status
@@ -67,25 +67,27 @@ Options:
 `Cli` parses the command, document path, and flags.
 `discover_root` identifies the Git worktree root.
 `run` creates `Services` from the concrete adapters and dispatches the command.
-Completions, saved packet views, and explicit state comparisons dispatch before project discovery.
+Completions, saved export views, and explicit state comparisons dispatch before project discovery.
 The CLI resolves the optional reviewer environment default only for acknowledgement.
 An explicit reviewer label takes precedence, and success output confirms that label.
 The write lock comes from the Git port, at the worktree-private path, so the committed state file is never the process lock.
 The application function returns structured data and diagnostics.
 The presentation code describes those values without recalculating review decisions.
 
-A review packet contains one README and its input bytes for one review.
-An acknowledgement is the saved result of that review.
-For a focused review, the executable obtains an encoded packet before it selects the output format.
-Thus, packet limits apply equally to human text and JSON.
-Only the JSON packet supports acknowledgement.
-Human packet text supports reading.
+A review manifest states what one README's review must read. A full export
+adds the exact input bytes. An acknowledgement is the saved result of that
+review.
 
-Source evidence: [cli.rs](presentation/cli.rs#L1) and [main.rs](main.rs#L1).
+`--full` selects the representation, and `--format` selects the rendering. The
+executable encodes the artifact before it selects the output format, so the
+artifact limits apply equally to human text and JSON. Only the JSON artifact
+supports acknowledgement. Human text supports reading.
+
+Source evidence: [cli.rs](presentation/cli.rs) and [main.rs](main.rs).
 
 ## Output can fail after a mutation
 
-The JSON envelope contains `schema_version`, `command`, `ok`, `data`, and `diagnostics`, at schema version 2.
+The JSON envelope contains `schema_version`, `command`, `ok`, `data`, and `diagnostics`, at schema version 3.
 The native hook runner is the one exception: it writes one native JSON object and always exits 0.
 The runner starts one three-second deadline at entry and bounds its input, its discovery, and its child.
 One supervisor owns every process it starts, so an expired deadline terminates them before the runner returns.
@@ -101,7 +103,7 @@ The completed mutation remains in place.
 `memoria status` shows the resulting review state.
 An output error does not mean that the mutation failed.
 
-Source evidence: [json.rs](presentation/json.rs#L7) and [main.rs](main.rs#L1).
+Source evidence: [json.rs](presentation/json.rs) and [main.rs](main.rs).
 
 ## Exit statuses
 
@@ -111,23 +113,23 @@ An exit status is the number that the process returns to its caller.
 | --- | --- |
 | 0 | The command succeeded. |
 | 1 | Project validation failed or required reviews remain. |
-| 2 | The command arguments or packet are invalid. |
+| 2 | The command arguments or the review artifact are invalid. |
 | 3 | A lock, snapshot, revision, or installation conflict prevents the operation. |
 | 4 | An I/O error, unsupported Git state, or corrupt review state prevents success. |
 
-Application exit classes come from [error.rs:185](../crates/memoria-application/src/error.rs#L185).
+Application exit classes come from [error.rs](../crates/memoria-application/src/error.rs).
 The executable also owns usage errors and errors during output delivery.
 
 ## File map
 
 | File | Ownership |
 | --- | --- |
-| [main.rs](main.rs#L1) | Adapter assembly, command dispatch, and output delivery |
-| [presentation/cli.rs](presentation/cli.rs#L1) | Command grammar |
-| [presentation/text.rs](presentation/text.rs#L1) | Detailed human output and other command views |
-| [presentation/review.rs](presentation/review.rs#L1) | Default human review and explanation |
-| [presentation/human.rs](presentation/human.rs#L1) | Human diagnostics and structured evidence |
-| [presentation/json.rs](presentation/json.rs#L1) | JSON envelope |
+| [main.rs](main.rs) | Adapter assembly, command dispatch, and output delivery |
+| [presentation/cli.rs](presentation/cli.rs) | Command grammar |
+| [presentation/text.rs](presentation/text.rs) | Detailed full-export human output and other command views |
+| [presentation/review.rs](presentation/review.rs) | Default human review manifest and explanation |
+| [presentation/human.rs](presentation/human.rs) | Human diagnostics and structured evidence |
+| [presentation/json.rs](presentation/json.rs) | JSON envelope |
 
 An agent skill is a file of instructions for an agent.
 `main.rs` embeds `skills/memoria/SKILL.md` at build time.

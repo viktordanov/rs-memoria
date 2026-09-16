@@ -307,8 +307,22 @@ impl Project {
 
     /// Capture a focused packet outside the project. Returns the packet path
     /// and its 21-byte token.
+    /// The default small manifest: acknowledgement-capable, no file content.
     pub fn review_packet(&self, document: &str) -> (PathBuf, String) {
-        let output = self.run(&["review", document, "--format", "json"]);
+        self.review_artifact(document, false)
+    }
+
+    /// The explicit full offline export, with every reviewed byte.
+    pub fn review_full(&self, document: &str) -> (PathBuf, String) {
+        self.review_artifact(document, true)
+    }
+
+    fn review_artifact(&self, document: &str, full: bool) -> (PathBuf, String) {
+        let mut args = vec!["review", document, "--format", "json"];
+        if full {
+            args.push("--full");
+        }
+        let output = self.run(&args);
         assert_eq!(
             output.status.code(),
             Some(0),

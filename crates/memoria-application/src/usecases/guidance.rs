@@ -1,8 +1,8 @@
 //! `memoria guidance [README.md]`: show project documentation guidance
 //! without declaring staleness.
 //!
-//! The command is read-only. It works for current documents, needs no
-//! review packet, and changes no state. Guidance informs judgment; it never
+//! The command is read-only. It works for current documents, needs no review
+//! artifact, and changes no state. Guidance informs judgment. It never
 //! selects files and never decides byte-based freshness.
 
 use memoria_domain::DocumentId;

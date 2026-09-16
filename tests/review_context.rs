@@ -48,7 +48,7 @@ fn saved_views_are_offline_exact_and_never_canonical() {
     let p = simple(true);
     p.append("request.rs", "// A clarification.\n");
     let saved = p.read_string("request.rs");
-    let (packet, token) = p.review_packet("README.md");
+    let (packet, token) = p.review_full("README.md");
     p.write("request.rs", "different live bytes\n");
     let before = p.tree_snapshot();
     let out = p.run_in(
@@ -97,7 +97,7 @@ fn incremental_is_opt_in_and_keeps_semantic_context_retrievable() {
     let p = simple(true);
     // This is a semantic control: the README still says ten, but requests bypass the limit.
     p.write("request.rs", "// limits.rs defines LIMIT; this path incorrectly bypasses it.\npub const UNLIMITED: bool = true;\n");
-    let (packet, _) = p.review_packet("README.md");
+    let (packet, _) = p.review_full("README.md");
     assert!(get_bool(
         &selection(&p, &packet, false),
         &["full_review_required"]
@@ -179,7 +179,7 @@ fn new_guidance_invalidation_and_path_changes_require_full_review() {
         if ["guidance", "missing-history"].contains(&variant) {
             p.append("request.rs", "// Additional context.\n");
         }
-        let (packet, _) = p.review_packet("README.md");
+        let (packet, _) = p.review_full("README.md");
         let view = selection(&p, &packet, true);
         assert!(get_bool(&view, &["full_review_required"]), "{variant}");
         assert!(!items(get(&view, &["fallback_reasons"])).is_empty());
@@ -192,7 +192,7 @@ fn ack_records_only_full_verified_content_and_later_commit_recovers_hunks() {
     let doc = DocumentId::parse("README.md").unwrap();
     assert!(p.decoded_state().reviews[&doc].git.base_commit.is_some());
     p.append("request.rs", "// Dirty but reviewed bytes.\n");
-    let (packet, token) = p.review_packet("README.md");
+    let (packet, token) = p.review_full("README.md");
     let (code, result) = p.ack_json("README.md", &packet, &token, "no-update", NOTE);
     assert_eq!(code, 0);
     assert!(diagnostic_codes(&result).contains(&"historical_coverage".to_string()));
@@ -310,8 +310,18 @@ fn large_nested_markdown_and_fanout_views_keep_boundaries_and_import_evidence() 
             "{shape}: {} bytes",
             human.stdout.len()
         );
-        assert!(stdout(&human).contains("@@"));
-        let (packet, _) = p.review_packet(doc);
+        // The default view names the changed input and carries no hunk.
+        assert!(
+            stdout(&human).contains(&format!("{prefix}input000.{extension}")),
+            "{shape}: {}",
+            stdout(&human)
+        );
+        assert!(!stdout(&human).contains("@@"), "{}", stdout(&human));
+        // Hunks stay one explicit command away.
+        let explain = p.run(&["explain", doc, "--full"]);
+        assert_eq!(explain.status.code(), Some(0));
+        assert!(stdout(&explain).contains("@@"), "{}", stdout(&explain));
+        let (packet, _) = p.review_full(doc);
         let view = selection(&p, &packet, true);
         assert_eq!(
             get_bool(&view, &["full_review_required"]),
@@ -327,7 +337,7 @@ fn large_nested_markdown_and_fanout_views_keep_boundaries_and_import_evidence() 
                 .find(|e| get_str(e, &["identity"]).contains('#'))
                 .unwrap();
             assert!(get_bool(imported, &["baseline_verified"]));
-            let (packet, _) = p.review_packet("consumer0/README.md");
+            let (packet, _) = p.review_full("consumer0/README.md");
             assert!(get_bool(
                 &selection(&p, &packet, true),
                 &["full_review_required"]
@@ -349,7 +359,7 @@ fn source_only_commit_is_the_review_baseline_and_content_hashes_remain_required(
         Some(head.as_str())
     );
     p.append("request.rs", "// Next edit.\n");
-    let (packet, _) = p.review_packet("README.md");
+    let (packet, _) = p.review_full("README.md");
     let mut value = parse_json(&fs::read(&packet).unwrap());
     // Recompute the outer digest after tampering: the independent content hash still refuses it.
     if let Json::Object(envelope) = &mut value {

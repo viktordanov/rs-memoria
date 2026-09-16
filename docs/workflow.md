@@ -36,7 +36,7 @@ The plan chooses the order from those dependencies.
 ## On this page
 
 - [Review one document](#review-one-document)
-- [Why an old packet cannot approve new inputs](#why-an-old-packet-cannot-approve-new-inputs)
+- [Why an old artifact cannot approve new inputs](#why-an-old-artifact-cannot-approve-new-inputs)
 - [Prepare a project or request a review](#prepare-a-project-for-its-first-review)
 - [Read the project documentation guidance](#read-the-project-documentation-guidance)
 - [Resolve a rejection and check CI](#resolve-a-rejected-acknowledgement)
@@ -91,20 +91,21 @@ memoria review
 
 If the plan has no remaining task, continue at [finish the review cycle](#5-finish-the-review-cycle).
 
-### 2. Capture the packet
+### 2. Capture the manifest
 
-A review packet is a file with one README and the exact inputs for its review.
-It contains the owned files, imported text, documentation guidance, and reasons for the review.
-The reviewer uses those contents as evidence.
-Packet creation does not make the README current.
+A review manifest is a file that states what one README's review must read.
+It names the changed inputs, the review mode, the suggested sections, the
+suggested reads, the guidance references, and the reasons for the review.
+It carries no file content. Ordinary file tools supply the reading.
+Manifest creation does not make the README current.
 
-Create a packet file outside the project:
+Create a manifest file outside the project:
 
 ```sh
 memoria_packet=$(mktemp /tmp/memoria-review.XXXXXX.json)
 ```
 
-Write the packet through Memoria:
+Write the manifest through Memoria:
 
 ```sh
 memoria review "$memoria_document" --format json > "$memoria_packet"
@@ -112,13 +113,19 @@ memoria review "$memoria_document" --format json > "$memoria_packet"
 
 The JSON format supports the later command that records the review.
 Human text output supports reading only.
-A packet outside the project does not become a new source input.
+A manifest outside the project does not become a new source input.
 
-If packet creation fails, resolve the reported error before the next stage.
+If the review fails, resolve the reported error before the next stage.
 
-The default human view supplies a short entry point.
-It does not replace the review obligations below.
-Saved-packet retrieval keeps each selection tied to the captured bytes:
+For an offline reader, or for a machine that cannot open the project, produce
+the complete export instead:
+
+```sh
+memoria review "$memoria_document" --full --format json > "$memoria_packet"
+```
+
+The export carries every reviewed byte and the same token. Saved-export
+retrieval keeps each selection tied to the captured bytes:
 
 ```sh
 memoria packet view "$memoria_packet" --section guidance
@@ -126,30 +133,54 @@ memoria packet view "$memoria_packet" --section content
 memoria packet view "$memoria_packet" --section history
 ```
 
-The [experimental P1 procedure](../skills/memoria/SKILL.md) permits explicit reuse only with owner approval and a trusted prior review.
-The model-quality evaluation remains unrun, so full review remains the default.
-A P1 reviewer records actual examination, justified reuse, and named context retrieval separately from the canonical packet.
+`packet view` accepts a full export only. For a manifest it reports
+`packet_content_unavailable` and names the two ways to read the content.
+
+The [legacy P1 procedure](../skills/memoria/SKILL.md) permits explicit reuse
+only with owner approval and a trusted prior review. It never reduces the
+scope that `data.review.mode` requires.
 
 ### 3. Examine the evidence and update the explanation
 
-Read the packet fields in this order:
+Read the manifest fields in this order:
 
-1. Read `data.context.guidance` for the applicable documentation goals and required skills.
+1. Read `data.guidance.references`, then invoke `memoria guidance` for the text.
 2. Read `data.covered_invalidations` for explicit review requests and their reasons.
-3. Read `data.content` for the README, owned files, and imported text.
-4. Examine `data.context.changes` and `data.context.diffs` for changed inputs.
-5. Examine `data.context.exports` for shared sections and their consumers.
+3. Read `data.review.mode` and `data.review.fallback_reasons` for the required scope.
+4. Read `data.changes` and `data.inputs` for the changed and suggested identities.
+5. Read `data.review.sections` for the suggested parts of the README.
 
-An unavailable diff does not mean that the input stayed unchanged.
-The packet still contains the current input bytes.
+Then read the actual content with your ordinary tools:
 
-Before documentation edits, load the skills that the packet requires.
+```sh
+memoria guidance "$memoria_document"
+jq -r '.data.inputs[].path' "$memoria_packet" | sort -u
+sed -n '42,78p' "$memoria_document"
+cat "$memoria_document"
+```
+
+If `data.review.mode` is `full_baseline`, read all current owned sources, all
+current import bodies, the whole README, the effective guidance, and every
+active covered reason.
+
+If `data.review.mode` is `focused_candidate`, the CLI found no technical
+reason to require the full baseline. That is eligibility, not certification of
+the previous review. Decide separately whether to trust that review. Without
+that trust, use the full baseline.
+
+The whole-README pass is always required, in both modes.
+
+For verified hunks, invoke `memoria explain "$memoria_document" --full`.
+Unavailable evidence does not mean that the input stayed unchanged.
+The current input bytes stay readable on disk.
+
+Before documentation edits, load the skills that the guidance requires.
 If a required skill is unavailable, stop documentation edits.
 Report the missing skill by name.
 
 If the explanation requires changes, edit its authored text.
 If shared text requires an update, invoke `memoria render "$memoria_document"`.
-Examine the final prose against the packet writing rules.
+Examine the final prose against the guidance writing rules.
 
 The `lint` command examines configuration and documentation structure.
 It reports problems such as invalid markers, missing exports, and import cycles.
@@ -161,25 +192,33 @@ Invoke lint after related edits:
 memoria lint
 ```
 
-After edits, capture a fresh packet:
+After edits, capture a fresh manifest at a new path:
 
 ```sh
-memoria review "$memoria_document" --format json > "$memoria_packet"
+memoria_fresh=$(mktemp /tmp/memoria-review.XXXXXX.json)
+memoria review "$memoria_document" --format json > "$memoria_fresh"
 ```
 
 The README itself is a review input.
-The new packet contains its final bytes.
-The command that records the review rejects an old packet after those bytes change.
+The new manifest binds its final bytes.
+The command that records the review rejects an older artifact after those bytes change.
+
+Do not overwrite the previous manifest before you reconcile it. Compare the
+previous token with the new one. Record the changed obligations, the
+inspections you reuse and why, and every task you reopen. A fresh token
+completes nothing by itself.
 
 ### 4. Record the acknowledgement
 
 An acknowledgement records who reviewed one README and why its explanation is correct.
 A revision is the counter that increases after each successful acknowledgement for that README.
 An invalidation is an explicit review request with a recorded reason.
-The packet identifies the invalidations that it covers.
+The artifact identifies the invalidations that it covers.
 
-A token identifies the document, revision, inputs, and invalidations that an acknowledgement must match.
-The packet contains that token in `data.token`.
+A token identifies the document, the revision, the complete inputs, the prior
+review, the complete review context, and the covered invalidations that an
+acknowledgement must match.
+The artifact contains that token in `data.token`.
 It does not identify or authenticate the reviewer.
 
 An explicit `--reviewer` takes precedence over the optional `MEMORIA_REVIEWER` environment value.
@@ -188,18 +227,18 @@ Success output confirms the resolved label.
 The label provides attribution, not authority or authentication.
 Agents must supply an explicit label instead of an unknown environment value.
 
-The note explains why this README is correct for this packet.
+The note explains why this README is correct for this snapshot.
 After trim, it requires 12–1000 Unicode characters and at least three whitespace-separated words.
 CR/LF are allowed, but tabs and other controls are forbidden.
 Generic notes such as `done`, `reviewed`, `looks good`, `no changes`, and `updated` are invalid.
 The [command reference](cli.md#memoria-ack) lists all rejected generic phrases.
 The note is not an instruction, an override, or proof that the reviewer read every input.
-Reviewer and note validation precede packet reads and state mutation.
+Reviewer and note validation precede artifact reads and state mutation.
 
-Read the token from the final packet:
+Read the token from the final artifact:
 
 ```sh
-memoria_token=$(jq -r '.data.token' "$memoria_packet")
+memoria_token=$(jq -r '.data.token' "$memoria_fresh")
 ```
 
 Replace `your-name` with the actual reviewer name.
@@ -209,13 +248,13 @@ If no document edit was necessary, use `--result no-update`.
 Record the review with `memoria ack`:
 
 ```sh
-memoria ack "$memoria_document" --packet "$memoria_packet" \
+memoria ack "$memoria_document" --packet "$memoria_fresh" \
   --token "$memoria_token" --reviewer "your-name" --result updated \
   --note "The document explains the reviewed ownership and error paths."
 ```
 
 A successful acknowledgement saves the review and increases this README revision by one.
-It clears only the invalidations that the packet covered for this README.
+It clears only the invalidations that the artifact covered for this README.
 If a newer invalidation remains, the result reports `still_pending: true`.
 Otherwise, the README becomes current for the reviewed inputs.
 
@@ -251,29 +290,29 @@ If the check fails, its diagnostics identify the remaining review or structure p
 A changed-guidance count in the check output is a hint, not a failure.
 Guidance is advisory, so it never blocks the check.
 
-## Why an old packet cannot approve new inputs
+## Why an old artifact cannot approve new inputs
 
 ```mermaid
 sequenceDiagram
     accTitle: Acknowledgement compares the reviewed inputs before it saves state.
-    accDescr: Memoria creates a packet for the reviewer. Acknowledgement compares that packet with current inputs. A conflict ends the command without a state save.
+    accDescr: Memoria states the review requirements. Acknowledgement rebuilds every bound component and recomputes the token. A conflict ends the command without a state save.
     actor Reviewer
     participant Memoria
     participant Repository
     participant State as Review state
     Reviewer->>Memoria: review README.md
     Memoria->>Repository: Read README and review inputs
-    Memoria-->>Reviewer: Packet and token
-    Note over Reviewer,Memoria: After edits, obtain a fresh packet
-    Reviewer->>Memoria: ack with packet and token
-    Memoria->>Memoria: Validate the packet and token
-    Memoria->>Repository: Compare current inputs under the write lock
-    Memoria->>Memoria: Compare revision and provider readiness
+    Memoria-->>Reviewer: Requirements and token
+    Note over Reviewer,Memoria: After edits, obtain a fresh manifest and reconcile
+    Reviewer->>Memoria: ack with artifact and token
+    Memoria->>Memoria: Validate the artifact digest and token grammar
+    Memoria->>Repository: Rebuild inputs and context under the write lock
+    Memoria->>Memoria: Compare revision, providers, and the recomputed token
     alt Inputs or revision changed, or a provider is pending
         Memoria-->>Reviewer: Conflict with exit 3
     else Reviewed inputs still match
-        Memoria->>Repository: Compare inputs and providers before the save
-        alt Final comparison fails
+        Memoria->>Repository: Rebuild and recompute the token before the save
+        alt Final rebuild fails
             Memoria-->>Reviewer: Conflict with exit 3
         else Final comparison passes
             Memoria->>State: Save acknowledgement and next revision
@@ -285,7 +324,7 @@ sequenceDiagram
 The diagram shows the comparisons that separate a review from a saved acknowledgement.
 The write lock covers the state transition and final comparison.
 A conflict at either comparison prevents the state save.
-Source evidence: [packet creation](../crates/memoria-application/src/usecases/prepare_review.rs#L90), [acknowledgement](../crates/memoria-application/src/usecases/ack.rs#L193), and [state save](../crates/memoria-infrastructure/src/state.rs#L359).
+Source evidence: [review requirements](../crates/memoria-application/src/usecases/requirements.rs), [acknowledgement](../crates/memoria-application/src/usecases/ack.rs), and [state save](../crates/memoria-infrastructure/src/state.rs).
 
 ## Prepare a project for its first review
 
@@ -356,7 +395,7 @@ Read the guidance of a boundary before you review that boundary:
 memoria guidance src/README.md
 ```
 
-The command works for current documents, needs no packet, and changes no state.
+The command works for current documents, needs no review artifact, and changes no state.
 Without a path, it shows the root guidance and lists each scope that adds more.
 
 Guidance lives in `memoria.toml` under `[documentation]`:
@@ -380,7 +419,7 @@ If the change needs fresh eyes, request the review explicitly.
 ## Request a review after a decision or policy change
 
 A fingerprint is a hash that represents review inputs for comparison.
-Guidance enters future packets but does not change input fingerprints.
+Guidance enters future review artifacts but does not change input fingerprints.
 An explicit invalidation makes the requested READMEs pending.
 It stores the reason without changing their text.
 
@@ -393,7 +432,7 @@ memoria invalidate all --reason "Review the documentation against the new writin
 Then invoke `memoria review`.
 
 The command reference also describes [single-document and subtree scopes](cli.md#memoria-invalidate-scope---reason-text).
-New invalidations after packet creation remain pending after acknowledgement of the older packet.
+A new invalidation after the review remains pending after acknowledgement of the older artifact.
 
 ### Self-hosting cycle
 
@@ -414,10 +453,10 @@ These errors leave the previous saved review in place:
 
 | Diagnostic | Meaning | Next action |
 | --- | --- | --- |
-| `snapshot_changed` | The reviewed inputs changed. | Examine the differences before a fresh packet. |
-| `revision_conflict` | Another acknowledgement advanced the README revision. | Obtain a fresh packet. |
+| `snapshot_changed` | A bound component changed. | Examine `details.changed`, then obtain a fresh manifest and reconcile. |
+| `revision_conflict` | Another acknowledgement advanced the README revision. | Obtain a fresh manifest. |
 | `dependencies_pending` | A provider prevents this review. | Process the provider from the plan. |
-| `guidance_changed` | The documentation guidance changed after the packet. | Read the new guidance, then obtain a fresh packet. |
+| `guidance_changed` | The documentation guidance changed after the review. | Read the new guidance, then obtain a fresh manifest. |
 | `packet_integrity_failed` | The packet differs from its integrity digest. | Obtain the packet again through the CLI. |
 | `note_invalid` | The note does not satisfy the text rules. | Write a specific note with at least three words. |
 
@@ -457,7 +496,7 @@ It does not start a prose review.
 An agent skill is a file of instructions for an agent.
 The [Memoria skill](../skills/memoria/SKILL.md) gives the generic review procedure.
 The executable embeds that text at build time.
-The repository guidance travels to the agent inside each packet.
+Each review artifact names the guidance sources. `memoria guidance` supplies the text.
 
 Examine an installation plan:
 
