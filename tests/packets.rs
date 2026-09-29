@@ -366,7 +366,7 @@ fn tampered_packets_are_rejected_and_canonical_reformatting_is_accepted() {
             mutate(&|v| {
                 set_path(
                     v,
-                    &["data", "content", "readme", "body"],
+                    &["data", "content", "document", "body"],
                     Json::String("x".into()),
                 )
             }),
@@ -443,7 +443,7 @@ fn tampered_packets_are_rejected_and_canonical_reformatting_is_accepted() {
             redigest(mutate(&|v| {
                 set_path(
                     v,
-                    &["data", "content", "readme", "body"],
+                    &["data", "content", "document", "body"],
                     Json::String("x".into()),
                 )
             })),
@@ -454,12 +454,12 @@ fn tampered_packets_are_rejected_and_canonical_reformatting_is_accepted() {
             redigest(mutate(&|v| {
                 set_path(
                     v,
-                    &["data", "content", "readme", "encoding"],
+                    &["data", "content", "document", "encoding"],
                     Json::String("base64".into()),
                 );
                 set_path(
                     v,
-                    &["data", "content", "readme", "body"],
+                    &["data", "content", "document", "body"],
                     Json::String("@@@".into()),
                 );
             })),

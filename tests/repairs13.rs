@@ -132,7 +132,7 @@ fn oversized_refusals_are_bounded_in_both_presentations() {
     assert_eq!(code, 0, "{}", String::from_utf8_lossy(&out));
     let manifest = parse_json(&out);
     assert_eq!(
-        get_u64(&manifest, &["data", "counts", "selected_files"]),
+        get_u64(&manifest, &["data", "counts", "scope_files"]),
         FILES as u64
     );
     let Json::Array(inputs) = get(&manifest, &["data", "inputs"]) else {

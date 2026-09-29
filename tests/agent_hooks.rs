@@ -876,12 +876,12 @@ fn hook_install_requires_semantically_valid_configuration() {
     for (label, config, code) in [
         (
             "invalid ignore pattern",
-            "version = 2\nignore = [\"../outside\"]\n",
+            "version = 3\nignore = [\"../outside\"]\n",
             "configuration_invalid",
         ),
         (
             "missing guidance file",
-            "version = 2\n[documentation]\nguidance_files = [\"absent.md\"]\n",
+            "version = 3\n[documentation]\nguidance_files = [\"absent.md\"]\n",
             "guidance_file_missing",
         ),
     ] {

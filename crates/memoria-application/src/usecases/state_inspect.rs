@@ -65,6 +65,10 @@ pub(crate) fn state_detail(inspected: &InspectedState) -> Detail {
                                     .map(|id| Detail::Number(*id)),
                             ),
                         )
+                        .with(
+                            "coverage_evidence",
+                            crate::packet::coverage_evidence_detail(&record.coverage),
+                        )
                         .build(),
                 )
             })

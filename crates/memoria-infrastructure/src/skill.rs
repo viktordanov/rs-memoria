@@ -26,11 +26,38 @@ pub const REMOVING_DIR: &str = "memoria.removing";
 pub const TXN_FILE: &str = "memoria.install-txn.json";
 pub const LOCK_FILE: &str = "memoria.install.lock";
 
+/// The files of one skill package: flat names and their exact contents.
+pub type PackageFiles = &'static [(&'static str, &'static str)];
+
 pub struct FsSkillStore<'a> {
     root: PathBuf,
-    skill: &'static str,
+    files: PackageFiles,
     version: &'static str,
     faults: FaultHook<'a>,
+}
+
+/// Check a package: unique flat names, no reserved name, and `SKILL.md`.
+fn validate_package(files: PackageFiles) {
+    let mut names: Vec<&str> = files.iter().map(|(name, _)| *name).collect();
+    names.sort_unstable();
+    let total = names.len();
+    names.dedup();
+    assert_eq!(names.len(), total, "skill package names must be unique");
+    assert!(
+        names.contains(&SKILL_FILE),
+        "a skill package must contain {SKILL_FILE}"
+    );
+    for name in names {
+        assert!(
+            !name.is_empty()
+                && !name.contains('/')
+                && !name.contains('\\')
+                && name != "."
+                && name != ".."
+                && name != RECORD_FILE,
+            "skill package file name {name:?} must be a flat, unreserved name"
+        );
+    }
 }
 
 struct Layout {
@@ -410,10 +437,11 @@ fn validate_owned(dir: &Path) -> Result<(), SkillFailure> {
 }
 
 impl FsSkillStore<'static> {
-    pub fn new(root: PathBuf, skill: &'static str, version: &'static str) -> FsSkillStore<'static> {
+    pub fn new(root: PathBuf, files: PackageFiles, version: &'static str) -> FsSkillStore<'static> {
+        validate_package(files);
         FsSkillStore {
             root,
-            skill,
+            files,
             version,
             faults: NO_FAULTS,
         }
@@ -427,16 +455,31 @@ impl<'a> FsSkillStore<'a> {
     /// and `restore-backup`.
     pub fn with_faults(
         root: PathBuf,
-        skill: &'static str,
+        files: PackageFiles,
         version: &'static str,
         faults: FaultHook<'a>,
     ) -> FsSkillStore<'a> {
+        validate_package(files);
         FsSkillStore {
             root,
-            skill,
+            files,
             version,
             faults,
         }
+    }
+
+    /// Whether an installed managed package holds exactly this release's
+    /// files, byte for byte, under exactly the recorded names.
+    fn matches_package(&self, destination: &Path, record: &Record) -> bool {
+        let names: Vec<&str> = record.hashes.keys().map(String::as_str).collect();
+        let mut expected: Vec<&str> = self.files.iter().map(|(name, _)| *name).collect();
+        expected.sort_unstable();
+        names == expected
+            && self.files.iter().all(|(name, body)| {
+                fs::read(destination.join(name))
+                    .map(|bytes| bytes == body.as_bytes())
+                    .unwrap_or(false)
+            })
     }
 
     fn layout(&self, parent: &str) -> Layout {
@@ -465,9 +508,12 @@ impl<'a> FsSkillStore<'a> {
         scope: AgentScope,
         backup: Option<String>,
     ) -> Vec<(String, Vec<u8>)> {
-        let skill_bytes = self.skill.as_bytes().to_vec();
         let mut hashes = BTreeMap::new();
-        hashes.insert(SKILL_FILE.to_string(), hash_hex(&skill_bytes));
+        let mut out: Vec<(String, Vec<u8>)> = Vec::new();
+        for (name, body) in self.files {
+            hashes.insert(name.to_string(), hash_hex(body.as_bytes()));
+            out.push((name.to_string(), body.as_bytes().to_vec()));
+        }
         let record = Record {
             schema_version: 2,
             target: target.as_str().to_string(),
@@ -477,10 +523,8 @@ impl<'a> FsSkillStore<'a> {
             backup,
         };
         let record_bytes = json::to_pretty(&record_to_json(&record)).into_bytes();
-        vec![
-            (SKILL_FILE.to_string(), skill_bytes),
-            (RECORD_FILE.to_string(), record_bytes),
-        ]
+        out.push((RECORD_FILE.to_string(), record_bytes));
+        out
     }
 
     fn step(&self, name: &str, path: &Path) -> Result<(), SkillFailure> {
@@ -732,9 +776,7 @@ impl FsSkillStore<'_> {
                     // Another target's managed package is never ours to replace.
                     "conflict"
                 } else if record.package_version == self.version
-                    && fs::read(layout.destination.join(SKILL_FILE))
-                        .map(|bytes| bytes == self.skill.as_bytes())
-                        .unwrap_or(false)
+                    && self.matches_package(&layout.destination, &record)
                 {
                     "current"
                 } else {
@@ -890,7 +932,16 @@ impl FsSkillStore<'_> {
                     .iter()
                     .map(|(name, _)| name.clone())
                     .collect();
-                plan.replaced = vec![SKILL_FILE.into(), RECORD_FILE.into()];
+                // The previous package's files come from its record, so an
+                // upgrade from a smaller package names exactly what it had.
+                plan.replaced = match inspect(&layout.destination)? {
+                    Existing::Managed { record, .. } => {
+                        let mut names: Vec<String> = record.hashes.keys().cloned().collect();
+                        names.push(RECORD_FILE.into());
+                        names
+                    }
+                    _ => vec![SKILL_FILE.into(), RECORD_FILE.into()],
+                };
                 // An upgrade keeps only the original unmanaged backup. The
                 // previous managed version is obsolete, not user content.
                 plan.backup = self.original_backup(&layout, request)?;
@@ -1414,8 +1465,91 @@ fn failure_text(failure: &SkillFailure) -> String {
 mod tests {
     use super::*;
 
+    const ONE_FILE: PackageFiles = &[("SKILL.md", "# Skill\n")];
+
+    const FOUR_FILES: PackageFiles = &[
+        ("SKILL.md", "# Skill\n\nSee [details](review-details.md).\n"),
+        ("review-details.md", "# Details\n"),
+        ("saved-exports.md", "# Exports\n"),
+        ("integrations.md", "# Integrations\n"),
+    ];
+
     fn store(root: &Path) -> FsSkillStore<'static> {
-        FsSkillStore::new(root.to_path_buf(), "# Skill\n", "0.1.0")
+        FsSkillStore::new(root.to_path_buf(), ONE_FILE, "0.1.0")
+    }
+
+    #[test]
+    fn multi_file_package_lifecycle() {
+        let dir = tempfile::tempdir().unwrap();
+        let (parent, text) = parent_of(&dir);
+        // A 0.6-shaped single-file package is installed first.
+        let old = FsSkillStore::new(dir.path().to_path_buf(), ONE_FILE, "0.6.0");
+        install(&old, &text).unwrap();
+        let new = FsSkillStore::new(dir.path().to_path_buf(), FOUR_FILES, "0.7.0");
+        assert!(matches!(
+            new.plan(&request(SkillOperation::Install, &text)),
+            Err(SkillFailure::UpgradeRequired(_))
+        ));
+        let upgrade = request(SkillOperation::Upgrade, &text);
+        let plan = new.plan(&upgrade).unwrap();
+        assert_eq!(
+            plan.replaced,
+            vec!["SKILL.md".to_string(), RECORD_FILE.into()]
+        );
+        new.apply(&upgrade, &plan).unwrap();
+        for (name, body) in FOUR_FILES {
+            assert_eq!(
+                fs::read_to_string(parent.join("memoria").join(name)).unwrap(),
+                *body
+            );
+        }
+        let record =
+            record_from_bytes(&fs::read(parent.join("memoria").join(RECORD_FILE)).unwrap())
+                .unwrap();
+        assert_eq!(record.hashes.len(), 4);
+        // Current requires the same version, names, and bytes.
+        assert!(
+            new.plan(&request(SkillOperation::Install, &text))
+                .unwrap()
+                .no_change
+        );
+        // An upgrade from the full package names every recorded file.
+        let replaced = FsSkillStore::new(dir.path().to_path_buf(), FOUR_FILES, "0.7.1")
+            .plan(&upgrade)
+            .unwrap()
+            .replaced;
+        assert_eq!(replaced.len(), 5);
+        // An edited reference file is preserved and refused.
+        let reference = parent.join("memoria/review-details.md");
+        fs::write(&reference, "# Details\nlocal edit\n").unwrap();
+        assert!(matches!(
+            new.plan(&request(SkillOperation::Install, &text)),
+            Err(SkillFailure::Conflict { .. })
+        ));
+        assert!(matches!(
+            new.plan(&upgrade),
+            Err(SkillFailure::Conflict { .. })
+        ));
+        assert_eq!(
+            fs::read_to_string(&reference).unwrap(),
+            "# Details\nlocal edit\n"
+        );
+        fs::write(&reference, "# Details\n").unwrap();
+        // An unknown file inside the package is preserved and refused.
+        let unknown = parent.join("memoria/notes.md");
+        fs::write(&unknown, "mine\n").unwrap();
+        assert!(
+            new.plan(&request(SkillOperation::Uninstall, &text))
+                .is_err()
+        );
+        assert!(unknown.exists());
+        fs::remove_file(&unknown).unwrap();
+        // Uninstall removes exactly the recorded files and the record.
+        let removal = request(SkillOperation::Uninstall, &text);
+        let plan = new.plan(&removal).unwrap();
+        assert_eq!(plan.removals.len(), 5);
+        new.apply(&removal, &plan).unwrap();
+        assert!(!parent.join("memoria").exists());
     }
 
     fn parent_of(dir: &tempfile::TempDir) -> (PathBuf, String) {
@@ -1913,8 +2047,7 @@ mod tests {
         fs::create_dir_all(parent.join("memoria")).unwrap();
         fs::write(parent.join("memoria/user.txt"), "original user content\n").unwrap();
         let hook = failing_nth("sync-after-rename", 1);
-        let faulty =
-            FsSkillStore::with_faults(dir.path().to_path_buf(), "# Skill\n", "0.1.0", &hook);
+        let faulty = FsSkillStore::with_faults(dir.path().to_path_buf(), ONE_FILE, "0.1.0", &hook);
         let err = install(&faulty, &text).unwrap_err();
         assert!(failure_text(&err).contains("injected"), "{err:?}");
         assert_eq!(
@@ -1937,8 +2070,7 @@ mod tests {
         fs::create_dir_all(parent.join("memoria")).unwrap();
         fs::write(parent.join("memoria/user.txt"), "original user content\n").unwrap();
         let hook = failing_nth("sync-after-rename", 2);
-        let faulty =
-            FsSkillStore::with_faults(dir.path().to_path_buf(), "# Skill\n", "0.1.0", &hook);
+        let faulty = FsSkillStore::with_faults(dir.path().to_path_buf(), ONE_FILE, "0.1.0", &hook);
         let err = install(&faulty, &text).unwrap_err();
         let message = failure_text(&err);
         assert!(
@@ -1980,8 +2112,7 @@ mod tests {
         fs::write(parent.join("memoria/user.txt"), "original user content\n").unwrap();
         install(&store(dir.path()), &text).unwrap();
         let hook = failing_nth("sync-after-rename", 1);
-        let faulty =
-            FsSkillStore::with_faults(dir.path().to_path_buf(), "# Skill\n", "0.1.0", &hook);
+        let faulty = FsSkillStore::with_faults(dir.path().to_path_buf(), ONE_FILE, "0.1.0", &hook);
         let plan = faulty
             .plan(&request(SkillOperation::Uninstall, &text))
             .unwrap();
@@ -2037,7 +2168,7 @@ mod tests {
             fs::write(parent.join("memoria/notes.md"), "mine\n").unwrap();
             let hook = failing(step);
             let faulty =
-                FsSkillStore::with_faults(dir.path().to_path_buf(), "# Skill\n", "0.1.0", &hook);
+                FsSkillStore::with_faults(dir.path().to_path_buf(), ONE_FILE, "0.1.0", &hook);
             let err = install(&faulty, &text).unwrap_err();
             assert!(failure_text(&err).contains("injected"), "{step}: {err:?}");
             assert_eq!(
@@ -2075,7 +2206,7 @@ mod tests {
             let (parent, text) = parent_of(&dir);
             let hook = failing(step);
             let faulty =
-                FsSkillStore::with_faults(dir.path().to_path_buf(), "# Skill\n", "0.1.0", &hook);
+                FsSkillStore::with_faults(dir.path().to_path_buf(), ONE_FILE, "0.1.0", &hook);
             let err = install(&faulty, &text).unwrap_err();
             assert!(failure_text(&err).contains("injected"), "{step}: {err:?}");
             assert_eq!(
@@ -2102,8 +2233,7 @@ mod tests {
         let (parent, text) = parent_of(&dir);
         install(&store(dir.path()), &text).unwrap();
         let hook = failing("rename-removing");
-        let faulty =
-            FsSkillStore::with_faults(dir.path().to_path_buf(), "# Skill\n", "0.1.0", &hook);
+        let faulty = FsSkillStore::with_faults(dir.path().to_path_buf(), ONE_FILE, "0.1.0", &hook);
         let plan = faulty
             .plan(&request(SkillOperation::Uninstall, &text))
             .unwrap();
@@ -2115,8 +2245,7 @@ mod tests {
         assert_installed(&parent);
         // remove-removing: the package sits in memoria.removing with its transaction; recovery finishes.
         let hook = failing("remove-removing");
-        let faulty =
-            FsSkillStore::with_faults(dir.path().to_path_buf(), "# Skill\n", "0.1.0", &hook);
+        let faulty = FsSkillStore::with_faults(dir.path().to_path_buf(), ONE_FILE, "0.1.0", &hook);
         let plan = faulty
             .plan(&request(SkillOperation::Uninstall, &text))
             .unwrap();
@@ -2150,8 +2279,7 @@ mod tests {
         );
         fs::write(&record_path, record).unwrap();
         let hook = failing("restore-backup");
-        let faulty =
-            FsSkillStore::with_faults(dir.path().to_path_buf(), "# Skill\n", "0.1.0", &hook);
+        let faulty = FsSkillStore::with_faults(dir.path().to_path_buf(), ONE_FILE, "0.1.0", &hook);
         let plan = faulty
             .plan(&request(SkillOperation::Uninstall, &text))
             .unwrap();

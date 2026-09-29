@@ -14,29 +14,29 @@ fn init_rejects_invalid_existing_configuration_before_writing() {
     let cases: Vec<(&str, String, &str)> = vec![
         (
             "parent glob",
-            "version = 2\nignore = [\n    \"../outside/**\",\n]\n".to_string(),
+            "version = 3\nignore = [\n    \"../outside/**\",\n]\n".to_string(),
             "configuration_invalid",
         ),
         (
             "negation glob",
-            "version = 2\ninclude = [\n    \"!keep\",\n]\n".to_string(),
+            "version = 3\ninclude = [\n    \"!keep\",\n]\n".to_string(),
             "configuration_invalid",
         ),
         (
             "missing instruction",
-            "version = 2\n\n[documentation]\nguidance_files = [\n    \"missing.md\",\n]\n"
+            "version = 3\n\n[documentation]\nguidance_files = [\n    \"missing.md\",\n]\n"
                 .to_string(),
             "guidance_file_missing",
         ),
         (
             "escaping instruction",
-            "version = 2\n\n[documentation]\nguidance_files = [\n    \"../outside.md\",\n]\n"
+            "version = 3\n\n[documentation]\nguidance_files = [\n    \"../outside.md\",\n]\n"
                 .to_string(),
             "guidance_file_invalid",
         ),
         (
             "symlinked instruction",
-            "version = 2\n\n[documentation]\nguidance_files = [\n    \"rules.md\",\n]\n"
+            "version = 3\n\n[documentation]\nguidance_files = [\n    \"rules.md\",\n]\n"
                 .to_string(),
             "guidance_file_invalid",
         ),
@@ -72,7 +72,7 @@ fn init_rejects_invalid_existing_configuration_before_writing() {
     }
     // A valid existing configuration still initializes the missing files, and unresolved imports are not init's concern.
     let project = Project::empty_repo();
-    project.write("memoria.toml", "version = 2\nignore = [\n    \"**/generated/**\",\n]\n\n[documentation]\nguidance_files = [\n    \"rules.md\",\n]\n");
+    project.write("memoria.toml", "version = 3\nignore = [\n    \"**/generated/**\",\n]\n\n[documentation]\nguidance_files = [\n    \"rules.md\",\n]\n");
     project.write("rules.md", "# rules\n");
     project.write("README.md", "# Root\n\n<!-- memoria:import src=\"missing/README.md#summary\" -->\n<!-- /memoria:import -->\n");
     project.commit_all("seed");
@@ -94,7 +94,7 @@ fn init_rejects_invalid_existing_configuration_before_writing() {
 fn human_review_refuses_packets_above_the_record_cap_like_json() {
     let make = |instructions: usize| -> Project {
         let project = Project::empty_repo();
-        let mut config = String::from("version = 2\n[documentation]\nguidance = [\n");
+        let mut config = String::from("version = 3\n[documentation]\nguidance = [\n");
         for _ in 0..instructions {
             config.push_str("    \"x\",\n");
         }

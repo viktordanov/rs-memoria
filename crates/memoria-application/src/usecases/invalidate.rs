@@ -43,7 +43,7 @@ pub fn parse_scope(raw: &str) -> Result<InvalidationScope, AppError> {
     }
     Err(AppError::usage(
         "scope_invalid",
-        format!("scope {raw:?} must be `all`, `doc:<README.md>`, or `subtree:<directory>`"),
+        format!("scope {raw:?} must be `all`, `doc:<DOCUMENT>`, or `subtree:<directory>`"),
     ))
 }
 
@@ -66,7 +66,7 @@ pub fn run(
     if targets.is_empty() {
         return Err(AppError::usage(
             "scope_empty",
-            format!("scope {raw_scope} matches no discovered README"),
+            format!("scope {raw_scope} matches no tracked document"),
         ));
     }
     let _guard = acquire_lock(services)?;
@@ -82,7 +82,7 @@ pub fn run(
         )
     })?;
     services.progress.note(&format!(
-        "invalidate: {} README(s) with reason {:?}",
+        "invalidate: {} document(s) with reason {:?}",
         targets.len(),
         reason.as_str()
     ));

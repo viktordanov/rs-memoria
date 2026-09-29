@@ -4,6 +4,8 @@ This file records user-visible changes in Memoria. The project maintainer owns r
 
 Contents:
 
+- [0.7.0](#070---2026-09-29)
+- [Migration to 0.7.0](#migration-to-070)
 - [0.6.0](#060---2026-09-16)
 - [Migration to 0.6.0](#migration-to-060)
 - [0.5.0](#050---2026-09-11)
@@ -11,6 +13,72 @@ Contents:
 - [0.4.0](#040---2026-09-10)
 - [0.3.0](#030---2026-09-09)
 - [0.2.0](#020).
+
+## 0.7.0 - 2026-09-29
+
+CAUTION: This is a breaking release. Update every Memoria executable to 0.7.0 together, and follow [Migration to 0.7.0](#migration-to-070) before you acknowledge anything.
+
+### Document scopes replace nearest-README ownership
+
+Every tracked document now covers the selected files in its own folder and below it. A document stops covering a subfolder only when it links to or imports a tracked document inside that subfolder: a handoff. A nested README alone removes nothing. READMEs and opted-in Markdown follow the same rule.
+
+```text
+README.md        links auth/README.md    covers app.rs
+app.rs
+auth/README.md                           covers auth/login.rs
+auth/login.rs
+```
+
+Without that link, an edit to `auth/login.rs` makes both documents pending. With it, only `auth/README.md` is pending. A handoff link moves coverage and binds it into the parent's review; it creates no waiting. An import keeps its waiting edge and its content freshness.
+
+### Added
+
+- **Opted-in Markdown documents.** A selected Markdown file (`*.md`, `*.markdown`) with a Memoria export, import, or section marker outside code is a tracked document, reviewed and acknowledged on its own. A link never tracks a file. Every command accepts a document path.
+- **Handoff hints.** `handoff_not_applied` explains a subfolder link or import that is not a handoff (`untracked_markdown`, `missing`, `no_document_in_directory`, `not_selected`). `handoff_absent` names a nested document that its parent covers too. Hints never fail a command.
+- **`memoria review <DOCUMENT> --save <DIR>`** writes the exact JSON artifact into an existing directory outside the Git worktree, with mode 0600 and no clobber, and reports a receipt with the `ack` command. A destination inside the worktree, including an ignored folder, fails with `save_destination_in_project`.
+- **`memoria ack` without `--token`.** The token comes from the integrity-checked artifact; the complete token is still recomputed from the repository. `--token` stays available as a check. The report adds `token_source`.
+- **Change-first review view.** The human view starts with what changed and how each change relates to the document, then co-covering documents, export consumers, how to read, and three next steps. `--details` adds tokens, digests, and per-input hashes.
+- **Relationships and downstream.** Each change carries a `relationship` (`own_text`, `scope_source`, `handoff`, `coverage_unrecorded`, `import`, `selection_policy`). The manifest adds `document_kind`, `scope`, and `downstream` (export consumers and co-covering documents, at most 64 each, with totals).
+- **Scope reporting.** `status` counts documents, READMEs, opted-in documents, handoffs, and overlapping sources. `status --explain` names `covered_by` and `handed_off` for a source, and the scope facts for a document. `graph` lists handoffs and overlaps.
+- **A four-file agent skill.** The shared skill for Claude Code and Codex is `SKILL.md` with five stages, plus `review-details.md`, `saved-exports.md`, and `integrations.md`, which load on demand. The installer hashes every file.
+- **Fallback codes** `handoff_changed`, `coverage_unrecorded`, and `document_classification_changed`.
+- **Handoff evidence.** `memoria ack` records the folders that the document's scope handed off. A later review uses it to tell an ended handoff (`handoff_changed`) from a new source (`path_set_changed`) exactly. `state inspect` shows it as `coverage_evidence`.
+
+### Changed
+
+- Configuration `version = 3` is required. Version 2 fails with `configuration_invalid` and names the cutover.
+- The review manifest is `manifest_version: 2`, the full export is `packet_version: 4` with `content.document`, and `packet view` is `view_version: 2`. `whole_readme_pass` is now `whole_document_pass`, and the role `whole_readme` is `whole_document`. The count `selected_files` is `scope_files`.
+- The review context is layout v2 with selection version 2 and policy `section-review-v2`. It binds the document kind and its handoffs instead of ancestor and descendant boundaries. Every outstanding 0.6 artifact is refused.
+- Sections validate against the document's scope. A mapping that names a tracked document or a handed-off file is invalid, with a migration message.
+- `integrations github --version` requires 0.7.0 or later.
+
+### Removed
+
+- The fallback code `ownership_changed`.
+
+### Compatibility
+
+- **Committed review history is kept.** `memoria.lock` moves to format 3: format 2 plus one coverage field in each review row. The reader accepts formats 2 and 3, and reading never writes. The first ordinary state write rewrites the lock as format 3, with every record kept unchanged and marked as having no coverage evidence. Document identities may now name opted-in Markdown. No upgrade converts, resets, prunes, or backfills the lock, and no acknowledgement is fabricated.
+- A README that links or imports every tracked document directly below it keeps its 0.6 scope and policy, so it stays current.
+- Memoria 0.6 refuses configuration version 3. After the first 0.7 write, its read-only `state inspect` and `state diff` report `state_unsupported_schema` for the format 3 lock. That lock is valid: keep it.
+- Disposable review artifacts from 0.6 are refused with regeneration text. There is no converter.
+
+## Migration to 0.7.0
+
+Do these steps before any acknowledgement:
+
+1. Update every executable — local, agents, and CI — to 0.7.0 together.
+2. Change `version = 2` to `version = 3` in `memoria.toml`, and in each `README.memoria.toml` that declares a version.
+3. Run `memoria status` and `memoria review`. A README that does not link or import a README in a subfolder now also covers that subfolder. Read the `handoff_absent` hints. Add the link, or accept the extra reviews. Do not acknowledge yet.
+4. Decide on new opted-in documents. Each one covers its folder.
+5. Regenerate every review artifact. 0.6 artifacts are refused.
+6. Run `memoria integrations skill upgrade` for each installed skill.
+7. After 0.7.0 is published, run `memoria integrations github upgrade --version 0.7.0 --action-ref v0.7.0 --apply`.
+8. Review each document normally. There is no bulk acknowledgement or invalidation.
+
+The first acknowledgement (or other state write) converts `memoria.lock` to format 3. After that write, Memoria 0.6 can no longer inspect the lock: its `state inspect` reports `state_unsupported_schema`. Existing records keep their values and have no coverage evidence until each document's next acknowledgement. Until then, a source that enters such a document's scope can report `coverage_unrecorded` with a reason, such as `revision_not_first` for a README that 0.6 reviewed more than once. Review the complete current scope. The next acknowledgement records the coverage.
+
+CAUTION: Never set `version` back to 2 by hand. Memoria 0.6 would then certify the project with 0.6 rules, and nothing can prevent that. Memoria 0.6 refuses version 3, and it refuses a format 3 lock with `state_unsupported_schema`: keep that lock.
 
 ## 0.6.0 - 2026-09-16
 

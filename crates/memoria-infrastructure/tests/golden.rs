@@ -72,22 +72,30 @@ fn canonical_inputs_bytes_and_digest_match_the_reference() {
 /// are fixed literals so the layout is checked independently of the encoders.
 const TOKEN_V3_HEX: &str = "00000000000000176d656d6f7269612d7265766965772d746f6b656e2d76330000000000000009524541444d452e6d64000000000000000244559dfc629e9b86111213141516171821222324252627280000000000000002000000000000000100000000000000225573652053696d706c696669656420456e676c69736820657665727977686572652e000000000000000300000000000000224578706c61696e20746865206661696c757265206d6f64657320636c6561726c792e";
 
-/// `memoria-review-baseline-v1` with no prior record, encoded by hand.
+/// `memoria-review-baseline-v2` with no prior record, encoded by hand.
 const BASELINE_V3_HEX: &str =
+    "000000000000001a6d656d6f7269612d7265766965772d626173656c696e652d763200";
+
+/// `memoria-review-baseline-v1` with no prior record: the absent baseline
+/// that records without coverage evidence bound, kept for the legacy proof.
+const LEGACY_BASELINE_V1_HEX: &str =
     "000000000000001a6d656d6f7269612d7265766965772d626173656c696e652d763100";
 
-/// `memoria-review-context-v1` over the fixture context, encoded by hand.
-const CONTEXT_V3_HEX: &str = "00000000000000196d656d6f7269612d7265766965772d636f6e746578742d763100000000000000010000000000000009524541444d452e6d6400000000000000000000000000000001000000000000000b622f524541444d452e6d640000000000000000010203040506070800000000000000010000000000000004612e727300000000000000010000000000000001000000000000000b70657273697374656e636500000000000000010000000000000004612e72734db0aeae8d6990a60000000000000001000000000000000b622f524541444d452e6d64000000000000000773756d6d617279000000000000003300000000000000000000000000000000";
+/// `memoria-review-context-v2` over the fixture context, encoded by hand.
+const CONTEXT_V3_HEX: &str = "00000000000000196d656d6f7269612d7265766965772d636f6e746578742d763200000000000000020000000000000009524541444d452e6d640000000000000006726561646d650000000000000001000000000000000162000000000000000b622f524541444d452e6d640000000000000000010203040506070800000000000000010000000000000004612e727300000000000000010000000000000001000000000000000b70657273697374656e636500000000000000010000000000000004612e72734db0aeae8d6990a60000000000000001000000000000000b622f524541444d452e6d64000000000000000773756d6d617279000000000000003300000000000000000000000000000000";
 
 fn fixture_context() -> ReviewContext {
     ReviewContext {
-        selection_version: 1,
+        selection_version: 2,
         owner: "README.md".into(),
-        ancestor_boundaries: vec![],
-        descendant_boundaries: vec!["b/README.md".into()],
+        document_kind: "readme".into(),
+        handoffs: vec![memoria_domain::canonical::HandoffEdge {
+            subtree: "b".into(),
+            target: "b/README.md".into(),
+        }],
         nested_repositories: vec![],
         policy_hash: Hash64(0x0102030405060708),
-        owned_paths: vec!["a.rs".into()],
+        scope_paths: vec!["a.rs".into()],
         mapping: SectionMapIdentity::Valid(vec![("persistence".into(), vec!["a.rs".into()])]),
         guidance: GuidanceDigest(FIXTURE_GUIDANCE),
         imports: vec![ImportEdge {
@@ -110,6 +118,10 @@ fn unhex(text: &str) -> Vec<u8> {
 #[test]
 fn review_context_and_baseline_bytes_match_the_reference() {
     assert_eq!(hex(&encode_review_baseline(None)), BASELINE_V3_HEX);
+    assert_eq!(
+        hex(&memoria_domain::canonical::encode_legacy_absent_review_baseline_v1()),
+        LEGACY_BASELINE_V1_HEX
+    );
     assert_eq!(
         hex(&encode_review_context(&fixture_context())),
         CONTEXT_V3_HEX

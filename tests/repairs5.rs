@@ -162,6 +162,11 @@ fn reserved_guidance_rules_never_enter_project_policy() {
     );
     project.write("custom/memoria/.gitignore", "*.log\n");
     project.write("custom/memoria/user.txt", "old\n");
+    // The root hands that folder to its README.
+    project.append(
+        "README.md",
+        "\nSee [the old skill](custom/memoria/README.md).\n",
+    );
     project.baseline();
     let parent = project.root.join("custom");
     assert_eq!(
@@ -224,7 +229,7 @@ fn ignore_files_inside_excluded_directories_are_inactive_policy() {
 #[test]
 fn quoted_guidance_with_escaped_quotes_and_hashes_are_accepted() {
     let project = Project::seed();
-    project.write("memoria.toml", "version = 2\nignore = [\n    \"**/generated/**\",\n    \"**/fixtures/**\",\n]\n\n[documentation]\nguidance = [\n    \"Use \\\" # \\\" for headings.\", # trailing comment\n    '''Prefer 'plain' words # not a comment''',\n]\nguidance_files = [\n    \".agents/writing.md\",\n]\n");
+    project.write("memoria.toml", "version = 3\nignore = [\n    \"**/generated/**\",\n    \"**/fixtures/**\",\n]\n\n[documentation]\nguidance = [\n    \"Use \\\" # \\\" for headings.\", # trailing comment\n    '''Prefer 'plain' words # not a comment''',\n]\nguidance_files = [\n    \".agents/writing.md\",\n]\n");
     project.write("src/retrieval/README.memoria.toml", "include = [\n    \"fixtures/**\",\n]\n\n[documentation]\nguidance = [\n    \"Rank \\\"# first\\\"\",\n    \"quote 'ok'\",\n]\n");
     project.baseline();
     project.append("src/retrieval/engine.rs", "// edit\n");
@@ -252,7 +257,7 @@ fn quoted_guidance_with_escaped_quotes_and_hashes_are_accepted() {
     // Unsupported forms are still rejected.
     project.write(
         "memoria.toml",
-        "version = 2\n[documentation]\nguidance = [\"unterminated\n",
+        "version = 3\n[documentation]\nguidance = [\"unterminated\n",
     );
     let (code, lint) = project.json(&["lint"]);
     assert_eq!(code, 1);

@@ -189,24 +189,36 @@ fn add_delete_and_rename_change_the_input_set() {
 }
 
 #[test]
-fn child_readme_boundary_recalculates_ownership() {
+fn child_readme_covers_its_folder_and_a_link_hands_it_off() {
     let project = Project::seed();
     project.baseline();
     project.write("src/retrieval/fixtures/README.md", "# Fixtures\n\n<!-- memoria:export id=\"summary\" -->\nFixture files.\n<!-- /memoria:export -->\n");
-    // The fixture file moves from retrieval to the new README; retrieval's input set changes.
+    // A nested document alone removes nothing: retrieval still covers the
+    // fixture file, and both documents cover it now.
     assert_eq!(
         project.cause_codes("src/retrieval/README.md"),
-        vec!["input_changed"]
+        Vec::<String>::new()
     );
     assert_eq!(
         project.status_label("src/retrieval/fixtures/README.md"),
         "never_reviewed"
     );
-    let (_, explain) = project.json(&["status", "--explain", "src/retrieval/fixtures/sample.txt"]);
     assert_eq!(
-        get_str(&explain, &["data", "explanation", "owner"]),
+        project.covered_by("src/retrieval/fixtures/sample.txt"),
+        "src/retrieval/README.md, src/retrieval/fixtures/README.md"
+    );
+    // A link from retrieval hands the folder off: the fixture file leaves the
+    // retrieval scope.
+    project.append(
+        "src/retrieval/README.md",
+        "\nSee [fixtures](fixtures/README.md).\n",
+    );
+    assert_eq!(
+        project.covered_by("src/retrieval/fixtures/sample.txt"),
         "src/retrieval/fixtures/README.md"
     );
+    let codes = project.cause_codes("src/retrieval/README.md");
+    assert!(codes.contains(&"input_changed".to_string()), "{codes:?}");
     assert_eq!(project.status_label("src/execution/README.md"), "current");
 }
 
@@ -237,7 +249,7 @@ fn local_include_restores_a_memoria_excluded_fixture() {
         "selected"
     );
     assert_eq!(
-        get_str(&explain, &["data", "explanation", "owner"]),
+        strings(get(&explain, &["data", "explanation", "covered_by"])).join(", "),
         "src/retrieval/README.md"
     );
     let steps = strings(get(&explain, &["data", "explanation", "steps"]));
@@ -286,7 +298,7 @@ fn language_filters_are_deferred_and_explicit() {
     // A nonempty filter configuration fails explicitly instead of silently ignoring it.
     project.write(
         "memoria.toml",
-        "version = 2\n\n[fingerprints]\ndefault = \"raw\"\n\n[fingerprints.languages]\npython = \"strip-comments\"\n",
+        "version = 3\n\n[fingerprints]\ndefault = \"raw\"\n\n[fingerprints.languages]\npython = \"strip-comments\"\n",
     );
     let (code, status) = project.json(&["status"]);
     assert_eq!(code, 1);
@@ -922,7 +934,7 @@ fn disconnected_readme_stays_visible_with_a_warning() {
         .find(|n| get_str(n, &["document"]) == "src/disconnected/README.md")
         .unwrap();
     assert!(get_bool(node, &["disconnected"]));
-    assert_eq!(get_u64(node, &["owned_files"]), 1);
+    assert_eq!(get_u64(node, &["scope_files"]), 1);
     let Json::Array(edges) = get(&graph, &["data", "edges"]) else {
         panic!()
     };
@@ -936,7 +948,19 @@ fn disconnected_readme_stays_visible_with_a_warning() {
             )
         })
         .collect();
-    assert!(kinds.contains(&("owner", "README.md", "src/disconnected/README.md")));
+    // The root neither links nor imports the disconnected README, so it hands
+    // nothing off there: both documents cover the folder.
+    assert!(!kinds.contains(&("handoff", "README.md", "src/disconnected/README.md")));
+    let Json::Array(overlaps) = get(&graph, &["data", "overlaps"]) else {
+        panic!()
+    };
+    assert_eq!(overlaps.len(), 1);
+    assert_eq!(get_str(&overlaps[0], &["path"]), "src/disconnected/item.rs");
+    assert_eq!(
+        strings(get(&overlaps[0], &["covered_by"])),
+        vec!["README.md", "src/disconnected/README.md"]
+    );
+    assert!(kinds.contains(&("handoff", "README.md", "src/corpus/README.md")));
     assert!(kinds.contains(&(
         "import",
         "src/retrieval/naive/README.md",
@@ -944,7 +968,7 @@ fn disconnected_readme_stays_visible_with_a_warning() {
     )));
     assert!(kinds.contains(&("link", "README.md", "src/corpus/README.md")));
     assert!(kinds.contains(&(
-        "owner",
+        "handoff",
         "src/retrieval/README.md",
         "src/retrieval/naive/README.md"
     )));
@@ -956,11 +980,23 @@ fn disconnected_readme_stays_visible_with_a_warning() {
         .find(|d| get_str(d, &["code"]) == "navigation_disconnected")
         .unwrap();
     assert_eq!(get_str(warning, &["severity"]), "warning");
-    assert_eq!(get_u64(warning, &["details", "owned_files"]), 1);
-    // Linking to it from the root removes the warning.
+    assert_eq!(get_u64(warning, &["details", "scope_files"]), 1);
+    let absent = diagnostics
+        .iter()
+        .find(|d| get_str(d, &["code"]) == "handoff_absent")
+        .unwrap();
+    assert_eq!(get_str(absent, &["severity"]), "hint");
+    assert_eq!(get_str(absent, &["path"]), "README.md");
+    assert_eq!(
+        get_str(absent, &["details", "target"]),
+        "src/disconnected/README.md"
+    );
+    // Linking to it from the root removes the warning and hands the folder
+    // off, which also ends the overlap.
     project.append("README.md", "\nSee [disconnected](src/disconnected/).\n");
     let (_, lint) = project.json(&["lint"]);
     assert!(!diagnostic_codes(&lint).contains(&"navigation_disconnected".to_string()));
+    assert!(!diagnostic_codes(&lint).contains(&"handoff_absent".to_string()));
 }
 
 #[test]
@@ -971,8 +1007,8 @@ fn policy_changes_invalidate_only_inheriting_scopes() {
     project.write(
         "memoria.toml",
         project.read_string("memoria.toml").replace(
-            "version = 2\n",
-            "version = 2\ninclude = [\n    \"nothing/**\",\n]\n",
+            "version = 3\n",
+            "version = 3\ninclude = [\n    \"nothing/**\",\n]\n",
         ),
     );
     for doc in [

@@ -106,9 +106,17 @@ fn copy_tree(from: &Path, to: &Path) {
 impl Project {
     /// Copy the three-level fixture into a fresh local Git repository.
     pub fn seed() -> Project {
+        Project::seed_from("three-level")
+    }
+
+    /// Copy one named fixture under `tests/fixtures` into a fresh local Git
+    /// repository and commit it.
+    pub fn seed_from(name: &str) -> Project {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().canonicalize().unwrap();
-        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/three-level");
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures")
+            .join(name);
         copy_tree(&fixture, &root);
         let project = Project {
             dir,
@@ -498,6 +506,117 @@ impl Project {
 
     pub fn waiting_on(&self, document: &str) -> Vec<String> {
         strings(get(&self.doc_status(document), &["waiting_on"]))
+    }
+
+    /// Every document that is pending or never reviewed, sorted.
+    pub fn pending(&self) -> Vec<String> {
+        let (_, value) = self.json(&["status"]);
+        let Json::Array(items) = get(&value, &["data", "documents"]) else {
+            panic!("documents is not an array")
+        };
+        let mut out: Vec<String> = items
+            .iter()
+            .filter(|d| get_str(d, &["status"]) != "current")
+            .map(|d| get_str(d, &["document"]).to_string())
+            .collect();
+        out.sort();
+        out
+    }
+
+    /// Every document that waits for another, as `(document, waiting_on)`.
+    pub fn waiting(&self) -> Vec<(String, Vec<String>)> {
+        let (_, value) = self.json(&["status"]);
+        let Json::Array(items) = get(&value, &["data", "documents"]) else {
+            panic!("documents is not an array")
+        };
+        let mut out: Vec<(String, Vec<String>)> = items
+            .iter()
+            .filter(|d| !strings(get(d, &["waiting_on"])).is_empty())
+            .map(|d| {
+                (
+                    get_str(d, &["document"]).to_string(),
+                    strings(get(d, &["waiting_on"])),
+                )
+            })
+            .collect();
+        out.sort();
+        out
+    }
+
+    /// The `(code, identity)` fallback reasons of one document's manifest.
+    pub fn fallbacks(&self, document: &str) -> Vec<(String, String)> {
+        let (code, value) = self.json(&["review", document]);
+        assert_eq!(code, 0, "review {document}: {}", json::to_pretty(&value));
+        let Json::Array(reasons) = get(&value, &["data", "review", "fallback_reasons"]) else {
+            panic!("fallback_reasons is not an array")
+        };
+        reasons
+            .iter()
+            .map(|r| {
+                (
+                    get_str(r, &["code"]).to_string(),
+                    match get(r, &["identity"]) {
+                        Json::String(text) => text.clone(),
+                        _ => String::new(),
+                    },
+                )
+            })
+            .collect()
+    }
+
+    /// The diagnostics of `lint` with one code.
+    pub fn lint_diagnostics(&self, code: &str) -> Vec<Json> {
+        let (_, value) = self.json(&["lint"]);
+        let Json::Array(items) = get(&value, &["diagnostics"]) else {
+            panic!("diagnostics is not an array")
+        };
+        items
+            .iter()
+            .filter(|d| get_str(d, &["code"]) == code)
+            .cloned()
+            .collect()
+    }
+
+    /// The worked example of plan §2.9: a README that links `auth/` and
+    /// imports `docs/guide.md#overview`, an opted-in guide with an export,
+    /// an opted-in `auth/flows.md` with a section, unmarked Markdown, and an
+    /// unlinked `legacy/README.md`. Every document is acknowledged.
+    pub fn worked_example() -> Project {
+        let project = Project::empty_repo();
+        project.write(
+            "README.md",
+            "# Root\n\nSee [authentication](auth/README.md) and the [guide](docs/guide.md).\n\n## Overview\n\n<!-- memoria:import src=\"docs/guide.md#overview\" -->\n<!-- /memoria:import -->\n",
+        );
+        project.write("app.rs", "fn main() {}\n");
+        project.write(
+            "docs/guide.md",
+            "# Guide\n\n<!-- memoria:export id=\"overview\" -->\nThe guide overview.\n<!-- /memoria:export -->\n\nSee [notes](notes.md).\n",
+        );
+        project.write("docs/notes.md", "# Notes\n\nUnmarked notes.\n");
+        project.write(
+            "auth/README.md",
+            "# Auth\n\n<!-- memoria:export id=\"summary\" -->\nAuth summary.\n<!-- /memoria:export -->\n",
+        );
+        project.write("auth/login.rs", "fn login() {}\n");
+        project.write("auth/session.rs", "fn session() {}\n");
+        project.write(
+            "auth/flows.md",
+            "# Flows\n\n<!-- memoria:section id=\"login\" files=\"login.rs\" -->\n## Login\n\nThe login flow.\n<!-- /memoria:section -->\n",
+        );
+        project.write("auth/scratch.md", "# Scratch\n");
+        project.write("legacy/README.md", "# Legacy\n\nOld code.\n");
+        project.write("legacy/old.rs", "fn old() {}\n");
+        project.commit_all("worked example");
+        project.baseline();
+        project.commit_all("acknowledged");
+        project
+    }
+
+    /// The documents whose scope contains a path, from `status --explain`,
+    /// joined with `, ` for one comparison.
+    pub fn covered_by(&self, path: &str) -> String {
+        let (_, explain) = self.json(&["status", "--explain", path]);
+        strings(get(&explain, &["data", "explanation", "covered_by"])).join(", ")
     }
 
     pub fn cause_codes(&self, document: &str) -> Vec<String> {

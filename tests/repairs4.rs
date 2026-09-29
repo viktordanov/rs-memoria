@@ -160,6 +160,12 @@ fn reserved_trees_never_contain_documents() {
             &format!("{parent}/memoria/README.memoria.toml"),
             "ignore = []\n",
         );
+        // The root hands that folder to its README, so the root never covers
+        // the old guide's files.
+        project.append(
+            "README.md",
+            &format!("\nSee [the old guide]({parent}/memoria/README.md).\n"),
+        );
         project.baseline();
         let (_, status) = project.json(&["status"]);
         let readmes = get_u64(&status, &["data", "readmes"]);
@@ -256,7 +262,7 @@ fn reserved_trees_never_contain_documents() {
         "memoria.toml",
         project
             .read_string("memoria.toml")
-            .replace("version = 2\n", "version = 2\ninclude = []\n"),
+            .replace("version = 3\n", "version = 3\ninclude = []\n"),
     );
     project.write(
         "memoria.toml",
@@ -331,7 +337,7 @@ fn non_utf8_arguments_are_usage_errors_not_panics() {
 #[test]
 fn quoted_guidance_with_colons_are_accepted_everywhere() {
     let project = Project::seed();
-    project.write("memoria.toml", "version = 2\nignore = [\n    \"**/generated/**\",\n    \"**/fixtures/**\",\n]\n\n[documentation]\nguidance = [\n    \"Style: use short sentences.\",\n    \"Tone: plain words.\",\n]\nguidance_files = [\n    \".agents/writing.md\",\n]\n");
+    project.write("memoria.toml", "version = 3\nignore = [\n    \"**/generated/**\",\n    \"**/fixtures/**\",\n]\n\n[documentation]\nguidance = [\n    \"Style: use short sentences.\",\n    \"Tone: plain words.\",\n]\nguidance_files = [\n    \".agents/writing.md\",\n]\n");
     project.write("src/retrieval/README.memoria.toml", "include = [\n    \"fixtures/**\",\n]\n\n[documentation]\nguidance = [\n    \"Retrieval: explain ranking first.\",\n]\n");
     project.baseline();
     project.append("src/retrieval/engine.rs", "// edit\n");
@@ -349,7 +355,7 @@ fn quoted_guidance_with_colons_are_accepted_everywhere() {
     );
     // The single-line array form is equivalent and does not change staleness.
     let state = project.state();
-    project.write("memoria.toml", "version = 2\nignore = [\n    \"**/generated/**\",\n    \"**/fixtures/**\",\n]\n\n[documentation]\nguidance = [\"Style: use short sentences.\", 'Tone: plain words.']\nguidance_files = [\n    \".agents/writing.md\",\n]\n");
+    project.write("memoria.toml", "version = 3\nignore = [\n    \"**/generated/**\",\n    \"**/fixtures/**\",\n]\n\n[documentation]\nguidance = [\"Style: use short sentences.\", 'Tone: plain words.']\nguidance_files = [\n    \".agents/writing.md\",\n]\n");
     let (packet, _) = project.review_full("src/retrieval/README.md");
     let value = parse_json(&fs::read(packet).unwrap());
     let Json::Array(guidance) = get(&value, &["data", "context", "guidance", "entries"]) else {
@@ -364,7 +370,7 @@ fn quoted_guidance_with_colons_are_accepted_everywhere() {
     // Table values in a string array are still rejected.
     project.write(
         "memoria.toml",
-        "version = 2\n\n[documentation]\nguidance = [\n    { key = \"value\" },\n]\n",
+        "version = 3\n\n[documentation]\nguidance = [\n    { key = \"value\" },\n]\n",
     );
     let (code, lint) = project.json(&["lint"]);
     assert_eq!(code, 1);

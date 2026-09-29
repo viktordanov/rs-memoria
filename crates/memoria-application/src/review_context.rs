@@ -1,15 +1,17 @@
 //! Build the complete review context `C` that a v3 token binds.
 //!
-//! The context reaches beyond the input manifest: it names the ownership
-//! topology, the effective selection, the advisory mapping associations, the
-//! effective guidance, and the provider closure the reviewer depended on.
+//! The context reaches beyond the input manifest: it names the document's
+//! kind and handoffs, the effective selection over its scope, the advisory
+//! mapping associations, the effective guidance, and the provider closure
+//! the reviewer depended on. Incoming handoffs and overlaps are not bound,
+//! because they do not change this document's inputs.
 //! Every collection is gathered here and sorted by the canonical encoder, so
 //! traversal order never reaches the token.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use memoria_domain::canonical::{
-    self, ConsumerEdge, ImportEdge, ProviderDescriptor, ReviewContext,
+    self, ConsumerEdge, HandoffEdge, ImportEdge, ProviderDescriptor, ReviewContext,
 };
 use memoria_domain::section::SELECTION_VERSION;
 use memoria_domain::{DocumentId, Hash64};
@@ -69,28 +71,22 @@ pub fn build(
     snapshot: &Snapshot,
     document: &DocumentId,
 ) -> ReviewContext {
-    let dir = document.path().directory();
-
-    // Ownership: the boundaries that start and terminate this owner's cover.
-    let ancestor_boundaries: Vec<String> = snapshot
-        .documents
-        .keys()
-        .filter(|other| *other != document && dir.is_within(&other.path().directory()))
-        .map(|other| other.as_str().to_string())
+    // Scope: the handoffs that shape this document's coverage, and nested
+    // repositories inside its covered folders, whose contents are opaque.
+    let handoffs: Vec<HandoffEdge> = snapshot
+        .scopes
+        .handoffs_of(document)
+        .iter()
+        .map(|handoff| HandoffEdge {
+            subtree: handoff.subtree.as_str().to_string(),
+            target: handoff.target.as_str().to_string(),
+        })
         .collect();
-    let descendant_boundaries: Vec<String> = snapshot
-        .documents
-        .keys()
-        .filter(|other| *other != document && other.path().directory().is_within(&dir))
-        .map(|other| other.as_str().to_string())
-        .collect();
-    // Nested repositories and submodules inside this owner's directory make
-    // their contents opaque, so they delimit coverage exactly like a README.
     let nested_repositories: Vec<String> = snapshot
         .collected
         .boundaries
         .iter()
-        .filter(|path| path.is_within(&dir))
+        .filter(|path| snapshot.scopes.covers_dir(document, &path.directory()))
         .map(|path| path.as_str().to_string())
         .collect();
 
@@ -100,9 +96,9 @@ pub fn build(
         .get(document)
         .copied()
         .unwrap_or(Hash64(0));
-    let owned_paths: Vec<String> = snapshot
-        .ownership
-        .owned_by(document)
+    let scope_paths: Vec<String> = snapshot
+        .scopes
+        .scope_of(document)
         .iter()
         .map(|path| path.as_str().to_string())
         .collect();
@@ -158,11 +154,11 @@ pub fn build(
     ReviewContext {
         selection_version: SELECTION_VERSION,
         owner: document.as_str().to_string(),
-        ancestor_boundaries,
-        descendant_boundaries,
+        document_kind: document.kind().as_str().to_string(),
+        handoffs,
         nested_repositories,
         policy_hash,
-        owned_paths,
+        scope_paths,
         mapping,
         guidance,
         imports,
@@ -195,7 +191,7 @@ pub fn token_inputs(
     }
 }
 
-/// Canonical descriptors for the `binding` object of a full v3 export, so an
+/// Canonical descriptors for the `binding` object of a full export, so an
 /// offline reader can recompute `C` without the project.
 pub fn context_detail(context: &ReviewContext) -> crate::error::Detail {
     use crate::error::{Detail, DetailMap};
@@ -233,14 +229,20 @@ pub fn context_detail(context: &ReviewContext) -> crate::error::Detail {
     DetailMap::default()
         .number("selection_version", context.selection_version)
         .text("owner", context.owner.clone())
-        .with("ancestor_boundaries", strings(&context.ancestor_boundaries))
-        .with(
-            "descendant_boundaries",
-            strings(&context.descendant_boundaries),
-        )
+        .text("document_kind", context.document_kind.clone())
+        .with("handoffs", {
+            let mut sorted: Vec<&HandoffEdge> = context.handoffs.iter().collect();
+            sorted.sort();
+            Detail::list(sorted.into_iter().map(|edge| {
+                DetailMap::default()
+                    .text("subtree", edge.subtree.clone())
+                    .text("target", edge.target.clone())
+                    .build()
+            }))
+        })
         .with("nested_repositories", strings(&context.nested_repositories))
         .text("policy_hash", context.policy_hash.to_hex())
-        .with("owned_paths", strings(&context.owned_paths))
+        .with("scope_paths", strings(&context.scope_paths))
         .text(
             "mapping_state",
             match &context.mapping {

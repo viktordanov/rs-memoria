@@ -122,10 +122,7 @@ pub fn run(
     let targets: Vec<DocumentId> = match &selected {
         Some(document) => {
             if !snapshot.collected.documents.contains(document) {
-                return Err(AppError::validation(
-                    "document_not_found",
-                    format!("{document} is not a discovered README"),
-                ));
+                return Err(super::document_not_found(&snapshot, document));
             }
             vec![document.clone()]
         }

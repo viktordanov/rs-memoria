@@ -191,6 +191,36 @@ pub struct ReviewRecord {
     pub note: ReviewNote,
     pub git: GitContext,
     pub acknowledged_invalidations: Vec<u64>,
+    /// The handed-off folders the acknowledged scope excluded.
+    pub coverage: CoverageEvidence,
+}
+
+/// What an acknowledgement recorded about the folders its scope handed off.
+///
+/// `Recorded` holds the exact handed-off subtrees of the final revalidated
+/// snapshot, sorted and unique, each strictly inside the document folder.
+/// `Unrecorded` marks a record written by a release that did not store
+/// them (lock format 2). Memoria never invents or backfills evidence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CoverageEvidence {
+    Unrecorded,
+    Recorded(Vec<DirPath>),
+}
+
+impl CoverageEvidence {
+    /// Evidence in canonical form: sorted and without duplicates.
+    pub fn recorded(mut folders: Vec<DirPath>) -> CoverageEvidence {
+        folders.sort();
+        folders.dedup();
+        CoverageEvidence::Recorded(folders)
+    }
+
+    pub fn folders(&self) -> Option<&[DirPath]> {
+        match self {
+            CoverageEvidence::Unrecorded => None,
+            CoverageEvidence::Recorded(folders) => Some(folders),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -288,6 +318,14 @@ pub enum StateError {
         document: DocumentId,
         id: u64,
     },
+    CoverageFolderOrder {
+        document: DocumentId,
+        folder: DirPath,
+    },
+    CoverageFolderOutside {
+        document: DocumentId,
+        folder: DirPath,
+    },
     CounterOverflow,
     ZeroCounter {
         counter: &'static str,
@@ -357,6 +395,14 @@ impl fmt::Display for StateError {
                 f,
                 "review record for {document} acknowledged ids must increase; {id} is out of order or duplicated"
             ),
+            StateError::CoverageFolderOrder { document, folder } => write!(
+                f,
+                "review record for {document} coverage evidence is not in canonical sorted order at {folder}/"
+            ),
+            StateError::CoverageFolderOutside { document, folder } => write!(
+                f,
+                "review record for {document} records handed-off folder {folder}/, which is not strictly inside the document folder"
+            ),
             StateError::CounterOverflow => write!(f, "a state counter cannot increase further"),
             StateError::ZeroCounter { counter } => {
                 write!(f, "{counter} must start at 1; zero is impossible")
@@ -407,6 +453,8 @@ pub struct AckRequest {
     pub result: ReviewResult,
     pub note: ReviewNote,
     pub git: GitContext,
+    /// The handed-off subtrees of the final revalidated snapshot.
+    pub coverage: Vec<DirPath>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -594,6 +642,25 @@ impl ReviewState {
                 }
                 last_acknowledged = *id;
             }
+            if let CoverageEvidence::Recorded(folders) = &record.coverage {
+                let home = document.directory();
+                for pair in folders.windows(2) {
+                    if pair[0] >= pair[1] {
+                        return Err(StateError::CoverageFolderOrder {
+                            document: document.clone(),
+                            folder: pair[1].clone(),
+                        });
+                    }
+                }
+                for folder in folders {
+                    if !folder.is_strictly_within(&home) {
+                        return Err(StateError::CoverageFolderOutside {
+                            document: document.clone(),
+                            folder: folder.clone(),
+                        });
+                    }
+                }
+            }
         }
         if self.revision < self.next_invalidation_id - 1 {
             return Err(StateError::RevisionBelowCounter {
@@ -712,6 +779,7 @@ impl ReviewState {
                 note: request.note,
                 git: request.git,
                 acknowledged_invalidations: cleared.clone(),
+                coverage: CoverageEvidence::recorded(request.coverage),
             },
         );
         self.revision = state_revision;
@@ -771,7 +839,69 @@ mod tests {
             result: ReviewResult::NoUpdate,
             note: ReviewNote::parse("The current summary describes all reviewed inputs.").unwrap(),
             git: GitContext::default(),
+            coverage: vec![],
         }
+    }
+
+    fn dir(p: &str) -> DirPath {
+        DirPath::parse(p).unwrap()
+    }
+
+    #[test]
+    fn acknowledge_stores_sorted_unique_coverage_evidence() {
+        let mut state = ReviewState::empty();
+        let mut req = request("README.md", 0, 1, 1, vec![]);
+        req.coverage = vec![dir("docs"), dir("auth"), dir("docs"), dir("auth/inner")];
+        state.acknowledge(req).unwrap();
+        let record = &state.reviews[&doc("README.md")];
+        assert_eq!(
+            record.coverage,
+            CoverageEvidence::Recorded(vec![dir("auth"), dir("auth/inner"), dir("docs")])
+        );
+        state.validate().unwrap();
+        // An empty handoff set is still recorded evidence.
+        let mut state = ReviewState::empty();
+        state
+            .acknowledge(request("README.md", 0, 1, 1, vec![]))
+            .unwrap();
+        assert_eq!(
+            state.reviews[&doc("README.md")].coverage,
+            CoverageEvidence::Recorded(vec![])
+        );
+    }
+
+    #[test]
+    fn validate_rejects_non_canonical_or_outside_coverage_folders() {
+        let mut state = ReviewState::empty();
+        state
+            .acknowledge(request("svc/README.md", 0, 1, 1, vec![]))
+            .unwrap();
+        let key = doc("svc/README.md");
+        for (folders, expect_order) in [
+            (vec![dir("svc/b"), dir("svc/a")], true),
+            (vec![dir("svc/a"), dir("svc/a")], true),
+            (vec![dir("svc")], false),
+            (vec![dir("other")], false),
+            (vec![dir("")], false),
+        ] {
+            let mut broken = state.clone();
+            broken.reviews.get_mut(&key).unwrap().coverage = CoverageEvidence::Recorded(folders);
+            let err = broken.validate().unwrap_err();
+            if expect_order {
+                assert!(
+                    matches!(err, StateError::CoverageFolderOrder { .. }),
+                    "{err}"
+                );
+            } else {
+                assert!(
+                    matches!(err, StateError::CoverageFolderOutside { .. }),
+                    "{err}"
+                );
+            }
+        }
+        let mut unrecorded = state.clone();
+        unrecorded.reviews.get_mut(&key).unwrap().coverage = CoverageEvidence::Unrecorded;
+        unrecorded.validate().unwrap();
     }
 
     #[test]

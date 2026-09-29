@@ -32,16 +32,21 @@ A snapshot is a collected view of the repository inputs and saved review state.
 `snapshot::build` collects these facts twice through the ports.
 If those collections differ, it collects the facts once more.
 If the last two collections differ, it returns `snapshot_changed`.
-The analysis uses the stable collection to determine file ownership and review order.
+The analysis uses the stable collection to find the tracked documents, build their scopes and handoffs, and determine review order.
+A tracked document is a `README.md`, or a selected Markdown file whose parser result has a Memoria marker outside code.
+Discovery of opted-in documents happens after selection, so an unselected file is never a document, and a document is never a source.
+The analysis resolves every normal link and import to a project path, builds one `ScopeMap`, reports `coverage_unowned` for uncovered files, and adds the hints `handoff_not_applied` and `handoff_absent`.
+Each document's policy covers the ignore rules in its ancestor folders and in its covered folders, and its manifest lists exactly its scope.
 The snapshot also carries Git context and diagnostics.
 
-An export is a marked section that one README supplies to another README.
+An export is a marked section that one document supplies to another document.
 An import is the declared copy of that section.
 The supplier is the provider, and the recipient is the consumer.
 The `render` command updates those copies from their providers.
 
 The plan names one next action in `data.next_action`.
-A pending README requires a review.
+A pending document requires a review.
+Documents that share sources are ready together and never wait for each other.
 If a provider is pending, the consumer waits for that provider.
 That restriction also applies to consumers whose inputs still match their previous review.
 
@@ -49,8 +54,8 @@ Source evidence: [snapshot.rs](src/snapshot.rs) and [plan.rs](src/usecases/plan.
 
 ## A review states its requirements
 
-A document boundary groups the selected files that one README explains.
-A review states what the reviewer must read for that boundary, and why the
+A document's scope is the selected files in its folder and below, minus the subfolders it hands off.
+A review states what the reviewer must read for that document, and why the
 reviewer cannot read less. A human or agent judges the prose against those
 inputs.
 
@@ -58,16 +63,29 @@ inputs.
 when the whole picture holds: a prior declaration exists, the bytes that
 declaration named can still be verified, the mapping associations are valid
 and unchanged, and nothing outside the mapped sources moved. Any doubt
-produces a full baseline with an explicit reason.
+produces a full baseline with an explicit reason. A file that entered or left
+the scope through a handoff gives `handoff_changed` with the subtree as its
+identity; a file that gained or lost its last marker gives
+`document_classification_changed`. For a file that entered the scope, the
+previous record's coverage evidence decides: inside a recorded handed-off
+folder, a handoff ended; otherwise, `path_set_changed`. A record without
+evidence uses the bounded legacy token proof, and when no proof exists the
+reason is `coverage_unrecorded` with the failed condition. Each change carries a relationship, and
+`downstream` names export consumers and co-covering documents, bounded to 64
+entries with totals.
 
 `prepare_review.rs` returns one of two representations. The default manifest
 carries requirements and no bodies. `--full` adds every reviewed byte and the
 canonical binding descriptors. Both carry the same token, because both
 describe one stable snapshot.
 
-`review_context.rs` assembles the context that the token binds: the ownership
-boundaries, the effective selection, the mapping associations, the guidance
-digest, and the transitive provider closure.
+`save_artifact.rs` writes an encoded artifact through the `ArtifactStore`
+port. It refuses a destination inside the Git worktree before the write, and
+it reports a receipt with the saved path and the `ack` command.
+
+`review_context.rs` assembles the context that the token binds: the document
+kind and its handoffs, the effective selection over its scope, the mapping
+associations, the guidance digest, and the transitive provider closure.
 
 After a document edit, a new artifact represents the changed bytes.
 An outdated import requires `render` before the consumer can receive a review.
@@ -80,8 +98,8 @@ version and tells the user to produce a new artifact. Nothing is converted.
 
 ## Acknowledgement saves the review result
 
-An acknowledgement records who reviewed one README and why its explanation is correct.
-A revision is the counter that increases after each successful acknowledgement for that README.
+An acknowledgement records who reviewed one document and why its explanation is correct.
+A revision is the counter that increases after each successful acknowledgement for that document.
 The token identifies the document, the revision, the complete inputs, the
 prior review, the complete review context, and the explicit review requests
 that the artifact covers.
@@ -89,11 +107,11 @@ An invalidation is an explicit review request with a recorded reason.
 
 The acknowledgement path has five stages:
 
-1. Argument validation accepts the reviewer, result, note, and token.
+1. Argument validation accepts the reviewer, result, note, and an optional token. Without `--token`, the token comes from the integrity-checked artifact.
 2. Artifact validation examines the schema, limits, and digest before the write lock. A full export also validates its content hashes and its self-contained token.
 3. Under the write lock, a snapshot rebuilds the complete input manifest and the complete review context, then recomputes the token.
 4. The domain transition compares the revision and covered invalidations.
-5. A final rebuild and token recomputation precede the state save through `StateStore`.
+5. A final rebuild and token recomputation precede the state save through `StateStore`. The record stores the handed-off folders of this final snapshot as its coverage evidence.
 
 Stage 3 never validates only the suggested reads, the suggested sections, or
 the changed files. A small artifact narrows the reading list. It never narrows
@@ -129,7 +147,7 @@ It never asserts completed review, and it never reduces the scope that the
 review mode requires.
 
 `history` bounds local commit lookup and compares historical lengths and hashes with acknowledged content.
-Acknowledgement stores a commit only when the README, all owned files, and imported export bodies match one candidate.
+Acknowledgement stores a commit only when the document, all its scope files, and imported export bodies match one candidate.
 Partial coverage produces a diagnostic and a null reference.
 Dirty acknowledgement remains valid.
 Later evidence recovery never changes the previous review attribution.
@@ -138,8 +156,8 @@ The [CLI reference](../../docs/cli.md#historical-coverage) defines the budgets a
 ## Mutation boundaries differ
 
 `render` changes only declared import bodies and leaves saved review state unchanged.
-Its writer compares the expected bytes before each README replacement.
-Each replacement is atomic, but a set of README replacements is not one transaction.
+Its writer compares the expected bytes before each document replacement.
+Each replacement is atomic, but a set of document replacements is not one transaction.
 After a write error, `render_incomplete` identifies the remaining documents.
 
 `invalidate` records a reason for the documents in its captured scope.
@@ -157,7 +175,7 @@ Full exports retain their existing evidence contract through that helper.
 `state_diff` compares explicit snapshots through `StateInspector` and matches logical records by identity.
 Neither command writes source contents or hunks into lock state.
 
-`guidance` reports a configuration error for a README that exists.
+`guidance` reports a configuration error for a document that exists.
 It returns the errors with the partial report instead of hiding them.
 `agent hooks install` validates the root configuration before its first write.
 If that configuration is invalid, the command fails and changes nothing.

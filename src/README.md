@@ -37,19 +37,19 @@ Usage: memoria [OPTIONS] <COMMAND>
 
 Commands:
   completions   Print a shell completion script without project discovery or installation
-  explain       Explain one README's whole-file freshness with verified local Git evidence
+  explain       Explain one document's whole-file freshness with verified local Git evidence
   packet        Read exact sections from a saved full export without project discovery
   init          Validate root setup inputs, or create missing configuration and state with --apply
   status        Show coverage, input size, and review state
-  guidance      Show the project documentation guidance that applies to a README
+  guidance      Show the project documentation guidance that applies to a document
   state         Inspect or compare committed state without changing it
   lint          Check structure, configuration, markers, and link hints
-  review        Show the ordered review plan, or the review requirements for one README
+  review        Show the ordered review plan, or the review requirements for one document
   render        Refresh declared import blocks only
   ack           Record a review result against the exact reviewed snapshot
-  invalidate    Mark one README, a subtree, or the whole project for semantic review
+  invalidate    Mark one document, a subtree, or the whole project for semantic review
   check         Run read-only validation for CI
-  graph         Show documentation ownership, imports, navigation, and status
+  graph         Show document scopes, handoffs, imports, navigation, and status
   agent         Install or remove the managed Memoria skill and hooks for an agent
   integrations  Manage the agent skill, the agent hook, and the GitHub workflow
   help          Print this message or the help of the given subcommand(s)
@@ -65,6 +65,7 @@ Options:
 ## Arguments become an outcome
 
 `Cli` parses the command, document path, and flags.
+A document path is a `README.md` or another Markdown file; the application decides whether it is tracked.
 `discover_root` identifies the Git worktree root.
 `run` creates `Services` from the concrete adapters and dispatches the command.
 Completions, saved export views, and explicit state comparisons dispatch before project discovery.
@@ -74,16 +75,30 @@ The write lock comes from the Git port, at the worktree-private path, so the com
 The application function returns structured data and diagnostics.
 The presentation code describes those values without recalculating review decisions.
 
-A review manifest states what one README's review must read. A full export
-adds the exact input bytes. An acknowledgement is the saved result of that
-review.
-
-`--full` selects the representation, and `--format` selects the rendering. The
-executable encodes the artifact before it selects the output format, so the
-artifact limits apply equally to human text and JSON. Only the JSON artifact
-supports acknowledgement. Human text supports reading.
-
 Source evidence: [cli.rs](presentation/cli.rs) and [main.rs](main.rs).
+
+<!-- memoria:section id="review-artifacts" files="main.rs presentation/review.rs" -->
+## Review artifacts
+
+A review manifest states what one document's review must read.
+A full export adds the exact input bytes.
+An acknowledgement is the saved result of that review.
+
+`--full` selects the representation, and `--format` selects the rendering.
+The executable encodes the artifact before it selects the output format, so the artifact limits apply equally to human text and JSON.
+Only the JSON artifact supports acknowledgement.
+Human text supports reading.
+
+`--save DIR` writes the encoded JSON artifact into a directory outside the Git worktree, after the limits pass.
+The saved bytes are the bytes that `--format json` prints for the same snapshot.
+With `--save`, the JSON output is a receipt that names the saved file, and the human output adds the saved path and the `ack` command.
+
+The default human view in `presentation/review.rs` is change-first.
+It shows the header, the scope and its handoffs, the baseline, what changed with each relationship, semantic requests, co-covering documents, export consumers, how to read, and three next steps.
+`--details` adds tokens, digests, per-input sizes and hashes, and counts.
+
+Source evidence: [main.rs](main.rs) and [presentation/review.rs](presentation/review.rs).
+<!-- /memoria:section -->
 
 ## Output can fail after a mutation
 
@@ -127,20 +142,20 @@ The executable also owns usage errors and errors during output delivery.
 | [main.rs](main.rs) | Adapter assembly, command dispatch, and output delivery |
 | [presentation/cli.rs](presentation/cli.rs) | Command grammar |
 | [presentation/text.rs](presentation/text.rs) | Detailed full-export human output and other command views |
-| [presentation/review.rs](presentation/review.rs) | Default human review manifest and explanation |
+| [presentation/review.rs](presentation/review.rs) | Change-first human review view and explanation |
 | [presentation/human.rs](presentation/human.rs) | Human diagnostics and structured evidence |
 | [presentation/json.rs](presentation/json.rs) | JSON envelope |
 
-An agent skill is a file of instructions for an agent.
-`main.rs` embeds `skills/memoria/SKILL.md` at build time.
-The installer receives that embedded text through `FsSkillStore`.
-A later edit to the source skill requires a new binary build to change the installed text.
+An agent skill is a set of instruction files for an agent.
+`main.rs` embeds the four files of `skills/memoria/` at build time as `SKILL_PACKAGE`.
+The installer receives that embedded package through `FsSkillStore`, which records a hash for each file.
+A later edit to a source skill file requires a new binary build to change the installed text.
 
 `memoria packet view` also dispatches before project discovery.
 It validates the saved packet before it returns exact snapshot selections.
 The default human review and explanation use `presentation/review.rs`.
-`--full` retains detailed output.
-Existing canonical JSON remains complete.
+`review --full` and `explain --full` retain detailed output.
+Canonical JSON remains complete.
 
 `Cli::normalized` rewrites the `integrations skill` and `integrations hook` spellings onto the established `agent` requests.
 It runs once, directly after argument parsing and before every dispatch decision.

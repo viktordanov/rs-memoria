@@ -44,7 +44,7 @@ It rejects symlinks within project paths.
 A lock file must stay inside the metadata directory that its boundary names.
 The opener refuses a symlink, a special file, and a substituted parent directory.
 The application uses these facts to enforce selection and repository boundaries.
-The adapters do not determine which README needs review.
+The adapters do not determine which document needs review.
 
 Source evidence: [git.rs:16](src/git.rs#L16), [repository_ignore.rs](src/repository_ignore.rs#L31), and [fs.rs:110](src/fs.rs#L110).
 
@@ -60,8 +60,9 @@ The application compares the returned bytes with the acknowledged fingerprints b
 
 ## State writes preserve a clear error boundary
 
-An acknowledgement records who reviewed one README and why its explanation is correct.
-Saved review state contains the latest acknowledgement and input identities for each README.
+An acknowledgement records who reviewed one document and why its explanation is correct.
+Saved review state contains the latest acknowledgement and input identities for each document.
+The lock codec writes format 3 and reads formats 2 and 3. Format 3 adds one coverage-evidence field to each review row; a format 2 record decodes as unrecorded. Document identities accept any tracked Markdown path, and each record's files still lie inside its document's folder.
 
 `LockStateStore::save` validates the state value and compares the stored bytes with the expected bytes.
 A mismatch returns `StateFailure::Conflict`.
@@ -87,14 +88,14 @@ Source evidence: [state.rs:326](src/state.rs#L326), [fs.rs:202](src/fs.rs#L202),
 
 ## Formats and artifact limits
 
-A review manifest states what one README's review must read. A full export
+A review manifest states what one document's review must read. A full export
 adds the exact input bytes. A codec converts between application values and a
-transport format, such as JSON. An export is a marked README section that
-another README can copy.
+transport format, such as JSON. An export is a marked document section that
+another document can copy.
 
 | Adapter | Contract |
 | --- | --- |
-| `PulldownMarkdownCodec` | It identifies marker ranges, validates export text, and parses advisory sections. |
+| `PulldownMarkdownCodec` | It identifies marker ranges and link locations, validates export text, parses advisory sections, and recognizes the markers that opt a Markdown file in. |
 | `TomlConfigurationReader` | It accepts the supported TOML configuration. |
 | `JsonPacketCodec` | It encodes and decodes both review artifacts under hard limits. |
 | `LockStateStore` | It reads and writes the binary `memoria.lock` file. |
@@ -102,6 +103,7 @@ another README can copy.
 | `GixRepositoryIgnore` | It matches repository ignore rules without host settings. |
 | `FsHookStore` | It installs and removes one owned native `Stop` hook. |
 | `FsWorkflowStore` | It renders, records, and removes one managed GitHub workflow. |
+| `FsArtifactStore` | It resolves a `--save` destination and writes one artifact exclusively, with mode 0600. |
 | `Xxh3Hasher` | It calculates XXH3-64 hashes with the default secret and seed zero. |
 | `EnvAgentLocations` | It resolves absolute skill destinations for a target and scope. |
 | `SelfStatusProcess` | It runs one bounded status inspection without a shell. |
@@ -109,7 +111,8 @@ another README can copy.
 | `Supervisor` | It owns every subprocess one bounded endpoint starts. |
 
 The codec writes envelope schema version 3 and accepts only that version.
-It writes manifest version 1 and packet version 3, and it accepts only those.
+It writes manifest version 2 and packet version 4, and it accepts only those.
+It rejects a save receipt passed as an artifact with `packet_schema_invalid`.
 A different version fails with the received value in the message and with
 instructions to produce a new artifact. The codec converts nothing.
 
@@ -135,9 +138,11 @@ Source evidence: [packet.rs](src/packet.rs) and [main.rs](../../src/main.rs).
 ### The Markdown parser separates two channels
 
 Structural problems and advisory problems reach different places. A malformed
-export or import marker is a structural error that invalidates the README. A
-malformed section marker is an advisory problem: it withdraws the README's
-focused-review advice and leaves the document valid.
+export or import marker is a structural error that invalidates the document.
+A malformed section marker is an advisory problem: it withdraws the document's
+focused-review advice and leaves the document valid. Either kind of marker,
+even a malformed one, opts a Markdown file in: a mistake never drops the
+obligation to review it.
 
 The parser reports a section problem under `section_issues`, never under
 `issues`. A section-like line that is not a well-formed declaration still
@@ -154,8 +159,10 @@ Source evidence: [markdown.rs](src/markdown.rs).
 
 ## Skill installation has its own transaction
 
-An agent skill is a file of instructions for an agent.
-The installer stores the Memoria skill and its management record in one package directory.
+An agent skill is a set of instruction files for an agent.
+The installer stores the four Memoria skill files and their management record in one flat package directory.
+The record hashes every file. A package is current only when its version, its names, and every file's bytes match.
+An upgrade names the files that the previous record listed, so a smaller older package upgrades cleanly.
 
 `FsSkillStore` uses a lock in the package parent directory.
 It records installation progress and preserves a backup during package replacement.
@@ -247,7 +254,9 @@ Source evidence: [bounded_process.rs](src/bounded_process.rs#L1) and [git.rs](sr
 
 ## The lock codec produces one canonical artifact
 
-`lock_codec` encodes and decodes `memoria.lock` at format version 2.
+`lock_codec` encodes `memoria.lock` at format version 3 and decodes format versions 2 and 3.
+In format 3, each review row stores its coverage evidence as `0` (unrecorded) or as a vector index plus one; the vector holds strictly increasing path identifiers of handed-off folders.
+A format 2 row has no such field, so its record decodes as unrecorded; the next write re-encodes it as format 3.
 One logical state always produces one byte sequence, so two hosts commit equal bytes.
 
 The writer measures the logical expansion of the state before it builds a table.
@@ -260,6 +269,7 @@ The writer therefore cannot produce a file that the reader rejects.
 The decoder verifies the outer checksum before decompression.
 It accepts exactly one Zstandard frame with the frozen profile, and no dictionary or trailing bytes.
 It then rejects noncanonical encodings: overlong integers, unsorted tables, unused entries, and invalid references.
+It also rejects coverage evidence that names a path outside its table or a folder that is not strictly inside the record's document folder.
 It bounds the file size, the payload size, the expanded value count, and the expanded string bytes.
 Every path or string that leaves a table is charged where it is materialized, so repeated references cannot expand past the limit.
 

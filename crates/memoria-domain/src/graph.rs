@@ -56,7 +56,7 @@ impl fmt::Display for GraphError {
                 ..
             } => write!(
                 f,
-                "{importer}:{location}: import {source_text:?} refers to a README that is not discovered"
+                "{importer}:{location}: import {source_text:?} refers to a document that is not tracked"
             ),
             GraphError::MissingExport {
                 importer,
@@ -356,7 +356,8 @@ fn find_cycles(
     cycles
 }
 
-/// Reader navigation: normal local README links plus declared imports.
+/// Reader navigation: normal local links between tracked documents plus
+/// declared imports.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct NavigationGraph {
     edges: BTreeMap<DocumentId, BTreeSet<DocumentId>>,
@@ -368,8 +369,8 @@ impl NavigationGraph {
         for (id, document) in documents {
             let entry = edges.entry(id.clone()).or_default();
             for link in &document.links {
-                if link != id && documents.contains_key(link) {
-                    entry.insert(link.clone());
+                if &link.target != id && documents.contains_key(&link.target) {
+                    entry.insert(link.target.clone());
                 }
             }
             for import in &document.imports {
@@ -448,7 +449,10 @@ mod tests {
                 .collect(),
             links: links
                 .iter()
-                .map(|l| DocumentId::parse(l).unwrap())
+                .map(|l| crate::document::DocumentLink {
+                    target: DocumentId::parse(l).unwrap(),
+                    location: SourceLocation { line: 1, column: 1 },
+                })
                 .collect(),
         };
         (id, document)

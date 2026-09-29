@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use memoria_application::ports::{
-    MarkdownCodec, MarkdownIssue, ParsedDocument, ParsedImport, ParsedSection,
+    MarkdownCodec, MarkdownIssue, ParsedDocument, ParsedImport, ParsedLink, ParsedSection,
 };
 use memoria_domain::section::validate_section_path;
 use memoria_domain::{ByteRange, DocumentId, Export, ExportId, SourceLocation};
@@ -421,13 +421,23 @@ fn at_line_start(bytes: &[u8], index: usize, floor: usize) -> bool {
     spaces <= 3
 }
 
-fn links_outside_code(text: &str, code: &[ByteRange]) -> Vec<String> {
+fn links_outside_code(text: &str, code: &[ByteRange]) -> Vec<ParsedLink> {
     let mut links = Vec::new();
     for (event, range) in Parser::new_ext(text, Options::empty()).into_offset_iter() {
         if let Event::Start(Tag::Link { dest_url, .. }) = event
             && !in_ranges(code, range.start)
         {
-            links.push(dest_url.to_string());
+            let line = line_of(text, range.start).line;
+            let column = range.start
+                - text[..range.start]
+                    .rfind('\n')
+                    .map(|index| index + 1)
+                    .unwrap_or(0)
+                + 1;
+            links.push(ParsedLink {
+                destination: dest_url.to_string(),
+                location: SourceLocation { line, column },
+            });
         }
     }
     links
@@ -475,7 +485,7 @@ impl MarkdownCodec for PulldownMarkdownCodec {
         let Ok(text) = std::str::from_utf8(bytes) else {
             parsed.issues.push(MarkdownIssue {
                 code: "markdown_invalid",
-                message: "README is not valid UTF-8".into(),
+                message: "document is not valid UTF-8".into(),
                 location: None,
             });
             return parsed;
@@ -1021,12 +1031,51 @@ mod tests {
         );
         assert_eq!(parsed.imports[0].location.line, 10);
         assert_eq!(
-            parsed.links,
+            parsed
+                .links
+                .iter()
+                .map(|l| (l.destination.as_str(), l.location.line, l.location.column))
+                .collect::<Vec<_>>(),
             vec![
-                "src/corpus/README.md",
-                "https://example.com",
-                "https://example.com/x"
+                ("src/corpus/README.md", 3, 5),
+                ("https://example.com", 3, 40),
+                ("https://example.com/x", 7, 11)
             ]
+        );
+    }
+
+    #[test]
+    fn marker_recognition_opts_markdown_in() {
+        let codec = PulldownMarkdownCodec;
+        let doc = DocumentId::parse("docs/guide.md").unwrap();
+        let opted = |text: &str| codec.recognizes_markers(&doc, text.as_bytes());
+        // Recognized markers outside code opt in.
+        assert_eq!(
+            opted("# G\n\n<!-- memoria:export id=\"x\" -->\nBody.\n<!-- /memoria:export -->\n"),
+            Some(3)
+        );
+        assert_eq!(
+            opted(
+                "# G\n<!-- memoria:section id=\"a\" files=\"a.rs\" -->\n## A\n<!-- /memoria:section -->\n"
+            ),
+            Some(2)
+        );
+        // A malformed marker still opts in, with its structural error.
+        assert_eq!(opted("# G\n<!-- memoria:exprt id=\"x\" -->\n"), Some(2));
+        // A section-like comment opts in with a section warning.
+        assert_eq!(opted("# G\n  <!-- memoria:section broken -->\n"), Some(2));
+        // Links, code, indented export markers, and plain comments never do.
+        assert_eq!(opted("# G\n[x](../README.md) memoria: text\n"), None);
+        assert_eq!(
+            opted("# G\n```\n<!-- memoria:export id=\"x\" -->\n```\n"),
+            None
+        );
+        assert_eq!(opted("# G\n `<!-- memoria:export id=\"x\" -->`\n"), None);
+        assert_eq!(opted("# G\n<!-- a plain comment -->\n"), None);
+        assert_eq!(opted("# G\n> <!-- memoria:export id=\"x\" -->\n"), None);
+        assert_eq!(
+            codec.recognizes_markers(&doc, b"<!-- memoria:export id=\"x\" -->\n\xff\n"),
+            None
         );
     }
 

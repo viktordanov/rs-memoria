@@ -4,6 +4,7 @@
 //! the application ports and convert wire formats to application DTOs.
 
 pub mod agent_locations;
+pub mod artifact_store;
 pub mod bounded_process;
 pub mod client_probe;
 pub mod config;
@@ -22,6 +23,7 @@ pub mod skill;
 pub mod state;
 
 pub use agent_locations::EnvAgentLocations;
+pub use artifact_store::FsArtifactStore;
 pub use bounded_process::SelfStatusProcess;
 pub use client_probe::{ClientProbe, CommandClientProbe};
 pub use fs::{AtomicFileWriter, FsProjectFiles, LockFileCoordinator, SystemClock};

@@ -13,15 +13,15 @@ use memoria_application::ports::{
     AdapterError, FileKind, InspectedState, LoadedState, StateFailure, StateInspector, StateStore,
 };
 use memoria_domain::{
-    DocumentId, ExportId, FileInput, GitContext, GuidanceDigest, Hash64, ImportInput,
-    InputManifest, ProjectPath, ReviewNote, ReviewRecord, ReviewResult, ReviewState, ReviewerName,
-    Timestamp,
+    CoverageEvidence, DirPath, DocumentId, ExportId, FileInput, GitContext, GuidanceDigest, Hash64,
+    ImportInput, InputManifest, ProjectPath, ReviewNote, ReviewRecord, ReviewResult, ReviewState,
+    ReviewerName, Timestamp,
 };
 
 use crate::fs::{
     FaultHook, NO_FAULTS, check_state_dir, durable_replace_with, kind_of, read_regular,
 };
-use crate::json::{Json, JsonError, ObjectReader, expect_u64, from_detail};
+use crate::json::{Json, JsonError, ObjectReader, expect_string, expect_u64, from_detail};
 use crate::lock_codec::{self, LockError, MAX_FILE_BYTES, codec_name};
 
 /// The generated committed state, beside `memoria.toml`.
@@ -146,6 +146,45 @@ pub fn record_from_json(value: Json, context: &str) -> Result<ReviewRecord, Json
             &format!("{context}.acknowledged_invalidations[{index}]"),
         )?);
     }
+    let coverage = match reader.take("coverage_evidence")? {
+        Json::Null => CoverageEvidence::Unrecorded,
+        value => {
+            let items = match value {
+                Json::Array(items) => items,
+                _ => {
+                    return Err(schema(format!(
+                        "{context}.coverage_evidence must be null or a list of folders"
+                    )));
+                }
+            };
+            let mut folders = Vec::with_capacity(items.len());
+            for (index, item) in items.into_iter().enumerate() {
+                let item_context = format!("{context}.coverage_evidence[{index}]");
+                let raw = expect_string(item, &item_context)?;
+                let folder = DirPath::parse(&raw)
+                    .ok()
+                    .filter(|folder| !folder.is_root() && folder.as_str() == raw)
+                    .ok_or_else(|| {
+                        schema(format!("{item_context} {raw:?} is not a normalized folder"))
+                    })?;
+                folders.push(folder);
+            }
+            if folders.windows(2).any(|pair| pair[0] >= pair[1]) {
+                return Err(schema(format!(
+                    "{context}.coverage_evidence must be sorted and unique"
+                )));
+            }
+            if let Some(outside) = folders
+                .iter()
+                .find(|folder| !folder.is_strictly_within(&manifest.document.directory()))
+            {
+                return Err(schema(format!(
+                    "{context}.coverage_evidence names {outside}, which is not strictly inside the document folder"
+                )));
+            }
+            CoverageEvidence::Recorded(folders)
+        }
+    };
     reader.finish()?;
     Ok(ReviewRecord {
         revision,
@@ -162,6 +201,7 @@ pub fn record_from_json(value: Json, context: &str) -> Result<ReviewRecord, Json
             worktree_dirty,
         },
         acknowledged_invalidations: acknowledged,
+        coverage,
     })
 }
 

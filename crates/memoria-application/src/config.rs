@@ -1,7 +1,7 @@
 //! Configuration values produced by the configuration reader port.
 
 /// The only supported project configuration version.
-pub const CONFIG_VERSION: u64 = 2;
+pub const CONFIG_VERSION: u64 = 3;
 
 /// Root `memoria.toml` after strict parsing and defaulting.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,7 +38,9 @@ pub struct SidecarConfig {
 
 /// The template written by `memoria init --apply`.
 pub const ROOT_CONFIG_TEMPLATE: &str = r#"# Memoria root configuration. See docs/cli.md in the Memoria project.
-version = 2
+# Each document covers its folder and below. Link or import a document in a
+# subfolder to hand that subfolder to it.
+version = 3
 
 # Memoria-specific exclusions. Patterns are relative to the project root.
 # Tracked generated output, snapshots, and fixtures stay selected until you
@@ -50,7 +52,7 @@ include = []
 
 [documentation]
 # Project documentation guidance. Every review names these sources, and
-# `memoria guidance <README.md>` prints the text. Guidance states your
+# `memoria guidance <DOCUMENT>` prints the text. Guidance states your
 # documentation goals, your readers, and your writing standards. It is
 # advisory context for the reviewer. It never selects files and never
 # decides freshness.
@@ -64,6 +66,6 @@ default = "raw"
 languages = {}
 
 [lint]
-# Report local README links that have no matching import as hints.
+# Report local links to documents that have no matching import as hints.
 missing_import_hint = true
 "#;

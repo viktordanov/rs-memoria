@@ -258,7 +258,7 @@ pub fn run_stop(
     }
     if summary.guidance_changed > 0 {
         return RunnerResult::Message(bounded(format!(
-            "Memoria: documentation guidance changed for {} reviewed document(s); byte freshness is separate. Run `memoria guidance <README.md>`.",
+            "Memoria: documentation guidance changed for {} reviewed document(s); byte freshness is separate. Run `memoria guidance <DOCUMENT>`.",
             summary.guidance_changed
         )));
     }

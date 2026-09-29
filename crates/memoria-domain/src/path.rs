@@ -11,7 +11,7 @@ pub enum PathError {
     Backslash(String),
     ControlCharacter(String),
     EmptyComponent(String),
-    NotReadme(String),
+    NotDocument(String),
     FileNameMissing(String),
 }
 
@@ -24,7 +24,10 @@ impl fmt::Display for PathError {
             PathError::Backslash(p) => write!(f, "path {p:?} contains a backslash"),
             PathError::ControlCharacter(p) => write!(f, "path {p:?} contains a control character"),
             PathError::EmptyComponent(p) => write!(f, "path {p:?} contains an empty component"),
-            PathError::NotReadme(p) => write!(f, "path {p:?} is not a README.md document"),
+            PathError::NotDocument(p) => write!(
+                f,
+                "path {p:?} is not a Markdown document (README.md, *.md, or *.markdown)"
+            ),
             PathError::FileNameMissing(p) => write!(f, "path {p:?} has no file name"),
         }
     }
@@ -32,8 +35,15 @@ impl fmt::Display for PathError {
 
 impl std::error::Error for PathError {}
 
-/// The name of every recognized documentation boundary file.
+/// The name of every automatically tracked documentation file.
 pub const README_FILE_NAME: &str = "README.md";
+
+/// Whether a file name is Markdown: it ends with `.md` or `.markdown`,
+/// compared ASCII case-insensitively, and has a stem.
+pub fn is_markdown_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    (lower.len() > 3 && lower.ends_with(".md")) || (lower.len() > 9 && lower.ends_with(".markdown"))
+}
 
 fn check_bytes(raw: &str) -> Result<(), PathError> {
     if raw.is_empty() {
@@ -128,6 +138,11 @@ impl DirPath {
             || (self.0.len() > other.0.len()
                 && self.0.starts_with(other.as_str())
                 && self.0.as_bytes()[other.0.len()] == b'/')
+    }
+
+    /// Whether `self` is nested below `other` and is not `other` itself.
+    pub fn is_strictly_within(&self, other: &DirPath) -> bool {
+        self != other && self.is_within(other)
     }
 
     /// Join a validated relative path below this directory.
@@ -240,6 +255,11 @@ impl ProjectPath {
     pub fn is_readme(&self) -> bool {
         self.file_name() == README_FILE_NAME
     }
+
+    /// Whether the file name is Markdown (`README.md`, `*.md`, `*.markdown`).
+    pub fn is_markdown(&self) -> bool {
+        is_markdown_name(self.file_name())
+    }
 }
 
 impl fmt::Debug for ProjectPath {
@@ -254,7 +274,37 @@ impl fmt::Display for ProjectPath {
     }
 }
 
-/// Identity of a README document: its root-relative path.
+/// How a document became tracked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum DocumentKind {
+    /// A file named exactly `README.md`: always tracked.
+    Readme,
+    /// Another Markdown file that carries a recognized Memoria marker.
+    OptedIn,
+}
+
+impl DocumentKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DocumentKind::Readme => "readme",
+            DocumentKind::OptedIn => "opted_in",
+        }
+    }
+
+    /// Human wording, for example in a review header.
+    pub fn label(self) -> &'static str {
+        match self {
+            DocumentKind::Readme => "README",
+            DocumentKind::OptedIn => "opted-in document",
+        }
+    }
+}
+
+/// Identity of a tracked Markdown document: its root-relative path.
+///
+/// The grammar accepts `README.md` and any other Markdown file name. Whether
+/// a Markdown file is actually tracked is a project fact decided by
+/// discovery, never by this type.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DocumentId(ProjectPath);
 
@@ -265,10 +315,10 @@ impl DocumentId {
     }
 
     pub fn from_path(path: ProjectPath) -> Result<DocumentId, PathError> {
-        if path.is_readme() {
+        if path.is_markdown() {
             Ok(DocumentId(path))
         } else {
-            Err(PathError::NotReadme(path.0))
+            Err(PathError::NotDocument(path.0))
         }
     }
 
@@ -280,13 +330,23 @@ impl DocumentId {
         self.0.as_str()
     }
 
-    /// Directory that the document describes.
+    /// Directory that holds the document. The document covers it and every
+    /// folder below it that it has not handed off.
     pub fn directory(&self) -> DirPath {
         self.0.directory()
     }
 
     pub fn is_root(&self) -> bool {
         self.directory().is_root()
+    }
+
+    /// The kind, derived from the file name alone.
+    pub fn kind(&self) -> DocumentKind {
+        if self.0.is_readme() {
+            DocumentKind::Readme
+        } else {
+            DocumentKind::OptedIn
+        }
     }
 }
 
@@ -348,9 +408,28 @@ mod tests {
             Err(PathError::FileNameMissing(_))
         ));
         assert!(matches!(
-            DocumentId::parse("a/readme.md"),
-            Err(PathError::NotReadme(_))
+            DocumentId::parse("a/notes.txt"),
+            Err(PathError::NotDocument(_))
         ));
+        assert!(matches!(
+            DocumentId::parse("a/.md"),
+            Err(PathError::NotDocument(_))
+        ));
+    }
+
+    #[test]
+    fn document_identities_are_markdown_files() {
+        for (raw, kind) in [
+            ("README.md", DocumentKind::Readme),
+            ("docs/guide.md", DocumentKind::OptedIn),
+            ("docs/Guide.MD", DocumentKind::OptedIn),
+            ("docs/long.markdown", DocumentKind::OptedIn),
+            ("a/readme.md", DocumentKind::OptedIn),
+            ("a/README.MD", DocumentKind::OptedIn),
+        ] {
+            assert_eq!(DocumentId::parse(raw).unwrap().kind(), kind, "{raw}");
+        }
+        assert!(DocumentId::parse("src/main.rs").is_err());
     }
 
     #[test]

@@ -6,6 +6,7 @@ use crate::snapshot;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LintReport {
+    pub documents: u64,
     pub readmes: u64,
     pub errors: u64,
     pub warnings: u64,
@@ -15,6 +16,7 @@ pub struct LintReport {
 impl LintReport {
     pub fn to_detail(&self) -> Detail {
         DetailMap::default()
+            .number("documents", self.documents)
             .number("readmes", self.readmes)
             .number("errors", self.errors)
             .number("warnings", self.warnings)
@@ -33,7 +35,8 @@ pub fn run(services: &Services<'_>) -> Result<Outcome<LintReport>, AppError> {
             .count() as u64
     };
     let report = LintReport {
-        readmes: snapshot.collected.documents.len() as u64,
+        documents: snapshot.collected.documents.len() as u64,
+        readmes: super::status::DocumentCounts::of(&snapshot).readmes,
         errors: count(Severity::Error),
         warnings: count(Severity::Warning),
         hints: count(Severity::Hint),

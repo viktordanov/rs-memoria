@@ -18,6 +18,7 @@ pub mod plan;
 pub mod prepare_review;
 pub mod render;
 pub mod requirements;
+pub mod save_artifact;
 pub mod state_diff;
 pub mod state_inspect;
 pub mod status;
@@ -26,6 +27,7 @@ use memoria_domain::{DocumentId, DocumentStatus, InputChange, ManifestDiff, Pend
 
 use crate::error::{AppError, Detail, DetailMap};
 use crate::ports::{LockFailure, Services, WriteGuard};
+use crate::snapshot::Snapshot;
 
 /// Acquire the project write lock or fail with `state_busy`.
 pub(crate) fn acquire_lock<'a>(
@@ -40,9 +42,47 @@ pub(crate) fn acquire_lock<'a>(
     })
 }
 
-/// Parse a CLI document path (project-root-relative).
+/// Parse a CLI document path (project-root-relative): `README.md`, `*.md`,
+/// or `*.markdown`.
 pub(crate) fn parse_document(raw: &str) -> Result<DocumentId, AppError> {
     DocumentId::parse(raw).map_err(|err| AppError::usage("document_invalid", err.to_string()))
+}
+
+/// The error for a CLI path that names no tracked document. An unmarked
+/// Markdown source says which documents cover it and how to track it.
+pub(crate) fn document_not_found(snapshot: &Snapshot, document: &DocumentId) -> AppError {
+    if snapshot.collected.file_bytes.contains_key(document.path()) {
+        let covered_by: Vec<String> = snapshot
+            .scopes
+            .covering(document.path())
+            .iter()
+            .map(|d| d.as_str().to_string())
+            .collect();
+        let owners = if covered_by.is_empty() {
+            "no document".to_string()
+        } else {
+            covered_by.join(", ")
+        };
+        return AppError::new(
+            crate::error::ExitClass::Validation,
+            crate::error::Diagnostic::error(
+                "document_not_found",
+                format!(
+                    "{document} is ordinary Markdown with no Memoria marker, so it is a source covered by {owners}, not a tracked document; add an import, export, or section marker to track it"
+                ),
+            )
+            .at_path(document.as_str())
+            .with_details(
+                DetailMap::default()
+                    .with("covered_by", Detail::texts(covered_by))
+                    .build(),
+            ),
+        );
+    }
+    AppError::validation(
+        "document_not_found",
+        format!("{document} is not a tracked document"),
+    )
 }
 
 pub(crate) fn status_label(status: &DocumentStatus) -> &'static str {
@@ -138,7 +178,7 @@ pub(crate) fn diff_changes(diff: &ManifestDiff) -> Vec<ChangeRecord> {
         out.push(ChangeRecord {
             kind: "document",
             change: "changed",
-            identity: "README".into(),
+            identity: "document".into(),
             before: Some(before),
             after: Some(after),
         });
@@ -147,7 +187,7 @@ pub(crate) fn diff_changes(diff: &ManifestDiff) -> Vec<ChangeRecord> {
         out.push(ChangeRecord {
             kind: "document",
             change: "removed",
-            identity: "README".into(),
+            identity: "document".into(),
             before: Some(before),
             after: None,
         });

@@ -1,4 +1,4 @@
-//! `memoria guidance [README.md]`: show project documentation guidance
+//! `memoria guidance [DOCUMENT]`: show project documentation guidance
 //! without declaring staleness.
 //!
 //! The command is read-only. It works for current documents, needs no review
@@ -133,10 +133,7 @@ pub fn run(
         });
     }
     if !snapshot.collected.documents.contains(&document) {
-        return Err(AppError::validation(
-            "document_not_found",
-            format!("{document} is not a discovered README"),
-        ));
+        return Err(super::document_not_found(&snapshot, &document));
     }
     Ok(Outcome::new(
         report_for(&snapshot, &document),

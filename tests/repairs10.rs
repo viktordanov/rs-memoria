@@ -119,18 +119,18 @@ fn quoted_policy_values_keep_comments_out_of_rules() {
     // Root ignore rules: every spelling excludes the generated file and
     // yields one effective policy.
     let variants = [
-        ("uncommented", "version = 2\nignore = [\"build's/**\"]\n"),
+        ("uncommented", "version = 3\nignore = [\"build's/**\"]\n"),
         (
             "commented",
-            "version = 2\nignore = [\"build's/**\"] # generated output\n",
+            "version = 3\nignore = [\"build's/**\"] # generated output\n",
         ),
         (
             "literal",
-            "version = 2\nignore = ['''build's/**'''] # generated output\n",
+            "version = 3\nignore = ['''build's/**'''] # generated output\n",
         ),
         (
             "multiline",
-            "version = 2\nignore = [\n \"build's/**\", # generated output\n]\n",
+            "version = 3\nignore = [\n \"build's/**\", # generated output\n]\n",
         ),
     ];
     let mut hashes = BTreeSet::new();
@@ -169,7 +169,7 @@ fn quoted_policy_values_keep_comments_out_of_rules() {
         project.write("src/retrieval/say \"hi\"/noise.rs", "noise\n");
         project.write(
             "memoria.toml",
-            format!("version = 2\nignore = [\n \"**/generated/**\",{comment}\n \"**/fixture's/**\",{comment}\n]\n"),
+            format!("version = 3\nignore = [\n \"**/generated/**\",{comment}\n \"**/fixture's/**\",{comment}\n]\n"),
         );
         project.write(
             "src/retrieval/README.memoria.toml",

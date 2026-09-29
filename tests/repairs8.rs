@@ -202,8 +202,8 @@ fn root_guidance_only_sidecar_is_context_not_policy() {
     project.write(
         "memoria.toml",
         project.read_string("memoria.toml").replace(
-            "version = 2\n",
-            "version = 2\ninclude = [\n    \"nothing/**\",\n]\n",
+            "version = 3\n",
+            "version = 3\ninclude = [\n    \"nothing/**\",\n]\n",
         ),
     );
     assert_eq!(project.cause_codes("README.md"), vec!["input_changed"]);
@@ -253,8 +253,8 @@ fn human_and_json_record_counts_are_the_same_complete_count() {
     project.write(
         "memoria.toml",
         project.read_string("memoria.toml").replace(
-            "version = 2\n",
-            "version = 2\nlint.missing_import_hint = false\n",
+            "version = 3\n",
+            "version = 3\nlint.missing_import_hint = false\n",
         ),
     );
     project.append("README.md", "\nSee [disconnected](src/disconnected/).\n");

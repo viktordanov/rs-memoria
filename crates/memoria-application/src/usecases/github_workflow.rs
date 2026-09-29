@@ -22,7 +22,7 @@ pub const RUNNERS: [&str; 3] = ["ubuntu-24.04", "ubuntu-latest", "ubuntu-24.04-a
 pub const DEFAULT_RUNNER: &str = "ubuntu-24.04";
 
 /// The first Memoria version the setup Action can install.
-pub const MINIMUM_VERSION: (u64, u64, u64) = (0, 5, 0);
+pub const MINIMUM_VERSION: (u64, u64, u64) = (0, 7, 0);
 
 /// The public repository that owns the root setup Action.
 pub const ACTION_REPOSITORY: &str = "viktordanov/rs-memoria";
@@ -238,15 +238,40 @@ fn workflow_error(failure: WorkflowFailure) -> AppError {
     }
 }
 
-/// Parse an exact stable version, with an optional leading `v`.
+/// Parse an exact stable version for `--version`, with an optional leading
+/// `v`. Versions below `MINIMUM_VERSION` are refused: configuration version
+/// 3 needs Memoria 0.7.0.
 pub fn parse_version(raw: &str) -> Result<String, AppError> {
+    let version = parse_stable_version(raw)?;
+    let mut parts = version.split('.').map(|p| p.parse::<u64>().unwrap_or(0));
+    let value = (
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+    );
+    if value < MINIMUM_VERSION {
+        let (major, minor, patch) = MINIMUM_VERSION;
+        return Err(AppError::usage(
+            "version_unsupported",
+            format!(
+                "--version {raw} is below {major}.{minor}.{patch}; configuration version 3 needs Memoria {major}.{minor}.{patch} or later"
+            ),
+        ));
+    }
+    Ok(version)
+}
+
+/// Parse the syntax of an exact stable version, with an optional leading
+/// `v`, and no minimum. A recorded older pin stays readable so an upgrade
+/// can replace it.
+pub fn parse_stable_version(raw: &str) -> Result<String, AppError> {
     let text = raw.trim();
     let text = text.strip_prefix('v').unwrap_or(text);
     let refuse = || {
         AppError::usage(
             "version_invalid",
             format!(
-                "--version {raw} is not an exact stable version; give MAJOR.MINOR.PATCH such as 0.5.0"
+                "--version {raw} is not an exact stable version; give MAJOR.MINOR.PATCH such as 0.7.0"
             ),
         )
     };
@@ -264,17 +289,7 @@ pub fn parse_version(raw: &str) -> Result<String, AppError> {
         }
         numbers[index] = part.parse().map_err(|_| refuse())?;
     }
-    let value = (numbers[0], numbers[1], numbers[2]);
-    if value < MINIMUM_VERSION {
-        let (major, minor, patch) = MINIMUM_VERSION;
-        return Err(AppError::usage(
-            "version_unsupported",
-            format!(
-                "--version {raw} is below {major}.{minor}.{patch}; the setup Action installs {major}.{minor}.{patch} and later"
-            ),
-        ));
-    }
-    Ok(format!("{}.{}.{}", value.0, value.1, value.2))
+    Ok(format!("{}.{}.{}", numbers[0], numbers[1], numbers[2]))
 }
 
 /// Order two exact stable versions.
@@ -602,13 +617,16 @@ mod tests {
 
     #[test]
     fn accepts_exact_stable_versions_only() {
-        assert_eq!(parse_version("0.5.0").unwrap(), "0.5.0");
+        assert_eq!(parse_version("0.7.0").unwrap(), "0.7.0");
         assert_eq!(parse_version("v1.10.0").unwrap(), "1.10.0");
+        // A recorded older pin stays syntactically valid for upgrades.
+        assert_eq!(parse_stable_version("0.5.0").unwrap(), "0.5.0");
         for raw in ["latest", "0.5", "^0.5.0", "0.5.0-rc.1", "0.05.0", ""] {
             assert!(parse_version(raw).is_err(), "{raw} must be refused");
         }
-        // Every version below the floor is refused, 0.4.1 included.
-        for raw in ["0.4.1", "0.4.0", "0.3.0"] {
+        // Every version below the floor is refused: configuration version 3
+        // needs 0.7.0.
+        for raw in ["0.6.9", "0.6.0", "0.5.0", "0.4.1"] {
             assert_eq!(
                 parse_version(raw).unwrap_err().diagnostics[0].code,
                 "version_unsupported",

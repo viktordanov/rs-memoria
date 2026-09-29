@@ -103,6 +103,12 @@ fn explain_removed_input_does_not_borrow_another_boundarys_current_bytes() {
     project.commit_all("ownership baseline");
     project.baseline();
     project.write("child/README.md", "# Child\n\nOwn the child files.\n");
+    // A link hands child/ to the new document, so the source leaves the root
+    // scope.
+    project.write(
+        "README.md",
+        "# Root\n\nOwn the selected files. See [Child](child/README.md).\n",
+    );
     let (code, result) = project.json(&["explain", "README.md"]);
     assert_eq!(code, 0);
     let Json::Array(evidence) = get(&result, &["data", "evidence"]) else {
@@ -388,7 +394,7 @@ fn human_plan_carries_existing_guidance_and_render_order() {
     assert!(stdout(&human).contains(&format!("Next: memoria {kind} {next}")));
     project.baseline();
     let human = project.run(&["review"]);
-    assert!(stdout(&human).contains("No README needs review."));
+    assert!(stdout(&human).contains("No document needs review."));
     assert!(!stdout(&human).contains("Guidance:"));
 }
 

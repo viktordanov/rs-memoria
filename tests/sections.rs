@@ -107,7 +107,7 @@ fn a_mapped_change_suggests_its_section_and_still_requires_the_whole_readme() {
     );
     assert_eq!(section_ids(&value), vec!["types"]);
     // The whole-README pass is never optional, whatever the advice says.
-    assert!(get_bool(&value, &["data", "review", "whole_readme_pass"]));
+    assert!(get_bool(&value, &["data", "review", "whole_document_pass"]));
     let Json::Array(sections) = get(&value, &["data", "review", "sections"]) else {
         panic!()
     };
@@ -126,7 +126,7 @@ fn a_mapped_change_suggests_its_section_and_still_requires_the_whole_readme() {
         .map(|i| (get_str(i, &["path"]), get_str(i, &["role"])))
         .collect();
     assert!(
-        roles.contains(&("src/corpus/README.md", "whole_readme")),
+        roles.contains(&("src/corpus/README.md", "whole_document")),
         "{roles:?}"
     );
     assert!(
@@ -135,7 +135,7 @@ fn a_mapped_change_suggests_its_section_and_still_requires_the_whole_readme() {
     );
     // Eligibility is not certification: the counts still describe the
     // complete boundary, not the suggested subset.
-    assert_eq!(get_u64(&value, &["data", "counts", "selected_files"]), 1);
+    assert_eq!(get_u64(&value, &["data", "counts", "scope_files"]), 1);
     assert_eq!(get_u64(&value, &["data", "counts", "suggested_sources"]), 1);
     // A focused candidate acknowledges normally.
     project.ack_ok("src/corpus/README.md");
@@ -520,7 +520,7 @@ fn policy_guidance_and_semantic_changes_each_force_a_full_baseline() {
         "memoria.toml",
         project
             .read_string("memoria.toml")
-            .replace("version = 2\n", "version = 2\ninclude = [\"nothing/**\"]\n"),
+            .replace("version = 3\n", "version = 3\ninclude = [\"nothing/**\"]\n"),
     );
     let value = review(&project, "src/corpus/README.md");
     assert!(fallback_codes(&value).contains(&"policy_changed".to_string()));
@@ -601,14 +601,14 @@ fn a_changed_import_requires_the_provider_first_and_a_full_baseline() {
 }
 
 #[test]
-fn a_new_boundary_over_an_existing_path_is_an_ownership_change() {
+fn a_new_handoff_over_an_existing_path_is_a_handoff_change() {
     let project = Project::seed();
-    // The corpus README owns a nested source before any child boundary exists.
+    // The corpus README covers a nested source before any child document exists.
     project.write("src/corpus/inner/thing.rs", "// nested source\n");
     project.baseline();
-    project.commit_all("one owner");
-    // A new descendant README terminates the parent's coverage of that exact
-    // path. The path does not move; only its owner does.
+    project.commit_all("one covering document");
+    // A new descendant README plus a link to it hands that folder off. The
+    // path does not move; only the document that covers it changes.
     project.write(
         "src/corpus/inner/README.md",
         "# Inner\n\nInner owns `thing.rs`.\n",
@@ -618,17 +618,26 @@ fn a_new_boundary_over_an_existing_path_is_an_ownership_change() {
     assert_eq!(mode(&value), "full_baseline");
     let codes = fallback_codes(&value);
     assert!(
-        codes.contains(&"ownership_changed".to_string()),
-        "a path that now answers to another README is an ownership move: {codes:?}"
+        codes.contains(&"handoff_changed".to_string()),
+        "a path that a new handoff moved away is a handoff change: {codes:?}"
     );
     let Json::Array(reasons) = get(&value, &["data", "review", "fallback_reasons"]) else {
         panic!()
     };
     let entry = reasons
         .iter()
-        .find(|r| get_str(r, &["code"]) == "ownership_changed")
+        .find(|r| get_str(r, &["code"]) == "handoff_changed")
         .unwrap();
-    assert_eq!(get_str(entry, &["identity"]), "src/corpus/inner/thing.rs");
+    assert_eq!(get_str(entry, &["identity"]), "src/corpus/inner");
+    // The removed source carries the handoff relationship.
+    let Json::Array(changes) = get(&value, &["data", "changes"]) else {
+        panic!()
+    };
+    let removed = changes
+        .iter()
+        .find(|c| get_str(c, &["identity"]) == "src/corpus/inner/thing.rs")
+        .unwrap();
+    assert_eq!(get_str(removed, &["relationship", "kind"]), "handoff");
 }
 
 #[test]
@@ -681,7 +690,7 @@ fn the_token_binds_every_component_of_the_review_context() {
                 p.write(
                     "memoria.toml",
                     p.read_string("memoria.toml")
-                        .replace("version = 2\n", "version = 2\ninclude = [\"nothing/**\"]\n"),
+                        .replace("version = 3\n", "version = 3\ninclude = [\"nothing/**\"]\n"),
                 )
             }),
         ),
@@ -874,14 +883,15 @@ fn artifacts_from_earlier_releases_are_refused_with_regeneration_instructions() 
     set_path(
         &mut old_packet,
         &["data", "packet_version"],
-        Json::Number(2),
+        Json::Number(3),
     );
     let old_packet = write("old-domain-packet.json", &old_packet);
     let output = ack_json(&project, "src/corpus/README.md", &old_packet, &token);
     assert_eq!(output.status.code(), Some(2));
     let (codes, message) = refusal(&output);
     assert_eq!(codes, vec!["packet_schema_invalid"]);
-    assert!(message.contains("packet_version is 2"), "{message}");
+    assert!(message.contains("packet_version is 3"), "{message}");
+    assert!(message.contains("accepts 4 only"), "{message}");
     assert!(message.contains("--full"), "{message}");
     assert!(message.contains("not converted"), "{message}");
 
@@ -895,7 +905,7 @@ fn artifacts_from_earlier_releases_are_refused_with_regeneration_instructions() 
         ),
         (
             "packet",
-            Box::new(|v: &mut Json| set_path(v, &["data", "packet_version"], Json::Number(2))),
+            Box::new(|v: &mut Json| set_path(v, &["data", "packet_version"], Json::Number(3))),
         ),
     ] {
         let mut value = original.clone();
@@ -908,20 +918,25 @@ fn artifacts_from_earlier_releases_are_refused_with_regeneration_instructions() 
         assert!(message.contains("not converted"), "{label}: {message}");
     }
 
-    // An old manifest version gets the manifest regeneration command.
+    // A 0.6 manifest version gets the manifest regeneration command.
     let (manifest, manifest_token) = project.review_packet("src/corpus/README.md");
     let mut old_manifest = parse_json(&fs::read(&manifest).unwrap());
     set_path(
         &mut old_manifest,
         &["data", "manifest_version"],
-        Json::Number(2),
+        Json::Number(1),
     );
     let path = write("old-manifest.json", &old_manifest);
     let output = ack_json(&project, "src/corpus/README.md", &path, &manifest_token);
     assert_eq!(output.status.code(), Some(2));
     let (codes, message) = refusal(&output);
     assert_eq!(codes, vec!["packet_schema_invalid"]);
-    assert!(message.contains("manifest_version is 2"), "{message}");
+    assert!(message.contains("manifest_version is 1"), "{message}");
+    assert!(message.contains("accepts 2 only"), "{message}");
+    assert!(
+        message.contains("memoria review PATH --format json"),
+        "{message}"
+    );
     assert!(
         !message.contains("--full"),
         "a manifest regenerates without --full: {message}"
@@ -932,7 +947,7 @@ fn artifacts_from_earlier_releases_are_refused_with_regeneration_instructions() 
     let mut tampered = original.clone();
     set_path(
         &mut tampered,
-        &["data", "content", "readme", "body"],
+        &["data", "content", "document", "body"],
         Json::String("x".into()),
     );
     let path = write("tampered-current.json", &tampered);
@@ -1009,14 +1024,14 @@ fn a_manifest_that_violates_its_own_schema_cannot_acknowledge() {
         (
             "missing-inputs",
             Box::new(|v: &mut Json| set_path(v, &["data", "inputs"], Json::Array(vec![]))),
-            "whole-README pass",
+            "whole-document pass",
         ),
         (
             "inconsistent-count",
             Box::new(|v: &mut Json| {
-                set_path(v, &["data", "counts", "selected_files"], Json::Number(0))
+                set_path(v, &["data", "counts", "scope_files"], Json::Number(0))
             }),
-            "selected files",
+            "scope",
         ),
     ];
     for (label, mutate, expected) in mutations {
@@ -1141,9 +1156,9 @@ fn a_full_export_with_fabricated_counts_cannot_acknowledge() {
         ),
         (
             "counts",
-            vec!["data", "requirements", "counts", "selected_files"],
+            vec!["data", "requirements", "counts", "scope_files"],
             Json::Number(0),
-            "selected files",
+            "scope",
         ),
     ] {
         let mut value = original.clone();
@@ -1203,10 +1218,7 @@ fn section_markers_never_change_selection_or_export_identity() {
     // The selected file set is unchanged: a section names inputs, it does
     // not select them.
     assert_eq!(
-        get_u64(
-            &value,
-            &["data", "requirements", "counts", "selected_files"]
-        ),
+        get_u64(&value, &["data", "requirements", "counts", "scope_files"]),
         1
     );
 }
@@ -1324,11 +1336,36 @@ fn section_markers_inside_generated_import_bodies_are_inert() {
     assert_eq!(project.json(&["lint"]).0, 0);
 }
 
+/// The worked-example artifact that `docs/cli.md` documents: change A of plan
+/// §2.9, reviewed for the opted-in `auth/flows.md`.
+fn documented_example_capture() -> Vec<u8> {
+    let project = Project::worked_example();
+    project.append("auth/login.rs", "// A\n");
+    let output = project.run(&["review", "auth/flows.md", "--format", "json"]);
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    output.stdout
+}
+
+/// Replace the values that bind one exact snapshot and prior review: they
+/// differ on every run, so a comparison masks them.
+fn mask_volatile(value: &mut Json) {
+    for path in [
+        vec!["data", "artifact_digest"],
+        vec!["data", "token"],
+        vec!["data", "snapshot", "baseline_digest"],
+        vec!["data", "baseline", "recorded_commit"],
+        vec!["data", "baseline", "token_digest"],
+    ] {
+        set_path(value, &path, Json::String("<volatile>".into()));
+    }
+}
+
 #[test]
 fn the_documented_manifest_example_is_a_real_artifact() {
     // SR-005: the CLI reference carries one captured manifest. The production
-    // decoder must accept exactly those bytes, so the documentation and the
-    // schema cannot drift apart.
+    // decoder must accept exactly those bytes, and a fresh capture of the
+    // same fixture must equal it except for snapshot-bound values, so the
+    // documentation and the schema cannot drift apart.
     use memoria_application::packet::ReviewArtifact;
     use memoria_application::ports::ReviewPacketCodec;
 
@@ -1346,6 +1383,12 @@ fn the_documented_manifest_example_is_a_real_artifact() {
             .find("\n```")
             .expect("the example block is closed");
     let documented = &reference[start..end];
+    if std::env::var_os("MEMORIA_PRINT_DOC_EXAMPLE").is_some() {
+        println!(
+            "<<<{}>>>",
+            String::from_utf8(documented_example_capture()).unwrap()
+        );
+    }
 
     // It is valid JSON.
     let parsed = memoria_infrastructure::json::parse(
@@ -1370,33 +1413,49 @@ fn the_documented_manifest_example_is_a_real_artifact() {
     };
 
     // The decoded values are the ones the reference explains.
-    assert_eq!(manifest.document.as_str(), "README.md");
-    assert_eq!(manifest.snapshot.selection_version, 1);
+    assert_eq!(manifest.document.as_str(), "auth/flows.md");
+    assert_eq!(
+        manifest.document_kind(),
+        memoria_domain::DocumentKind::OptedIn
+    );
+    assert_eq!(manifest.snapshot.selection_version, 2);
     assert_eq!(
         manifest.mode,
         memoria_application::review::ReviewMode::FocusedCandidate
     );
     assert!(manifest.fallback_reasons.is_empty());
     assert_eq!(manifest.sections.len(), 1);
-    assert_eq!(manifest.sections[0].id, "persistence");
-    assert_eq!(manifest.sections[0].heading, "Saving and synchronizing");
-    assert_eq!(manifest.sections[0].sources, vec!["service.go".to_string()]);
+    assert_eq!(manifest.sections[0].id, "login");
+    assert_eq!(manifest.sections[0].heading, "Login");
+    assert_eq!(
+        manifest.sections[0].sources,
+        vec!["auth/login.rs".to_string()]
+    );
     assert_eq!(manifest.inputs.len(), 2);
-    assert_eq!(manifest.selected_files, 1);
+    assert_eq!(manifest.scope_files, 3);
     assert_eq!(manifest.imports, 0);
+    assert_eq!(manifest.downstream.co_covering_total, 1);
+    assert_eq!(
+        manifest.downstream.co_covering[0].document,
+        "auth/README.md"
+    );
+    assert_eq!(
+        manifest.relationships[0].sections,
+        vec!["login".to_string()]
+    );
+    assert_eq!(manifest.relationships[0].also_covered_by_total, 1);
     assert!(manifest.token.starts_with("mrv3."));
     assert_eq!(manifest.token.len(), 21);
     assert!(manifest.baseline.is_some());
 
-    // The retained capture under the release artifacts is the same document.
-    let capture = std::path::Path::new(
-        "/tmp/rs-memoria-0.6.0-section-reviews/impl-round-2-manifest-fixture/manifest.json",
+    // A fresh capture of the same fixture has the same content.
+    let mut fresh = parse_json(&documented_example_capture());
+    let mut documented_value = parsed.clone();
+    mask_volatile(&mut fresh);
+    mask_volatile(&mut documented_value);
+    assert_eq!(
+        memoria_infrastructure::json::to_pretty(&fresh),
+        memoria_infrastructure::json::to_pretty(&documented_value),
+        "regenerate the example with MEMORIA_PRINT_DOC_EXAMPLE=1"
     );
-    if let Ok(raw) = std::fs::read_to_string(capture) {
-        assert_eq!(
-            raw.trim_end(),
-            documented,
-            "the reference must quote the retained capture verbatim"
-        );
-    }
 }

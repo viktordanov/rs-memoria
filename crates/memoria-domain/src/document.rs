@@ -1,4 +1,4 @@
-//! Authored relationships parsed from a README document.
+//! Authored relationships parsed from a tracked Markdown document.
 
 use std::fmt;
 
@@ -115,19 +115,33 @@ pub struct Import {
     pub location: SourceLocation,
 }
 
-/// A parsed README with its declarations and normal navigation links.
+/// One normal Markdown link that resolves to a tracked document.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentLink {
+    pub target: DocumentId,
+    /// Where the link starts in the linking document.
+    pub location: SourceLocation,
+}
+
+/// A parsed document with its declarations and normal navigation links.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Document {
     pub id: DocumentId,
     pub exports: Vec<Export>,
     pub imports: Vec<Import>,
-    /// Normal local README links that resolve to discovered documents.
-    pub links: Vec<DocumentId>,
+    /// Normal local links that resolve to tracked documents, first
+    /// occurrence of each target only, in authored order.
+    pub links: Vec<DocumentLink>,
 }
 
 impl Document {
     pub fn export(&self, id: &ExportId) -> Option<&Export> {
         self.exports.iter().find(|export| &export.id == id)
+    }
+
+    /// Whether a normal link reaches `target`.
+    pub fn links_to(&self, target: &DocumentId) -> bool {
+        self.links.iter().any(|link| &link.target == target)
     }
 }
 

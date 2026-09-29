@@ -1,13 +1,15 @@
-//! Property tests: canonical encodings are order-independent, ownership is
-//! unique, and export edits reach only actual consumers.
+//! Property tests: canonical encodings are order-independent, document
+//! scopes cover every source without gaps, and export edits reach only
+//! actual consumers.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use memoria_domain::canonical::{encode_inputs, encode_review_token};
 use memoria_domain::{
     ByteRange, DirPath, Document, DocumentId, Export, ExportId, FileInput, GuidanceDigest, Hash64,
-    Import, ImportGraph, ImportInput, InputManifest, OwnershipTree, ProjectPath, SourceLocation,
+    Import, ImportGraph, ImportInput, InputManifest, ProjectPath, SourceLocation,
 };
+use memoria_domain::{DocumentReference, ReferenceKind, ScopeMap};
 use proptest::prelude::*;
 
 fn path_strategy() -> impl Strategy<Value = ProjectPath> {
@@ -89,31 +91,75 @@ proptest! {
     }
 
     #[test]
-    fn every_selected_file_has_exactly_one_owner_when_a_root_readme_exists(
+    fn scopes_cover_every_source_and_never_leave_their_folder(
+        readme_dirs in prop::collection::btree_set(prop::collection::vec("[a-c]", 0..3).prop_map(|p| p.join("/")), 0..6),
+        guide_dirs in prop::collection::btree_set(prop::collection::vec("[a-c]", 0..3).prop_map(|p| p.join("/")), 0..4),
+        edges in prop::collection::vec((0usize..12, 0usize..12, any::<bool>()), 0..16),
+        files in prop::collection::btree_set(path_strategy(), 0..12),
+        shuffle in any::<u64>(),
+    ) {
+        let mut documents: BTreeSet<DocumentId> = readme_dirs.iter().map(|d| DirPath::parse(d).unwrap().readme()).collect();
+        documents.insert(DirPath::root().readme());
+        for dir in &guide_dirs {
+            documents.insert(DocumentId::parse(&if dir.is_empty() { "guide.md".to_string() } else { format!("{dir}/guide.md") }).unwrap());
+        }
+        let ids: Vec<DocumentId> = documents.iter().cloned().collect();
+        let references: Vec<DocumentReference> = edges
+            .iter()
+            .enumerate()
+            .map(|(i, (from, to, import))| DocumentReference {
+                from: ids[from % ids.len()].clone(),
+                target: ids[to % ids.len()].path().clone(),
+                kind: if *import { ReferenceKind::Import } else { ReferenceKind::Link },
+                location: SourceLocation { line: i + 1, column: 1 },
+            })
+            .collect();
+        let files: Vec<ProjectPath> = files.into_iter().collect();
+        let map = ScopeMap::build(&documents, &references, &files);
+        // Full coverage whenever a root document exists.
+        prop_assert!(map.uncovered().is_empty());
+        let mut covered = 0;
+        for file in &files {
+            prop_assert!(!map.covering(file).is_empty());
+            covered += 1;
+        }
+        prop_assert_eq!(covered, files.len());
+        for document in &documents {
+            // Scope(D) always lies inside dir(D), and outside every handoff.
+            for file in map.scope_of(document) {
+                prop_assert!(file.is_within(&document.directory()));
+                prop_assert!(map.covering(file).contains(document));
+                for handoff in map.handoffs_of(document) {
+                    prop_assert!(!file.is_within(&handoff.subtree));
+                }
+            }
+            // Handoffs point strictly downward, so they can never cycle.
+            for handoff in map.handoffs_of(document) {
+                prop_assert!(handoff.target.directory().is_strictly_within(&document.directory()));
+                prop_assert_eq!(&handoff.subtree, &handoff.target.directory());
+            }
+        }
+        // Input order never changes the result.
+        let mut shuffled_refs = references.clone();
+        let mut shuffled_files = files.clone();
+        pseudo_shuffle(&mut shuffled_refs, shuffle);
+        pseudo_shuffle(&mut shuffled_files, shuffle ^ 0x51);
+        prop_assert_eq!(map, ScopeMap::build(&documents, &shuffled_refs, &shuffled_files));
+    }
+
+    #[test]
+    fn without_references_every_ancestor_document_covers_a_source(
         readme_dirs in prop::collection::btree_set(prop::collection::vec("[a-c]", 0..3).prop_map(|p| p.join("/")), 0..6),
         files in prop::collection::btree_set(path_strategy(), 0..12),
     ) {
         let mut documents: BTreeSet<DocumentId> = readme_dirs.iter().map(|d| DirPath::parse(d).unwrap().readme()).collect();
         documents.insert(DirPath::root().readme());
         let files: Vec<ProjectPath> = files.into_iter().collect();
-        let tree = OwnershipTree::build(&documents, &files);
-        prop_assert!(tree.unowned().is_empty());
-        let mut counted = 0;
-        for document in &documents {
-            for file in tree.owned_by(document) {
-                counted += 1;
-                prop_assert_eq!(tree.owner_of(file), Some(document));
-                let owner_dir = document.directory();
-                prop_assert!(file.is_within(&owner_dir));
-                for ancestor in file.directory().ancestors() {
-                    if ancestor == owner_dir {
-                        break;
-                    }
-                    prop_assert!(!documents.contains(&ancestor.readme()));
-                }
-            }
+        let map = ScopeMap::build(&documents, &[], &files);
+        for file in &files {
+            let expected: Vec<DocumentId> = documents.iter().filter(|d| file.is_within(&d.directory())).cloned().collect();
+            prop_assert_eq!(map.covering(file), expected.as_slice());
         }
-        prop_assert_eq!(counted, files.len());
     }
 
     #[test]

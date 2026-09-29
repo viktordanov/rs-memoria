@@ -2,18 +2,19 @@
 //!
 //! Collection gathers exact bytes and facts through the ports twice and
 //! retries once when the two passes differ. Analysis then derives selection,
-//! ownership, documents, graphs, policies, manifests, and review status from
-//! one immutable set of facts.
+//! documents, their scopes and handoffs, graphs, policies, manifests, and
+//! review status from one immutable set of facts.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use memoria_domain::canonical;
 use memoria_domain::section::SectionMap;
 use memoria_domain::{
-    ByteRange, DirPath, Document, DocumentId, DocumentStatus, EffectivePolicy, Exclusion, ExportId,
-    FileInput, GitContext, GitRuleScope, Glob, GraphError, GuidanceDigest, GuidanceEntry,
-    GuidanceKind, Hash64, Import, ImportGraph, ImportInput, InputManifest, NavigationGraph,
-    OwnershipTree, PolicyRuleScope, ProjectPath, ReviewState, RuleScope, SelectionDecision,
+    ByteRange, DirPath, Document, DocumentId, DocumentLink, DocumentReference, DocumentStatus,
+    EffectivePolicy, Exclusion, ExportId, FileInput, GitContext, GitRuleScope, Glob, GraphError,
+    GuidanceDigest, GuidanceEntry, GuidanceKind, Hash64, Import, ImportGraph, ImportInput,
+    InputManifest, NavigationGraph, PolicyRuleScope, ProjectPath, ReferenceKind, ReviewState,
+    RuleScope, ScopeMap, SelectionDecision,
 };
 
 use crate::config::RootConfig;
@@ -80,7 +81,10 @@ pub struct Collected {
     pub eligible: Vec<ProjectPath>,
     pub kinds: BTreeMap<ProjectPath, FileKind>,
     pub boundaries: Vec<ProjectPath>,
+    /// Every tracked document: READMEs plus opted-in Markdown.
     pub documents: BTreeSet<DocumentId>,
+    /// Opted-in documents with the first line that carries a marker.
+    pub opted_in: BTreeMap<DocumentId, usize>,
     pub decisions: BTreeMap<ProjectPath, SelectionDecision>,
     pub file_bytes: BTreeMap<ProjectPath, Vec<u8>>,
     pub document_bytes: BTreeMap<DocumentId, Vec<u8>>,
@@ -105,14 +109,17 @@ pub struct OutdatedImport {
 pub struct Snapshot {
     pub collected: Collected,
     pub documents: BTreeMap<DocumentId, Document>,
-    pub ownership: OwnershipTree,
+    /// Every resolved local link and import reference, per document.
+    pub references: BTreeMap<DocumentId, Vec<DocumentReference>>,
+    /// Document scopes and handoffs: the backbone rule.
+    pub scopes: ScopeMap,
     pub graph: Option<ImportGraph>,
     pub navigation: NavigationGraph,
     pub disconnected: Vec<DocumentId>,
     pub policies: BTreeMap<DocumentId, EffectivePolicy>,
     pub policy_hashes: BTreeMap<DocumentId, Hash64>,
     pub manifests: BTreeMap<DocumentId, InputManifest>,
-    /// Advisory section mapping state for every discovered README.
+    /// Advisory section mapping state for every tracked document.
     pub sections: BTreeMap<DocumentId, SectionMap>,
     /// Effective guidance and its digest, for every discovered document.
     pub guidance: BTreeMap<DocumentId, guidance::EffectiveGuidance>,
@@ -570,6 +577,43 @@ fn collect(services: &Services<'_>) -> Result<Collected, AppError> {
         }
         decisions.insert(path.clone(), decision);
     }
+    // Opted-in documents. A selected Markdown file that is not named exactly
+    // `README.md` becomes a tracked document when it carries a recognized
+    // Memoria marker outside code. Links never opt a file in. A tracked
+    // document is never a source, so its bytes move to the document set.
+    let mut opted_in: BTreeMap<DocumentId, usize> = BTreeMap::new();
+    let candidates: Vec<ProjectPath> = file_bytes
+        .keys()
+        .filter(|path| !path.is_readme() && path.is_markdown())
+        .cloned()
+        .collect();
+    for path in candidates {
+        let Ok(id) = DocumentId::from_path(path.clone()) else {
+            continue;
+        };
+        let bytes = &file_bytes[&path];
+        if std::str::from_utf8(bytes).is_err() {
+            let looks_marked = bytes.split(|b| *b == b'\n').any(|line| {
+                line.starts_with(b"<!-- memoria:") || line.starts_with(b"<!-- /memoria:")
+            });
+            if looks_marked {
+                diagnostics.push(
+                    Diagnostic::warning(
+                        "document_encoding_invalid",
+                        "this Markdown file looks like it carries a Memoria marker, but it is not valid UTF-8, so it stays an ordinary source",
+                    )
+                    .at_path(path.as_str()),
+                );
+            }
+            continue;
+        }
+        if let Some(line) = services.markdown.recognizes_markers(&id, bytes) {
+            let bytes = file_bytes.remove(&path).expect("candidate bytes");
+            document_bytes.insert(id.clone(), bytes);
+            documents.insert(id.clone());
+            opted_in.insert(id, line);
+        }
+    }
     // Repository ignore inventory. Git applies a `.gitignore` in every
     // directory it traverses, even when that file is itself ignored or
     // untracked and even when the directory holds no eligible file. This
@@ -653,6 +697,9 @@ fn collect(services: &Services<'_>) -> Result<Collected, AppError> {
         }
     }
     for document in &documents {
+        if document_bytes.contains_key(document) {
+            continue;
+        }
         document_bytes.insert(
             document.clone(),
             services.files.read(document.as_str()).map_err(io_error)?,
@@ -671,6 +718,7 @@ fn collect(services: &Services<'_>) -> Result<Collected, AppError> {
         kinds,
         boundaries,
         documents,
+        opted_in,
         decisions,
         file_bytes,
         document_bytes,
@@ -835,17 +883,19 @@ fn build_scope(
     }
 }
 
-/// Resolve one README's authored sections against the project.
+/// Resolve one document's authored sections against its scope.
 ///
 /// Advice survives only when every mapping resolves to a selected regular
-/// file this README owns. Anything else — an unselected, reserved, guidance,
-/// symlinked, missing, or cross-owner path — withdraws the whole README's
+/// source in the document's scope. Anything else — an unselected, reserved,
+/// guidance, symlinked, or missing path, a tracked document, or a source the
+/// document handed off or never covered — withdraws the whole document's
 /// advice, because partial advice cannot narrow a review.
 fn resolve_sections(
     document: &DocumentId,
     parsed_sections: &[crate::ports::ParsedSection],
     parser_issues: &[crate::ports::MarkdownIssue],
-    ownership: &OwnershipTree,
+    scopes: &ScopeMap,
+    documents: &BTreeSet<DocumentId>,
     selected: &BTreeMap<ProjectPath, Vec<u8>>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> SectionMap {
@@ -869,6 +919,7 @@ fn resolve_sections(
         return SectionMap::Absent;
     }
     let dir = document.path().directory();
+    let scope: BTreeSet<&ProjectPath> = scopes.scope_of(document).iter().collect();
     let mut mappings = Vec::new();
     for section in parsed_sections {
         let mut sources: Vec<ProjectPath> = Vec::new();
@@ -887,38 +938,48 @@ fn resolve_sections(
                     continue;
                 }
             };
-            if !selected.contains_key(&resolved) {
+            let is_document =
+                DocumentId::from_path(resolved.clone()).is_ok_and(|id| documents.contains(&id));
+            if is_document {
                 invalid = true;
                 report(
                     format!(
-                        "section {:?}: {resolved} is not a selected regular source file; a section can only name owned inputs",
+                        "section {:?}: {resolved} is now a tracked document, not a source in this document's scope; name the sources that the section describes",
                         section.id
                     ),
                     Some(section.location),
                 );
                 continue;
             }
-            match ownership.owner_of(&resolved) {
-                Some(owner) if owner == document => {}
-                Some(owner) => {
-                    invalid = true;
-                    report(
-                        format!(
-                            "section {:?}: {resolved} belongs to {owner}, not to this README",
-                            section.id
-                        ),
-                        Some(section.location),
-                    );
-                    continue;
-                }
-                None => {
-                    invalid = true;
-                    report(
-                        format!("section {:?}: {resolved} has no README owner", section.id),
-                        Some(section.location),
-                    );
-                    continue;
-                }
+            if !selected.contains_key(&resolved) {
+                invalid = true;
+                report(
+                    format!(
+                        "section {:?}: {resolved} is not a selected regular source file; a section can only name sources in this document's scope",
+                        section.id
+                    ),
+                    Some(section.location),
+                );
+                continue;
+            }
+            if !scope.contains(&resolved) {
+                invalid = true;
+                let handed = scopes
+                    .handoffs_of(document)
+                    .iter()
+                    .find(|handoff| resolved.is_within(&handoff.subtree));
+                let message = match handed {
+                    Some(handoff) => format!(
+                        "section {:?}: {resolved} is handed off to {}, so it is not in this document's scope",
+                        section.id, handoff.target
+                    ),
+                    None => format!(
+                        "section {:?}: {resolved} is outside this document's folder, so it is not in this document's scope",
+                        section.id
+                    ),
+                };
+                report(message, Some(section.location));
+                continue;
             }
             sources.push(resolved);
         }
@@ -947,13 +1008,45 @@ fn resolve_sections(
     }
 }
 
+/// Every local reference a document makes: normal links and import blocks,
+/// each resolved to a project path. Unresolvable references are skipped.
+fn document_references(
+    document: &DocumentId,
+    parsed: &crate::ports::ParsedDocument,
+) -> Vec<(DocumentReference, bool)> {
+    let mut out = Vec::new();
+    for link in &parsed.links {
+        if let Some((target, folder)) = resolve_link_destination(document, &link.destination) {
+            out.push((
+                DocumentReference {
+                    from: document.clone(),
+                    target,
+                    kind: ReferenceKind::Link,
+                    location: link.location,
+                },
+                folder,
+            ));
+        }
+    }
+    for import in &parsed.imports {
+        if let Ok((provider, _)) = resolve_import(document, &import.source_text) {
+            out.push((
+                DocumentReference {
+                    from: document.clone(),
+                    target: provider.path().clone(),
+                    kind: ReferenceKind::Import,
+                    location: import.location,
+                },
+                false,
+            ));
+        }
+    }
+    out
+}
+
 fn analyze(services: &Services<'_>, collected: Collected) -> Snapshot {
     let mut diagnostics = collected.diagnostics.clone();
     let hasher = services.hasher;
-
-    // Ownership.
-    let selected: Vec<ProjectPath> = collected.file_bytes.keys().cloned().collect();
-    let ownership = OwnershipTree::build(&collected.documents, &selected);
     let root_document = DirPath::root().readme();
     if !collected.documents.contains(&root_document) {
         diagnostics.push(
@@ -961,22 +1054,16 @@ fn analyze(services: &Services<'_>, collected: Collected) -> Snapshot {
                 .at_path("README.md"),
         );
     }
-    for path in ownership.unowned() {
-        diagnostics.push(
-            Diagnostic::error("coverage_unowned", "selected file has no README owner")
-                .at_path(path.as_str()),
-        );
-    }
 
-    // Documents.
+    // Documents and their references.
     let mut documents: BTreeMap<DocumentId, Document> = BTreeMap::new();
-    let mut sections: BTreeMap<DocumentId, SectionMap> = BTreeMap::new();
+    let mut parsed_documents: BTreeMap<DocumentId, crate::ports::ParsedDocument> = BTreeMap::new();
+    let mut references: BTreeMap<DocumentId, Vec<DocumentReference>> = BTreeMap::new();
+    let mut folder_links: BTreeSet<(DocumentId, ProjectPath)> = BTreeSet::new();
     for document in &collected.documents {
         let bytes = &collected.document_bytes[document];
         let parsed = services.markdown.parse(document, bytes);
-        let mut invalid = false;
         for issue in &parsed.issues {
-            invalid = true;
             let mut diagnostic =
                 Diagnostic::error(issue.code, issue.message.clone()).at_path(document.as_str());
             if let Some(location) = issue.location {
@@ -995,7 +1082,6 @@ fn analyze(services: &Services<'_>, collected: Collected) -> Snapshot {
                     location: import.location,
                 }),
                 Err(message) => {
-                    invalid = true;
                     diagnostics.push(
                         Diagnostic::error("import_invalid", message)
                             .at_path(document.as_str())
@@ -1004,29 +1090,84 @@ fn analyze(services: &Services<'_>, collected: Collected) -> Snapshot {
                 }
             }
         }
-        let links = resolve_links(document, &parsed.links, &collected.documents);
+        let resolved = document_references(document, &parsed);
+        let mut links: Vec<DocumentLink> = Vec::new();
+        for (reference, folder) in &resolved {
+            if *folder {
+                folder_links.insert((document.clone(), reference.target.clone()));
+            }
+            if reference.kind != ReferenceKind::Link {
+                continue;
+            }
+            let Ok(target) = DocumentId::from_path(reference.target.clone()) else {
+                continue;
+            };
+            if collected.documents.contains(&target)
+                && &target != document
+                && !links.iter().any(|link| link.target == target)
+            {
+                links.push(DocumentLink {
+                    target,
+                    location: reference.location,
+                });
+            }
+        }
+        references.insert(
+            document.clone(),
+            resolved
+                .into_iter()
+                .map(|(reference, _)| reference)
+                .collect(),
+        );
+        documents.insert(
+            document.clone(),
+            Document {
+                id: document.clone(),
+                exports: parsed.exports.clone(),
+                imports,
+                links,
+            },
+        );
+        parsed_documents.insert(document.clone(), parsed);
+    }
+
+    // Scopes: each document covers its folder and below, minus the subtrees
+    // it hands off by a link or an import to a tracked document there.
+    let selected: Vec<ProjectPath> = collected.file_bytes.keys().cloned().collect();
+    let all_references: Vec<DocumentReference> = references.values().flatten().cloned().collect();
+    let scopes = ScopeMap::build(&collected.documents, &all_references, &selected);
+    for path in scopes.uncovered() {
+        diagnostics.push(
+            Diagnostic::error(
+                "coverage_unowned",
+                "no tracked document covers this selected file; add a README.md at the project root",
+            )
+            .at_path(path.as_str()),
+        );
+    }
+    handoff_hints(
+        services,
+        &collected,
+        &scopes,
+        &references,
+        &folder_links,
+        &mut diagnostics,
+    );
+
+    // Advisory sections, validated against each document's scope.
+    let mut sections: BTreeMap<DocumentId, SectionMap> = BTreeMap::new();
+    for (document, parsed) in &parsed_documents {
         sections.insert(
             document.clone(),
             resolve_sections(
                 document,
                 &parsed.sections,
                 &parsed.section_issues,
-                &ownership,
+                &scopes,
+                &collected.documents,
                 &collected.file_bytes,
                 &mut diagnostics,
             ),
-        );
-        if invalid {
-            // Keep the document visible with whatever parsed cleanly.
-        }
-        documents.insert(
-            document.clone(),
-            Document {
-                id: document.clone(),
-                exports: parsed.exports,
-                imports,
-                links,
-            },
         );
     }
 
@@ -1035,7 +1176,7 @@ fn analyze(services: &Services<'_>, collected: Collected) -> Snapshot {
         Ok(graph) => Some(graph),
         Err(errors) => {
             for error in errors {
-                diagnostics.push(graph_diagnostic(error));
+                diagnostics.push(graph_diagnostic(error, &collected.file_bytes));
             }
             None
         }
@@ -1050,12 +1191,12 @@ fn analyze(services: &Services<'_>, collected: Collected) -> Snapshot {
         diagnostics.push(
             Diagnostic::warning(
                 "navigation_disconnected",
-                "no link or import path from the root README reaches this README",
+                "no link or import path from the root README reaches this document",
             )
             .at_path(document.as_str())
             .with_details(
                 DetailMap::default()
-                    .number("owned_files", ownership.owned_by(document).len() as u64)
+                    .number("scope_files", scopes.scope_of(document).len() as u64)
                     .build(),
             ),
         );
@@ -1063,20 +1204,30 @@ fn analyze(services: &Services<'_>, collected: Collected) -> Snapshot {
     if collected.root_config.missing_import_hint {
         for (id, document) in &documents {
             for link in &document.links {
-                if !document
+                let target = &link.target;
+                if document
                     .imports
                     .iter()
-                    .any(|import| &import.provider == link)
+                    .any(|import| &import.provider == target)
                 {
-                    diagnostics.push(
-                        Diagnostic::hint(
-                            "missing_import_hint",
-                            format!("normal link to {link} has no matching import; add an import if its summary belongs here"),
-                        )
-                        .at_path(id.as_str())
-                        .with_details(DetailMap::default().text("target", link.as_str()).build()),
-                    );
+                    continue;
                 }
+                // An opted-in target is suggested only when it has something
+                // to import.
+                let has_export = documents
+                    .get(target)
+                    .is_some_and(|provider| !provider.exports.is_empty());
+                if target.kind() == memoria_domain::DocumentKind::OptedIn && !has_export {
+                    continue;
+                }
+                diagnostics.push(
+                    Diagnostic::hint(
+                        "missing_import_hint",
+                        format!("normal link to {target} has no matching import; add an import if its summary belongs here"),
+                    )
+                    .at_path(id.as_str())
+                    .with_details(DetailMap::default().text("target", target.as_str()).build()),
+                );
             }
         }
     }
@@ -1120,25 +1271,33 @@ fn analyze(services: &Services<'_>, collected: Collected) -> Snapshot {
     let mut policy_hashes = BTreeMap::new();
     let mut manifests = BTreeMap::new();
     for document in &collected.documents {
-        let policy = effective_policy(&collected, &ownership, document);
+        let policy = effective_policy(&collected, &scopes, document);
         let policy_hash = hasher.hash(&canonical::encode_policy(&policy));
         policies.insert(document.clone(), policy);
         policy_hashes.insert(document.clone(), policy_hash);
     }
     if graph.is_some() {
-        for document in &collected.documents {
-            let bytes = &collected.document_bytes[document];
-            let files: Vec<FileInput> = ownership
-                .owned_by(document)
-                .iter()
-                .map(|path| {
-                    let content = &collected.file_bytes[path];
+        // Each source is hashed once, however many documents cover it.
+        let file_inputs: BTreeMap<&ProjectPath, FileInput> = collected
+            .file_bytes
+            .iter()
+            .map(|(path, content)| {
+                (
+                    path,
                     FileInput {
                         path: path.clone(),
                         bytes: content.len() as u64,
                         hash: hasher.hash(content),
-                    }
-                })
+                    },
+                )
+            })
+            .collect();
+        for document in &collected.documents {
+            let bytes = &collected.document_bytes[document];
+            let files: Vec<FileInput> = scopes
+                .scope_of(document)
+                .iter()
+                .map(|path| file_inputs[path].clone())
                 .collect();
             let imports: Vec<ImportInput> = documents[document]
                 .imports
@@ -1234,7 +1393,8 @@ fn analyze(services: &Services<'_>, collected: Collected) -> Snapshot {
     Snapshot {
         collected,
         documents,
-        ownership,
+        references,
+        scopes,
         graph,
         navigation,
         disconnected,
@@ -1251,17 +1411,30 @@ fn analyze(services: &Services<'_>, collected: Collected) -> Snapshot {
     }
 }
 
-fn graph_diagnostic(error: GraphError) -> Diagnostic {
+fn graph_diagnostic(error: GraphError, sources: &BTreeMap<ProjectPath, Vec<u8>>) -> Diagnostic {
     match &error {
         GraphError::MissingDocument {
             importer,
             location,
             target,
             ..
-        } => Diagnostic::error("import_missing_document", error.to_string())
-            .at_path(importer.as_str())
-            .at(location.line, location.column)
-            .with_details(DetailMap::default().text("target", target.as_str()).build()),
+        } => {
+            // An existing Markdown source is untracked, not missing: it needs
+            // a marker to become a document that exports.
+            let untracked = sources.contains_key(target.path());
+            let mut message = error.to_string();
+            if untracked {
+                message.push_str("; the file exists but carries no Memoria marker, so it is an ordinary source. Add the export marker to track it");
+            }
+            let mut details = DetailMap::default().text("target", target.as_str());
+            if untracked {
+                details = details.bool("untracked_markdown", true);
+            }
+            Diagnostic::error("import_missing_document", message)
+                .at_path(importer.as_str())
+                .at(location.line, location.column)
+                .with_details(details.build())
+        }
         GraphError::MissingExport {
             importer,
             location,
@@ -1311,7 +1484,9 @@ fn graph_diagnostic(error: GraphError) -> Diagnostic {
     }
 }
 
-/// Resolve `src="path/README.md#export"` relative to the importing document.
+/// Resolve `src="path/doc.md#export"` relative to the importing document.
+/// The provider must be a Markdown path; whether it is tracked is a graph
+/// question.
 pub fn resolve_import(
     document: &DocumentId,
     source_text: &str,
@@ -1335,50 +1510,197 @@ pub fn resolve_import(
     Ok((provider, export_id))
 }
 
-fn resolve_links(
-    document: &DocumentId,
-    links: &[String],
-    documents: &BTreeSet<DocumentId>,
-) -> Vec<DocumentId> {
-    let mut out = Vec::new();
-    for raw in links {
-        let without_fragment = raw.split('#').next().unwrap_or("");
-        let without_query = without_fragment.split('?').next().unwrap_or("");
-        if without_query.is_empty()
-            || without_query.contains("://")
-            || without_query.starts_with("mailto:")
-        {
-            continue;
+/// Resolve one normal link destination to a local project path.
+///
+/// The fragment and query are removed, the path is percent-decoded once,
+/// and `.`/`..` are normalized. A Markdown file name stays a file; any
+/// other destination names a folder and resolves to that folder's
+/// `README.md`, with `true` in the second position. External URLs,
+/// `mailto:`, fragment-only links, and escapes above the root resolve to
+/// nothing.
+pub fn resolve_link_destination(document: &DocumentId, raw: &str) -> Option<(ProjectPath, bool)> {
+    let without_fragment = raw.split('#').next().unwrap_or("");
+    let without_query = without_fragment.split('?').next().unwrap_or("");
+    if without_query.is_empty()
+        || without_query.contains("://")
+        || without_query.starts_with("mailto:")
+    {
+        return None;
+    }
+    // URL path escapes are decoded exactly once after the query and
+    // fragment are separated; an invalid encoding is not a local link.
+    let decoded = percent_decode(without_query)?;
+    let text = decoded.as_str();
+    let candidate = if let Some(root_relative) = text.strip_prefix('/') {
+        if root_relative.trim_end_matches('/').is_empty() {
+            return Some((DirPath::root().readme().path().clone(), true));
         }
-        // URL path escapes are decoded exactly once after the query and
-        // fragment are separated; an invalid encoding is not a local link.
-        let Some(decoded) = percent_decode(without_query) else {
-            continue;
-        };
-        let without_query = decoded.as_str();
-        let candidate = if let Some(root_relative) = without_query.strip_prefix('/') {
-            DirPath::root().join(root_relative.trim_end_matches('/'))
-        } else if without_query == "." || without_query == "./" {
-            Ok(document.directory().readme().path().clone())
-        } else {
-            ProjectPath::resolve_relative(
-                &document.directory(),
-                without_query.trim_end_matches('/'),
-            )
-        };
-        let Ok(path) = candidate else { continue };
-        let target = if let Ok(direct) = DocumentId::from_path(path.clone()) {
-            direct
-        } else {
-            DirPath::parse(path.as_str())
-                .map(|dir| dir.readme())
-                .unwrap_or_else(|_| document.clone())
-        };
-        if documents.contains(&target) && &target != document && !out.contains(&target) {
-            out.push(target);
+        DirPath::root().join(root_relative.trim_end_matches('/'))
+    } else if text == "." || text == "./" {
+        return Some((document.directory().readme().path().clone(), true));
+    } else {
+        ProjectPath::resolve_relative(&document.directory(), text.trim_end_matches('/'))
+    };
+    let path = match candidate {
+        Ok(path) => path,
+        // `..` that lands exactly on the root is a folder link to the root.
+        Err(_) => {
+            let base = document.directory();
+            let joined = if base.is_root() {
+                text.trim_end_matches('/').to_string()
+            } else {
+                format!("{}/{}", base.as_str(), text.trim_end_matches('/'))
+            };
+            let dir = DirPath::parse(&joined).ok()?;
+            return Some((dir.readme().path().clone(), true));
+        }
+    };
+    if path.is_markdown() && !text.ends_with('/') {
+        return Some((path, false));
+    }
+    // A last segment with a dot and no trailing slash names a file such as
+    // `login.rs`: a plain reference, never a folder link.
+    if !text.ends_with('/') && path.file_name().contains('.') {
+        return Some((path, false));
+    }
+    let dir = DirPath::parse(path.as_str()).ok()?;
+    Some((dir.readme().path().clone(), true))
+}
+
+/// Hints that explain handoffs: a strict-subfolder reference that is not a
+/// handoff (`handoff_not_applied`), and a nested tracked document that a
+/// document covers too because it does not hand that folder off
+/// (`handoff_absent`). Hints never fail a command.
+fn handoff_hints(
+    services: &Services<'_>,
+    collected: &Collected,
+    scopes: &ScopeMap,
+    references: &BTreeMap<DocumentId, Vec<DocumentReference>>,
+    folder_links: &BTreeSet<(DocumentId, ProjectPath)>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let eligible_dirs: BTreeSet<DirPath> = collected
+        .eligible
+        .iter()
+        .flat_map(|path| path.directory().ancestors())
+        .collect();
+    for (document, list) in references {
+        let mut reported: BTreeSet<ProjectPath> = BTreeSet::new();
+        for reference in list {
+            let target_dir = reference.target.directory();
+            if !target_dir.is_strictly_within(&document.directory()) {
+                continue;
+            }
+            // A non-Markdown file reference is a plain reference, never an
+            // attempted handoff.
+            if !reference.target.is_markdown() {
+                continue;
+            }
+            let tracked = DocumentId::from_path(reference.target.clone())
+                .is_ok_and(|id| collected.documents.contains(&id));
+            // A folder another handoff already moved elsewhere needs no
+            // explanation here.
+            if tracked || !scopes.covers_dir(document, &target_dir) {
+                continue;
+            }
+            let folder = folder_links.contains(&(document.clone(), reference.target.clone()));
+            // A folder-shaped link that names an existing file is a plain
+            // file reference, never an attempted handoff.
+            if folder
+                && ProjectPath::parse(target_dir.as_str())
+                    .is_ok_and(|path| collected.kinds.contains_key(&path))
+            {
+                continue;
+            }
+            let deleted =
+                collected.kinds.get(&reference.target) == Some(&crate::ports::FileKind::Missing);
+            let reason = if deleted {
+                "missing"
+            } else if folder {
+                if eligible_dirs.contains(&target_dir) {
+                    "no_document_in_directory"
+                } else {
+                    "missing"
+                }
+            } else if collected.file_bytes.contains_key(&reference.target) {
+                "untracked_markdown"
+            } else if collected.kinds.contains_key(&reference.target) {
+                if collected
+                    .decisions
+                    .get(&reference.target)
+                    .is_some_and(|decision| decision.selected())
+                {
+                    "missing"
+                } else {
+                    "not_selected"
+                }
+            } else {
+                match services.files.kind(reference.target.as_str()) {
+                    Ok(crate::ports::FileKind::Missing) | Err(_) => "missing",
+                    Ok(_) => "not_selected",
+                }
+            };
+            if !reported.insert(reference.target.clone()) {
+                continue;
+            }
+            let explanation = match reason {
+                "untracked_markdown" => format!(
+                    "{} is ordinary Markdown with no Memoria marker, so this reference does not hand {}/ to it; this document still covers that folder. Add an export, import, or section marker to track it, or link a tracked document there",
+                    reference.target, target_dir
+                ),
+                "no_document_in_directory" => format!(
+                    "{target_dir}/ has no README.md, so this folder link hands nothing off; this document still covers that folder"
+                ),
+                "not_selected" => format!(
+                    "{} is not a selected file, so it cannot be a tracked document; this document still covers {}/",
+                    reference.target, target_dir
+                ),
+                _ => format!(
+                    "{} does not exist, so this reference hands nothing off; this document still covers {}/",
+                    reference.target, target_dir
+                ),
+            };
+            diagnostics.push(
+                Diagnostic::hint("handoff_not_applied", explanation)
+                    .at_path(document.as_str())
+                    .at(reference.location.line, reference.location.column)
+                    .with_details(
+                        DetailMap::default()
+                            .text("target", reference.target.as_str())
+                            .text("subtree", target_dir.as_str())
+                            .text("reason", reason)
+                            .text(
+                                "via",
+                                match reference.kind {
+                                    ReferenceKind::Link => "link",
+                                    ReferenceKind::Import => "import",
+                                },
+                            )
+                            .build(),
+                    ),
+            );
         }
     }
-    out
+    for document in scopes.documents() {
+        for nested in scopes.absent_handoffs(document) {
+            let subtree = nested.directory();
+            diagnostics.push(
+                Diagnostic::hint(
+                    "handoff_absent",
+                    format!(
+                        "{nested} is a tracked document inside this document's folder, but this document neither links to it nor imports it, so both documents cover {subtree}/ and both are reviewed for changes there. Link to {nested} to hand that folder off, or keep both reviews"
+                    ),
+                )
+                .at_path(document.as_str())
+                .with_details(
+                    DetailMap::default()
+                        .text("target", nested.as_str())
+                        .text("subtree", subtree.as_str())
+                        .build(),
+                ),
+            );
+        }
+    }
 }
 
 /// Decode `%XX` escapes once. `+` stays literal. Invalid or non-UTF-8
@@ -1416,13 +1738,18 @@ pub fn export_body<'a>(
     bytes.get(export.body.start..export.body.end)
 }
 
+/// The policy of one document: repository ignore scopes in its ancestor
+/// folders or in its covered folders, and Memoria rule scopes located
+/// there. For a README whose nested documents are all handed off, the region
+/// equals the 0.6 region, so its policy hash is byte-identical.
 fn effective_policy(
     collected: &Collected,
-    ownership: &OwnershipTree,
+    scopes: &ScopeMap,
     owner: &DocumentId,
 ) -> EffectivePolicy {
     let owner_dir = owner.directory();
     let ancestors = owner_dir.ancestors();
+    let in_region = |dir: &DirPath| ancestors.contains(dir) || scopes.covers_dir(owner, dir);
     let mut git_scopes = Vec::new();
     // A scope without effective rules is canonically the same as no scope:
     // comment-only or empty files carry no policy.
@@ -1436,11 +1763,7 @@ fn effective_policy(
         }
     };
     for (path, bytes) in &collected.gitignores {
-        let dir = path.directory();
-        let is_ancestor = ancestors.contains(&dir);
-        let in_coverage = dir.is_within(&owner_dir)
-            && nearest_document(&collected.documents, &dir).as_ref() == Some(owner);
-        if is_ancestor || in_coverage {
+        if in_region(&path.directory()) {
             push_scope(&mut git_scopes, path.as_str(), bytes);
         }
     }
@@ -1451,7 +1774,7 @@ fn effective_policy(
     let memoria_scopes: Vec<PolicyRuleScope> = collected
         .scopes
         .iter()
-        .filter(|scope| ancestors.contains(&scope.dir))
+        .filter(|scope| in_region(&scope.dir))
         .filter(|scope| {
             scope.source == ROOT_CONFIG_PATH
                 || !scope.policy.ignore.is_empty()
@@ -1459,15 +1782,7 @@ fn effective_policy(
         })
         .map(|scope| scope.policy.clone())
         .collect();
-    let _ = ownership;
     EffectivePolicy::new(owner.clone(), git_scopes, memoria_scopes)
-}
-
-fn nearest_document(documents: &BTreeSet<DocumentId>, dir: &DirPath) -> Option<DocumentId> {
-    dir.ancestors()
-        .iter()
-        .map(DirPath::readme)
-        .find(|candidate| documents.contains(candidate))
 }
 
 impl Snapshot {
@@ -1530,17 +1845,17 @@ impl Snapshot {
     /// Effective guidance from the root scope toward the document scope.
     /// Inline entries precede file entries within each scope, and each list
     /// preserves its authored order.
-    /// The advisory mapping state of a discovered README.
+    /// The advisory mapping state of a tracked document.
     pub fn sections_of(&self, document: &DocumentId) -> &SectionMap {
         static ABSENT: SectionMap = SectionMap::Absent;
         self.sections.get(document).unwrap_or(&ABSENT)
     }
 
-    /// Resolve the mapping a README would declare for arbitrary bytes.
+    /// Resolve the mapping a document would declare for arbitrary bytes.
     ///
-    /// Used to compare a previous README's authored associations with the
-    /// current ones. Resolution uses the current ownership and selection, so
-    /// a project change that moved a path surfaces through its own fallback
+    /// Used to compare a previous document's authored associations with the
+    /// current ones. Resolution uses the current scope and selection, so a
+    /// project change that moved a path surfaces through its own fallback
     /// reason rather than through a confusing mapping difference.
     pub fn section_map_for_bytes(
         &self,
@@ -1554,10 +1869,95 @@ impl Snapshot {
             document,
             &parsed.sections,
             &parsed.section_issues,
-            &self.ownership,
+            &self.scopes,
+            &self.collected.documents,
             &self.collected.file_bytes,
             &mut ignored,
         )
+    }
+
+    /// The subtrees a document's text would reference strictly below its
+    /// folder, for arbitrary bytes: every link and import target's folder,
+    /// tracked or not. Used to explain files that entered or left a scope
+    /// because a handoff appeared or disappeared.
+    pub fn referenced_subtrees_for_bytes(
+        &self,
+        services: &Services<'_>,
+        document: &DocumentId,
+        bytes: &[u8],
+    ) -> Vec<DirPath> {
+        let parsed = services.markdown.parse(document, bytes);
+        let mut out: Vec<DirPath> = document_references(document, &parsed)
+            .into_iter()
+            .map(|(reference, _)| reference.target.directory())
+            .filter(|dir| dir.is_strictly_within(&document.directory()))
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    /// Sources in this document's current scope whose change or appearance
+    /// made it pending, sorted and unique. A source that left the scope is
+    /// not listed: the documents that cover it now do not share it.
+    pub fn changed_scope_sources(&self, document: &DocumentId) -> Vec<ProjectPath> {
+        let mut out: Vec<ProjectPath> = Vec::new();
+        if let Some(status) = self.status_of(document) {
+            for cause in &status.causes {
+                if let memoria_domain::PendingCause::InputChanged(diff) = cause {
+                    for change in &diff.files {
+                        match change {
+                            memoria_domain::InputChange::Added(f) => out.push(f.path.clone()),
+                            memoria_domain::InputChange::Changed { after, .. } => {
+                                out.push(after.path.clone())
+                            }
+                            memoria_domain::InputChange::Removed(_) => {}
+                        }
+                    }
+                }
+            }
+        }
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    /// Other documents whose scope contains a source that changed for this
+    /// document: the fan-out of the same change, made visible. Advisory.
+    pub fn co_covering(&self, document: &DocumentId) -> Vec<DocumentId> {
+        let mut out: BTreeSet<DocumentId> = BTreeSet::new();
+        for path in self.changed_scope_sources(document) {
+            for other in self.scopes.covering(&path) {
+                if other != document {
+                    out.insert(other.clone());
+                }
+            }
+        }
+        out.into_iter().collect()
+    }
+
+    /// Every resolved link and import target that a document's text would
+    /// reference, for arbitrary bytes, sorted and unique. Evidence for the
+    /// handoffs a previous version of the text could have declared.
+    pub fn referenced_targets_for_bytes(
+        &self,
+        services: &Services<'_>,
+        document: &DocumentId,
+        bytes: &[u8],
+    ) -> Vec<ProjectPath> {
+        let parsed = services.markdown.parse(document, bytes);
+        let mut out: Vec<ProjectPath> = document_references(document, &parsed)
+            .into_iter()
+            .map(|(reference, _)| reference.target)
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    /// Whether a path is a tracked document in this snapshot.
+    pub fn is_document(&self, path: &ProjectPath) -> bool {
+        DocumentId::from_path(path.clone()).is_ok_and(|id| self.collected.documents.contains(&id))
     }
 
     pub fn applicable_guidance(&self, document: &DocumentId) -> Vec<Guidance> {

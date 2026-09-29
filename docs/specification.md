@@ -2,7 +2,7 @@
 
 ## Specification status
 
-**Status:** Approved contract for release 0.2.0. The implementation follows it.
+**Status:** Approved contract, updated for release 0.7.0: directory scope with explicit handoffs. The implementation follows it.
 
 **Purpose:** Memoria tracks documentation freshness across machines.
 
@@ -21,7 +21,7 @@ Two mechanisms decide different questions, and this separation is the core of th
 | Repository policy inventory | Repository `.gitignore` bytes only | Do not read or apply. |
 
 Equal selected inputs and equal repository policy produce equal freshness across hosts.
-The guarantee needs equal selected paths, equal bytes, equal document boundaries, and equal repository rules.
+The guarantee needs equal selected paths, equal bytes, equal tracked documents and handoffs, and equal repository rules.
 It does not normalize case-only paths, Unicode filenames, or line endings.
 
 This table gives the required result for each change:
@@ -29,12 +29,12 @@ This table gives the required result for each change:
 | Change | Required result |
 | --- | --- |
 | A host rule changes without changing selected files or bytes | No policy change and no new pending review. |
-| A host rule removes an untracked selected file | The owning manifest loses that file, and the owner requires review. |
-| A host rule exposes an untracked file | The new owner gains that file and requires review. |
+| A host rule removes an untracked selected file | Every manifest whose scope held that file loses it, and those documents require review. |
+| A host rule exposes an untracked file | Every document whose scope contains the file gains it and requires review. |
 | A host rule matches a tracked file | The file stays selected, and its byte changes still require review. |
 | A repository `.gitignore` rule changes | Applicable repository policy changes, even without a selected-file change. |
 | A Memoria selection rule changes | Applicable Memoria policy changes. |
-| Selected content changes with an identical size or timestamp | Its raw byte hash changes, and the owning document requires review. |
+| Selected content changes with an identical size or timestamp | Its raw byte hash changes, and every document whose scope contains it requires review. |
 
 The repository policy inventory uses `gix-ignore` inside the infrastructure boundary.
 It starts with an empty search, adds only the supplied repository rule buffers, and uses fixed case-sensitive matching.
@@ -64,8 +64,8 @@ Memoria must help maintain both views: local detail and the larger project model
 
 Memoria is a separate, repository-independent command-line tool. It should ship as a small binary.
 
-It must detect changed documentation inputs, identify affected READMEs, and prepare focused reviews.
-It must also track the summaries that READMEs use from other READMEs.
+It must detect changed documentation inputs, identify affected documents, and prepare focused reviews.
+It must also track the summaries that documents use from other documents.
 
 ```text
 Code changes
@@ -162,46 +162,78 @@ Root patterns are relative to the project root.
 
 The tool must be able to explain why a file was included or excluded.
 
-### 2.5 Assign ownership
+### 2.5 Scope and handoffs
 
-**The nearest README above a selected file owns that file.**
+**Every tracked document covers the selected sources in its own folder and below. A document stops covering a subfolder only when it links to or imports a tracked document inside that subfolder.**
 
-A README owns its directory and lower directories until another README creates a boundary.
+A tracked document is a `README.md`, or another selected Markdown file that carries a recognized Memoria marker outside code: an export, an import, or a section. Links never track a file. Tracked documents are never sources, so no document is an input of another document except through an import.
+
+For a document `D` in folder `dir(D)`:
+
+| Term | Meaning |
+| --- | --- |
+| Base(D) | Every selected source in `dir(D)` or below it |
+| Handoffs(D) | The tracked documents `C` that `D` links to or imports from, where `dir(C)` lies strictly below `dir(D)` |
+| Scope(D) | Base(D) minus the subtree of every handoff target |
+
+A handoff exists when all four conditions hold:
+
+1. `D` is a tracked document with valid UTF-8 text.
+2. `D` has a normal Markdown link outside code to the target, or an import block whose provider is the target. A folder link resolves to that folder's `README.md`.
+3. The target is a tracked document.
+4. The target's folder lies strictly below `dir(D)`.
+
+| Reference in `D` | Handoff? |
+| --- | --- |
+| Link or import to a tracked document in a strict subfolder | Yes: that subfolder leaves Scope(D) |
+| Link to a tracked document in the same folder | No: both documents cover the folder |
+| Upward or sideways link or import | No |
+| Link to unmarked Markdown in a subfolder | No, with hint `handoff_not_applied` (`untracked_markdown`) |
+| Link to a missing path, a folder without `README.md`, or an unselected file | No, with hint `handoff_not_applied` |
+| Link to a non-Markdown file, an external URL, `mailto:`, or a fragment | No |
+| Link in code, inline code, raw HTML, or an image | No: not a Markdown link |
 
 ```text
-README.md                       owns app.py and src/common.py
-app.py
+README.md                       links src/retrieval/README.md
+app.py                          covered by README.md
 src/
-├── common.py
+├── common.py                   covered by README.md
 └── retrieval/
-    ├── README.md               owns engine.py and helpers/rank.py
-    ├── engine.py
-    ├── helpers/
-    │   └── rank.py
+    ├── README.md               imports naive/README.md#summary
+    ├── engine.py               covered by src/retrieval/README.md
     └── naive/
-        ├── README.md           owns search.py
-        └── search.py
+        ├── README.md
+        └── search.py           covered by src/retrieval/naive/README.md
 ```
 
-Ownership requires no file-by-file declarations in the normal case.
-A file must have at most one owner.
+**Nested and overlapping targets.** Linking `a/README.md` and `a/b/guide.md` removes `a/`. A deeper target alone removes only its own subtree. Scopes may overlap: same-folder documents always overlap, and a document that does not hand off a nested document's folder overlaps with it. `status` counts overlapping sources, and lint reports `handoff_absent` for the nearest unhanded document.
 
-A child README is a document, not an ordinary source input of its parent.
-Changes in its text propagate through declared imports, not through recursive file hashing.
+**Coverage has no gaps.** When the root README exists, every selected source lies in the scope of at least one document: a handed-off subtree is always covered by its target or a deeper target. Without a root README, an uncovered source is the error `coverage_unowned`.
 
-Adding, moving, or deleting a README must recalculate ownership.
-Changes to an owner's selected file set must invalidate its previous review.
+**No cycles.** Handoff edges point strictly downward in the folder tree, so they cannot form a cycle. A link-only handoff creates no scheduling edge. An import keeps its waiting edge and its content freshness. Scope computation is one pass per document over its own references.
 
-**Default:** Recognize `README.md`. Report selected files that have no owner as coverage errors.
-A root README normally prevents these gaps.
-Do not follow paths outside the project or enter nested repositories automatically.
+**Freshness.** A handoff binds coverage and the handoff itself into the parent's review context:
+
+| Event | Result |
+| --- | --- |
+| A source in a handed-off subtree changes | The target, or the deeper document that covers the file, is pending. The parent is not. |
+| The parent adds or removes the link or import | The parent is pending, with fallback `handoff_changed` |
+| A target stops being tracked, is deleted, or moves, without an edit to the parent | The parent's file set changes, so it is pending, with fallback `handoff_changed` |
+| A source enters the scope of a document whose last review recorded no coverage evidence, and no exact proof exists | The document is pending, with fallback `coverage_unrecorded` and its reason |
+| A Markdown file gains its first marker or loses its last | Every document whose scope held or will hold it, with fallback `document_classification_changed` |
+
+An import of `C#summary` gives the parent no coverage of `C`'s sources. Only `C`'s own review and acknowledgement cover them.
+
+**Handoff evidence.** Each acknowledgement records the folders that the document's scope handed off, from the snapshot that `ack` revalidated last. When a source enters the scope later, this evidence decides the fallback exactly. A source inside a recorded folder means that a handoff ended: `handoff_changed`, with the shallowest such folder as the identity. Any other added source is an ordinary addition: `path_set_changed`. A record without evidence (lock format 2) uses a bounded token reconstruction. If that reconstruction cannot prove the former coverage, the fallback is `coverage_unrecorded` with a named reason, never a guess. The [CLI reference](cli.md#coverage-unrecorded) gives the conditions and bounds.
+
+**Default:** Recognize `README.md` and opted-in Markdown. Report uncovered selected files as coverage errors. Do not follow paths outside the project or enter nested repositories automatically. A document that moves has a new identity; its old record stays in the state file.
 
 ### 2.6 Root configuration
 
 **Example:**
 
 ```toml
-version = 2
+version = 3
 ignore = ["**/generated/**", "**/*.snap"]
 
 [documentation]
@@ -244,7 +276,7 @@ A parent should consume a short child summary, not repeat the child's full expla
 
 ### 3.2 Export a stable section
 
-An **export** is a marked section that another README can use.
+An **export** is a marked section that another document can use.
 Its identifier must stay separate from its visible heading.
 
 **Syntax in `retrieval/README.md`:**
@@ -274,7 +306,7 @@ Retrieval selects documents that are relevant to a query.
 <!-- /memoria:import -->
 ```
 
-The path is relative to the importing README.
+The path is relative to the importing document.
 The text between the import markers is generated. The surrounding text belongs to the author.
 
 Humans and agents create the relationships. Memoria validates them and maintains the copied text.
@@ -295,9 +327,11 @@ Links and images must remain valid when copied into another directory.
 The first release may reject forms that it cannot safely render.
 It must not silently produce broken links.
 
-### 3.5 Keep two structures separate
+### 3.5 Keep three structures separate
 
-The **ownership tree** comes from folders and README boundaries.
+The **file tree** comes from Git and selection.
+
+The **document scopes** come from folders and explicit handoffs (section 2.5).
 
 The **import graph** comes from explicit imports. It may include cross-folder dependencies.
 It must be a directed acyclic graph: a graph with no dependency loops.
@@ -308,25 +342,26 @@ An error must show the complete loop and the import locations.
 The default authoring pattern should be simple: parents import child summaries.
 Cross-folder imports are available when needed. No automatic cycle repair is required.
 
-### 3.6 Treat normal links as links
+### 3.6 Links are navigation, except handoffs
 
 A normal Markdown link must not create a review dependency.
-It may only mean “read this related page.”
+It means “read this related page,” with one exception: a link to a tracked document in a strict subfolder is a handoff (section 2.5).
+A handoff moves coverage. It creates no waiting and no content freshness.
 
-Lint may report a local README link with no matching import as a hint.
+Lint may report a local link to a document with no matching import as a hint.
 The hint must be suppressible and must not fail CI by itself.
 
 No custom categories such as “core,” “useful,” or “optional” are required initially.
 
 ### 3.7 Find missing connections
 
-Automatic ownership does not guarantee that a reader can find a README.
+Folder scopes do not guarantee that a reader can find a document.
 
-**Orphan rule:** A README is disconnected when no path from the root README reaches it through local links or imports.
-This is a navigation warning, not an ownership failure.
+**Orphan rule:** A document is disconnected when no path from the root README reaches it through local links or imports.
+This is a navigation warning, not a coverage failure.
 
-The graph must still show disconnected READMEs. It must not hide them.
-Lint should identify their paths and owned file counts.
+The graph must still show disconnected documents. It must not hide them.
+Lint should identify their paths and scope file counts.
 
 ## 4. Change detection and review
 
@@ -340,7 +375,7 @@ Include selected file paths and content hashes. This must detect additions, dele
 Use a stable order and an unambiguous record format.
 
 Imported inputs must include the target identity and the actual exported section content.
-Unrelated text elsewhere in the exporting README must not invalidate consumers.
+Unrelated text elsewhere in the exporting document must not invalidate consumers.
 
 A commit identifier or timestamp must not decide review validity.
 A rebase with identical inputs must not require another review.
@@ -401,14 +436,14 @@ The command is:
 memoria invalidate <scope> --reason "<reason>"
 ```
 
-The scope may be one README, a documentation subtree, or the whole project.
+The scope may be one document, a documentation subtree, or the whole project.
 The exact scope syntax is proposed, but the capability is required.
 
 Memoria must store the invalidation in its state file.
-It must not edit every README just to insert the reason.
+It must not edit every document just to insert the reason.
 The reason must appear in `status`, the review plan, and every affected review artifact.
 
-An explicitly invalidated README remains pending until it is reviewed against that invalidation.
+An explicitly invalidated document remains pending until it is reviewed against that invalidation.
 Acknowledgement clears only the invalidations that were included in the reviewed snapshot.
 If another invalidation is added during review, the older acknowledgement must not clear it.
 
@@ -416,7 +451,7 @@ Explicit invalidation is separate from input staleness:
 
 ```text
 Input staleness
-= deterministic change to owned sources, imports, ownership, or fingerprint policy
+= deterministic change to scope sources, imports, handoffs, or fingerprint policy
 
 Explicit invalidation
 = semantic review requested by a human or agent with a reason
@@ -428,8 +463,8 @@ The review artifact must present all active reasons together.
 ### 4.5 Store the latest review
 
 Use one versioned state file: `memoria.lock`, beside `memoria.toml` at the worktree root.
-It is generated, machine-owned binary state, at format version 2.
-Keep the latest review for each README. Do not append an endless journal to the README.
+It is generated, machine-owned binary state, at format version 3. The reader also accepts format version 2.
+Keep the latest review for each document. Do not append an endless journal to the document.
 
 The artifact must be deterministic, portable, bounded, atomic, corruption-detecting, and safe to commit.
 One logical state must produce one byte sequence.
@@ -440,8 +475,8 @@ The frame is a magic value, a format version, a codec, a decoded length, a body,
 The payload normalizes records into canonical tables of strings, paths, repeated content descriptors, guidance digests, Git contexts, and integer vectors.
 The [state guide](state.md) gives the exact layout, the limits, and the measured sizes.
 
-The release has one clean cutover.
-It does not support simultaneous old and new state formats.
+The release has one clean cutover for configuration and review artifacts.
+The state file changes lazily: the first ordinary state write rewrites a format 2 lock as format 3, with every record kept and marked as having no coverage evidence.
 The legacy path is `.memoria/state.json` and the current path is `memoria.lock`.
 A lone `.memoria/state.json` produces `state_legacy`; both files together produce `state_ambiguous`.
 There is no automatic migration and no reserved alias.
@@ -456,29 +491,31 @@ A result must distinguish between **documentation updated** and **reviewed; no u
 Both outcomes can make a review current.
 
 **State details:** Retain per-file and per-import hashes so the tool can explain changed inputs.
-Also record the reviewed README content, excluding tool-owned metadata.
+Also record the reviewed document content, excluding tool-owned metadata.
 Later document edits can then invalidate that review without affecting unrelated consumers.
 
 ### 4.6 State the review requirements
 
-The review plan must group work by README, not create one task for every changed file.
-A hundred changed files under one owner are one review task, not a hundred separate reviews.
+The review plan must group work by document, not create one task for every changed file.
+A hundred changed files in one document's scope are one review task for that document.
 
 The default result of a review is a small manifest of requirements. It must
 explain the cause and name the relevant context:
 
-- Changed input identities, and the previous review with its evidence state.
+- Changed input identities with their relationship to the document, and the previous review with its evidence state.
+- The document's scope, its handoffs, and the documents that hand its folder to it.
+- Export consumers and co-covering documents, bounded, for judgment only.
 - The review mode, the suggested sections, and the ordered fallback reasons.
 - The suggested reads, the guidance references, and the covered invalidations.
 
-The manifest must carry no README body, no source body, no import body, no
+The manifest must carry no document body, no source body, no import body, no
 historical content, and no authored guidance prose. Ordinary file tools supply
 the reading. Memoria must add no read command, no range command, and no
 content API.
 
 Show input size before a review. Do not silently omit changed inputs. Keep the
 manifest proportional to the number of changes, not to the size of the
-boundary.
+scope.
 
 `--full` must produce an explicit complete export with the same token. The
 export carries every reviewed byte for offline reading.
@@ -487,9 +524,9 @@ A hash alone cannot reproduce old file contents.
 When the old content is unavailable, label the evidence as unavailable and provide the current inputs.
 Do not present a diff from a different snapshot as the reviewed diff.
 
-### 4.6.1 Map README sections to sources
+### 4.6.1 Map document sections to sources
 
-A README can declare optional advisory sections. A section maps one part of
+Any tracked document can declare optional advisory sections. A section maps one part of
 the prose to the sources it describes.
 
 ```markdown
@@ -500,8 +537,9 @@ Save writes a local archive. Sync also uploads the archive.
 <!-- /memoria:section -->
 ```
 
-Sections are advice and nothing more. They must not create ownership. They
-must not carry their own freshness. They must not narrow the input state that
+Sections are advice and nothing more. They add and remove no input, so a
+document's scope is identical with or without sections. They must not carry
+their own freshness or acknowledgement. They must not narrow the input state that
 acknowledgement validates.
 
 The grammar is exact and small:
@@ -509,16 +547,19 @@ The grammar is exact and small:
 | Element | Rule |
 | --- | --- |
 | Markers | Column zero. The attribute order is fixed. Trailing spaces, tabs, LF, and CRLF are permitted. No trailing prose. |
-| `id` | `[A-Za-z][A-Za-z0-9_-]{0,63}`. Case-sensitive and unique in one README. It implies no identity across READMEs. |
-| `files` | One or more literal paths relative to the README directory, separated by exactly one space. |
+| `id` | `[A-Za-z][A-Za-z0-9_-]{0,63}`. Case-sensitive and unique in one document. It implies no identity across documents. |
+| `files` | One or more literal paths relative to the document's folder, separated by exactly one space. |
 | Body | Nonempty authored Markdown. The first block must be a Markdown heading. |
 | Nesting | Sections do not nest. An export or import can sit wholly inside a section. A section cannot sit inside or cross an export or import. |
 
-A path must resolve to a selected regular source file that this README owns.
+A path must resolve to a selected regular source file in this document's scope.
 Memoria must reject a glob, an absolute path, a drive prefix, a backslash, a
 `.` or `..` component, an empty component, a control character, whitespace, a
-quote, a duplicate, a reserved file, a guidance file, a README boundary, an
-ignored input, a symlink, and a cross-owner path. This syntax cannot spell a
+quote, a duplicate, a reserved file, a guidance file, a tracked document, an
+ignored input, a symlink, and a handed-off path. A mapping that names a file
+that became a tracked document reports: "`docs/workflow.md` is now a tracked
+document, not a source in this document's scope; name the sources that the
+section describes". This syntax cannot spell a
 filename that contains a space. Such a file stays a valid ordinary input.
 
 One source can belong to several sections. After that source changes, all of
@@ -527,9 +568,9 @@ those sections become suggestions.
 Marker text inside fenced or indented code is inert. Section-like text inside
 a generated import body is inert for the consumer.
 
-One invalid mapping makes the whole README's advice unusable. Partial advice
+One invalid mapping makes the whole document's advice unusable. Partial advice
 cannot narrow a review, because a reader cannot tell which mapping the author
-meant. Memoria must report `section_mapping_invalid` with the README path, the
+meant. Memoria must report `section_mapping_invalid` with the document path, the
 line, and a precise reason. The diagnostic is a warning. `lint` must not fail
 because of optional section advice alone. `review` must select the full
 baseline. `ack` can accept that full review when the structural requirements
@@ -548,7 +589,9 @@ Acknowledgement must name that snapshot, not whatever happens to be current late
 
 The token must bind the complete input manifest, the complete prior review
 record, and the complete review context. The review context must bind the
-ownership topology, the effective selection policy and its selected path set,
+document kind, its sorted handoffs `(subtree, target)`, the nested
+repositories in its covered folders, the effective selection policy and its
+scope path set,
 the section mapping associations, the effective guidance digest, and the
 transitive provider closure.
 
@@ -569,29 +612,31 @@ claiming immutable direct reads.
 
 ### 4.8 Propagate only relevant changes
 
-A source change first makes its owning README pending.
-It does not immediately require every ancestor to review its prose.
+A source change makes pending every document whose scope contains it.
+It does not immediately require every ancestor to review its prose: an ancestor that handed the folder off is not pending.
 
-Review dependencies before their consumers. Within the normal hierarchy, this means children before parents.
-Cross-folder imports must also respect dependency order.
+**Fan-out.** In a fully linked README tree, one source change makes exactly one README pending. Each same-folder document, and each ancestor that does not hand the folder off, adds one more review. Each of those documents needs its own whole-document review and acknowledgement; nothing batches, copies, or propagates an acknowledgement.
+
+Review dependencies before their consumers. Import providers come first.
+Documents that share sources are ready together and never wait for each other.
 
 ```text
 Implementation changes
-→ Local README is reviewed
-→ Its exported summary stays the same
+→ The documents whose scope contains it are reviewed
+→ Their exported summaries stay the same
 → Stop: no consumer review is required
 ```
 
 ```text
 Implementation changes
-→ Local README is reviewed
+→ The document that covers it is reviewed
 → Its exported summary changes
-→ Refresh the consuming README's import
+→ Refresh the consuming document's import
 → Review that consumer
 → Continue only if its own exported content changes
 ```
 
-While a dependency is pending, show consumers as waiting for it where necessary.
+While a provider is pending, show consumers as waiting for it where necessary.
 Do not ask an agent to review them against a summary that may still change.
 
 ## 5. CLI and agent support
@@ -605,12 +650,12 @@ The exact names are proposed. These capabilities are required across the planned
 | `memoria init` | Create root configuration and guide initial setup. |
 | `memoria status` | Show coverage, input size, and review state. |
 | `memoria lint` | Check structure, configuration, markers, and link hints. |
-| `memoria review` | Show the ordered review plan. A document path states one README's review requirements. `--full` exports the complete content. |
+| `memoria review` | Show the ordered review plan. A document path states one document's review requirements. `--full` exports the complete content. `--save DIR` writes the artifact outside the worktree. |
 | `memoria render` | Refresh declared import blocks only. |
 | `memoria ack` | Record a selected document's review result against its snapshot. |
 | `memoria check` | Run read-only validation for CI. |
-| `memoria graph` | Show documentation ownership, imports, and current status. |
-| `memoria invalidate` | Mark one README, a subtree, or the whole project for semantic review with a reason. |
+| `memoria graph` | Show document scopes, handoffs, imports, and current status. |
+| `memoria invalidate` | Mark one document, a subtree, or the whole project for semantic review with a reason. |
 | `memoria agent install` | Install the managed skill for supported agents. |
 | `memoria agent uninstall` | Remove or restore files managed by that installation. |
 
@@ -620,19 +665,19 @@ Read-only commands must not call an LLM or alter project files.
 ### 5.2 Show the footprint
 
 Status must make excessive input scope easy to spot.
-Show README count, selected file count, input bytes, and review counts.
-Show disconnected documentation and files without an owner.
-Show active explicit invalidations, their reasons, and how many READMEs remain pending for each one.
+Show document counts, handoffs, overlapping sources, selected file count, input bytes, and review counts.
+Show disconnected documentation and files that no document covers.
+Show active explicit invalidations, their reasons, and how many documents remain pending for each one.
 
 **Example output:**
 
 ```text
-READMEs         12
+Documents       13: 12 READMEs, 1 opted-in document; 12 handoffs; 0 sources covered by more than one document
 Selected files  847
 Input size      6.2 MiB
-Reviews         9 current, 2 pending, 1 never reviewed
-Invalidations   1 active, 7 READMEs pending
-Navigation      1 README not reachable from the root
+Reviews         9 current, 2 pending, 1 never reviewed, 0 waiting
+Invalidations   1 active, 7 documents pending
+Navigation      1 document(s) not reachable from the root
 ```
 
 Explain exclusions when requested.
@@ -640,8 +685,8 @@ Do not scan large ignored directory trees just to produce exact ignored-file cou
 
 ### 5.3 Show the documented architecture
 
-The graph must include all discovered READMEs, including disconnected ones.
-Distinguish automatic ownership edges from declared import edges.
+The graph must include all tracked documents, including disconnected ones.
+Distinguish handoff edges from declared import edges and navigation links, and list overlapping sources.
 
 Overlay review state without implying that the graph is a complete code-dependency map.
 A source change must be distinguishable from a change in documentation structure.
@@ -657,7 +702,7 @@ Small installation adapters may package it for Codex and Claude.
 This is not a runtime plugin framework. It is a managed skill bootstrap.
 It must not require Memoria to run its own hosted LLM or maintain a separate review engine for each agent.
 
-The skill must explain ownership, imports, review order, generated regions, acknowledgement, and the final check.
+The skill must explain document scopes and handoffs, imports, review order, generated regions, acknowledgement, and the final check.
 It must teach agents to use CLI results instead of reconstructing the dependency system themselves.
 
 ### 5.5 Install and uninstall safely
@@ -710,7 +755,7 @@ A typical source-change workflow is:
 ```text
 Implement and test
 → memoria review
-→ Review or edit the next dependency-ready README
+→ Review or edit the next dependency-ready document
 → Render imports before reviewing their consumers
 → Acknowledge each reviewed snapshot
 → Repeat until the plan is clear
@@ -722,7 +767,7 @@ A semantic maintenance workflow may start instead with:
 ```text
 memoria invalidate <scope> --reason "..."
 → memoria review
-→ Heal and acknowledge affected READMEs in dependency order
+→ Heal and acknowledge affected documents in dependency order
 → memoria check
 ```
 
@@ -741,7 +786,7 @@ A hook should use the deterministic check, not trigger an unexpected LLM review.
 
 Build the review loop before the convenience features.
 
-The pilot includes source selection, nearest-README ownership, raw XXH3-64 fingerprints, explicit section imports, the state file, and explicit semantic invalidation.
+The pilot includes source selection, folder scopes with explicit handoffs, raw XXH3-64 fingerprints, explicit section imports, the state file, and explicit semantic invalidation.
 It also includes review planning, review artifacts, rendering, acknowledgement, and a deterministic final check.
 
 Use a three-level documentation example to test the full workflow.
@@ -762,24 +807,25 @@ Do not build repository-wide automatic rewriting, inferred semantic dependencies
 Do not add cross-repository imports, a rich link ontology, automatic cycle repair, or an append-only review journal.
 
 No editor integration, documentation hosting, broad AST framework, or automatic hook management is required.
-The internal document model may support other Markdown documents later. READMEs are the initial interface.
+Opted-in Markdown documents use the same rules as READMEs. Links never opt a file in.
 
 ### 6.4 Acceptance tests
 
 | Scenario | Required result |
 | --- | --- |
-| A selected source file changes. | Its owner needs review. Unrelated branches do not. |
-| A selected file is added, deleted, or renamed. | The affected owner's input set changes. |
-| A child README creates a new boundary. | Ownership and affected review inputs are recalculated. |
+| A selected source file changes. | Every document whose scope contains it needs review. Unrelated branches do not. |
+| A selected file is added, deleted, or renamed. | The input set of every document whose scope held or holds it changes. |
+| A parent links a new child README. | The parent hands that folder off, and its review inputs are recalculated. |
+| A child README exists without a link or import from its parent. | Both documents cover that folder, and lint reports `handoff_absent`. |
 | An ignored generated file changes. | No review is required for that file. |
-| A local include restores a Memoria-excluded fixture. | The fixture appears in its owner's inputs. |
+| A local include restores a Memoria-excluded fixture. | The fixture appears in the inputs of the documents whose scope contains it. |
 | A tested filter sees a supported formatting-only edit. | The documentation fingerprint stays unchanged. |
 | A filter fails or sees unsupported syntax. | Raw hashing is used and the fallback is visible. |
 | A reviewer finds no documentation change necessary. | A note records the review without forcing prose edits. |
 | A guidance entry changes. | Existing READMEs do not become stale automatically. The new entry appears in future review context, and status reports an advisory. |
-| The whole project is explicitly invalidated with a reason. | Every README in scope becomes pending and receives the same semantic review reason. |
-| Only one subtree is explicitly invalidated. | READMEs outside that scope remain current unless another rule affects them. |
-| A README is reviewed against an explicit invalidation. | Acknowledgement clears that invalidation for that README without requiring a source change. |
+| The whole project is explicitly invalidated with a reason. | Every document in scope becomes pending and receives the same semantic review reason. |
+| Only one subtree is explicitly invalidated. | Documents outside that scope remain current unless another rule affects them. |
+| A document is reviewed against an explicit invalidation. | Acknowledgement clears that invalidation for that document without requiring a source change. |
 | A new invalidation is added after a review artifact is created. | The older acknowledgement does not clear the new invalidation. |
 | Inputs change after the review artifact is created. | Acknowledgement is rejected. |
 | A rebase changes commits but not reviewed content. | The review remains current. |
@@ -787,8 +833,8 @@ The internal document model may support other Markdown documents later. READMEs 
 | Unrelated prose changes outside that export. | Consumers of that export stay current. |
 | Imports are rendered twice. | The second run changes nothing; authored text is preserved. |
 | An import is missing or cyclic. | The tool reports the exact reference or cycle. |
-| A README has no navigation path from the root. | It remains visible and receives a warning. |
-| A normal link has no explicit import. | It remains a normal link; any hint is non-blocking. |
+| A document has no navigation path from the root. | It remains visible and receives a warning. |
+| A normal link has no explicit import. | It remains a link, or a handoff when it targets a tracked document in a subfolder; any hint is non-blocking. |
 | An installed skill was edited locally. | Uninstall preserves the edit and reports a conflict. |
 | The workflow has no unresolved required work. | The deterministic CI check passes without an LLM. |
 
@@ -810,4 +856,25 @@ These platform items are also outside this release:
 
 Keep these choices separate from the main invariant:
 
-> **A README needs review when its declared review inputs change or when it is explicitly invalidated with a reason. Review must not spread to consumers because of unrelated changes upstream.**
+> **A document needs review when its review inputs change or when it is explicitly invalidated with a reason. Review must not spread to consumers because of unrelated changes upstream.**
+
+## 7. Compatibility with 0.6
+
+Memoria 0.7 is a breaking release with one clean cutover.
+
+| Layer | 0.6 | 0.7 |
+| --- | --- | --- |
+| `memoria.toml` `version` | 2 | 3 only |
+| Review manifest `manifest_version` | 1 | 2 |
+| Full export `packet_version` | 3 | 4 |
+| `packet view` `view_version` | 1 | 2 |
+| Review context | v1, selection version 1 | v2, selection version 2, policy `section-review-v2` |
+| `memoria.lock` frame | format 2 | format 3 written, formats 2 and 3 read; document identities may name opted-in Markdown; each record carries coverage evidence |
+
+Disposable review artifacts from 0.6 are refused with regeneration text. There is no converter and no legacy reader.
+
+Committed review history is read as-is. Reading never writes. The first ordinary state write (`ack`, `invalidate`, or `init --apply` on an empty project) rewrites the lock as format 3. Every record keeps its stored values and is marked as having no coverage evidence until its document's next acknowledgement. There is no conversion command, no reset, no pruning, no backfill, and no fabricated acknowledgement.
+
+A README that links or imports every tracked document directly below it keeps its 0.6 scope and policy, so it stays current. A README with an unhanded nested README now also covers that folder, so it is pending. When the exact proof holds, the fallback is `handoff_changed`. Otherwise it is `coverage_unrecorded` with a reason. A README that 0.6 reviewed more than once usually gets `coverage_unrecorded` (`revision_not_first`).
+
+Memoria 0.6 refuses configuration version 3. After the first 0.7 write, its read-only `state inspect` and `state diff` report `state_unsupported_schema` (exit status 4) for the format 3 lock. That lock is valid: keep it.

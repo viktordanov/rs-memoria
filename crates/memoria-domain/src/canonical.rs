@@ -10,7 +10,7 @@ use crate::guidance::{GuidanceDigest, GuidanceEntry};
 use crate::manifest::{Hash64, InputManifest};
 use crate::path::DocumentId;
 use crate::policy::EffectivePolicy;
-use crate::review::ReviewRecord;
+use crate::review::{CoverageEvidence, ReviewRecord};
 use crate::section::SectionMapIdentity;
 
 pub const POLICY_DOMAIN: &str = "memoria.policy.v2";
@@ -23,10 +23,14 @@ pub const GUIDANCE_DOMAIN: &str = "memoria.guidance.v1";
 pub const PACKET_V3_DOMAIN: &str = "memoria.packet.v3";
 /// Integrity domain of a small review manifest artifact.
 pub const REVIEW_MANIFEST_DOMAIN: &str = "memoria.review-manifest.v1";
-/// `B`: the complete prior review record a focused review would reuse.
-pub const REVIEW_BASELINE_DOMAIN: &str = "memoria-review-baseline-v1";
-/// `C`: the ownership, selection, mapping, guidance, and graph context.
-pub const REVIEW_CONTEXT_DOMAIN: &str = "memoria-review-context-v1";
+/// `B`: the complete prior review record a focused review would reuse,
+/// including its coverage evidence.
+pub const REVIEW_BASELINE_DOMAIN: &str = "memoria-review-baseline-v2";
+/// The `B` domain before records carried coverage evidence. Only the
+/// absent-baseline encoding survives, for the legacy exclusion proof.
+pub const LEGACY_REVIEW_BASELINE_V1_DOMAIN: &str = "memoria-review-baseline-v1";
+/// `C`: the scope, selection, mapping, guidance, and graph context.
+pub const REVIEW_CONTEXT_DOMAIN: &str = "memoria-review-context-v2";
 /// `T`: the v3 review token.
 pub const REVIEW_TOKEN_V3_DOMAIN: &str = "memoria-review-token-v3";
 
@@ -34,6 +38,9 @@ pub const SELECTION_ALGORITHM: &str = "git-worktree-v2";
 /// Repository-only, case-sensitive ignore inventory. Host ignore settings
 /// decide actual Git eligibility; they never enter this policy.
 pub const REPOSITORY_IGNORE_ALGORITHM: &str = "repository-ignore-v1";
+/// A frozen hash-domain identifier inside the policy encoding. The name is
+/// historical: renaming it would change every policy hash and make every
+/// document pending, so it stays byte-for-byte as released.
 pub const OWNERSHIP_ALGORITHM: &str = "nearest-readme-v1";
 pub const FINGERPRINT_ALGORITHM: &str = "raw-v1";
 pub const HASH_ALGORITHM: &str = "xxh3-64-seed0";
@@ -224,22 +231,32 @@ pub struct ProviderDescriptor {
     pub imports: Vec<ImportEdge>,
 }
 
+/// One handoff bound into the parent's context: the subtree it no longer
+/// covers and the tracked document that covers it instead.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct HandoffEdge {
+    pub subtree: String,
+    pub target: String,
+}
+
 /// The complete review context `C` binds beyond the input manifest.
 ///
-/// Every collection is sorted by its owner before encoding, so authored order
-/// and traversal order never change the token.
+/// Every collection is sorted before encoding, so authored order and
+/// traversal order never change the token.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReviewContext {
     pub selection_version: u64,
-    /// Ownership: the owner and the boundaries that delimit its coverage.
+    /// Scope: the document, its kind, and the handoffs that shape its
+    /// coverage.
     pub owner: String,
-    pub ancestor_boundaries: Vec<String>,
-    pub descendant_boundaries: Vec<String>,
-    /// Nested-repository boundaries inside the owner's directory.
+    /// `readme` or `opted_in`.
+    pub document_kind: String,
+    pub handoffs: Vec<HandoffEdge>,
+    /// Nested-repository boundaries inside the document's covered folders.
     pub nested_repositories: Vec<String>,
-    /// Selection: the effective policy hash and the actual selected owned set.
+    /// Selection: the effective policy hash and the actual scope.
     pub policy_hash: Hash64,
-    pub owned_paths: Vec<String>,
+    pub scope_paths: Vec<String>,
     /// Mapping: validity state and the sorted ID-to-source associations.
     pub mapping: SectionMapIdentity,
     /// Guidance: the complete effective ordered guidance digest.
@@ -268,10 +285,12 @@ fn encode_sorted_strings(e: &mut Encoder, values: &[String]) {
     }
 }
 
-/// `memoria-review-baseline-v1` canonical bytes for `B`.
+/// `memoria-review-baseline-v2` canonical bytes for `B`.
 ///
 /// Every stored field of the prior record enters the encoding, reusing the
-/// existing manifest encoding. Nothing here depends on JSON.
+/// existing manifest encoding. Nothing here depends on JSON. The coverage
+/// evidence ends the record: tag `0` for unrecorded, or tag `1` followed
+/// by the sorted list of handed-off folders.
 pub fn encode_review_baseline(record: Option<&ReviewRecord>) -> Vec<u8> {
     let mut e = Encoder::new();
     e.str(REVIEW_BASELINE_DOMAIN);
@@ -295,25 +314,123 @@ pub fn encode_review_baseline(record: Option<&ReviewRecord>) -> Vec<u8> {
         for id in acknowledged {
             e.u64(id);
         }
+        match &record.coverage {
+            CoverageEvidence::Unrecorded => {
+                e.raw(&[0]);
+            }
+            CoverageEvidence::Recorded(folders) => {
+                let mut folders: Vec<&str> = folders.iter().map(|f| f.as_str()).collect();
+                folders.sort_unstable();
+                folders.dedup();
+                e.raw(&[1]).list_len(folders.len());
+                for folder in folders {
+                    e.str(folder);
+                }
+            }
+        }
     });
     e.finish()
 }
 
-/// `memoria-review-context-v1` canonical bytes for `C`.
+/// `memoria-review-baseline-v1` bytes for an absent prior record.
+///
+/// Releases before coverage evidence bound this `B` into every first
+/// review. The legacy exclusion proof needs it to rebuild those tokens;
+/// nothing else encodes the v1 baseline.
+pub fn encode_legacy_absent_review_baseline_v1() -> Vec<u8> {
+    let mut e = Encoder::new();
+    e.str(LEGACY_REVIEW_BASELINE_V1_DOMAIN);
+    e.option(None::<()>, |_, _| {});
+    e.finish()
+}
+
+/// `memoria-review-context-v2` canonical bytes for `C`.
 pub fn encode_review_context(context: &ReviewContext) -> Vec<u8> {
     let mut e = Encoder::new();
     e.str(REVIEW_CONTEXT_DOMAIN).u64(context.selection_version);
-    // Ownership.
+    // Scope.
+    e.str(&context.owner).str(&context.document_kind);
+    let mut handoffs: Vec<&HandoffEdge> = context.handoffs.iter().collect();
+    handoffs.sort();
+    e.list_len(handoffs.len());
+    for edge in handoffs {
+        e.str(&edge.subtree).str(&edge.target);
+    }
+    encode_sorted_strings(&mut e, &context.nested_repositories);
+    // Selection.
+    e.u64(context.policy_hash.0);
+    encode_sorted_strings(&mut e, &context.scope_paths);
+    encode_graph_tail(
+        &mut e,
+        &context.mapping,
+        context.guidance,
+        &context.imports,
+        &context.consumer_edges,
+        &context.providers,
+    );
+    e.finish()
+}
+
+/// The Memoria 0.6 review context (`memoria-review-context-v1`).
+///
+/// 0.7 never binds a new token with it. It exists only as evidence: a 0.6
+/// record's token digest can be recomputed under a hypothesis about that
+/// review's README boundaries, and an exact digest match proves the
+/// hypothesis.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyReviewContextV1 {
+    pub selection_version: u64,
+    pub owner: String,
+    pub ancestor_boundaries: Vec<String>,
+    pub descendant_boundaries: Vec<String>,
+    pub nested_repositories: Vec<String>,
+    pub policy_hash: Hash64,
+    pub owned_paths: Vec<String>,
+    pub mapping: SectionMapIdentity,
+    pub guidance: GuidanceDigest,
+    pub imports: Vec<ImportEdge>,
+    pub consumer_edges: Vec<ConsumerEdge>,
+    pub providers: Vec<ProviderDescriptor>,
+}
+
+/// The Memoria 0.6 domain of [`LegacyReviewContextV1`].
+pub const LEGACY_REVIEW_CONTEXT_V1_DOMAIN: &str = "memoria-review-context-v1";
+
+/// `memoria-review-context-v1` canonical bytes, exactly as Memoria 0.6
+/// encoded them. Evidence only; see [`LegacyReviewContextV1`].
+pub fn encode_legacy_review_context_v1(context: &LegacyReviewContextV1) -> Vec<u8> {
+    let mut e = Encoder::new();
+    e.str(LEGACY_REVIEW_CONTEXT_V1_DOMAIN)
+        .u64(context.selection_version);
     e.str(&context.owner);
     encode_sorted_strings(&mut e, &context.ancestor_boundaries);
     encode_sorted_strings(&mut e, &context.descendant_boundaries);
     encode_sorted_strings(&mut e, &context.nested_repositories);
-    // Selection.
     e.u64(context.policy_hash.0);
     encode_sorted_strings(&mut e, &context.owned_paths);
+    encode_graph_tail(
+        &mut e,
+        &context.mapping,
+        context.guidance,
+        &context.imports,
+        &context.consumer_edges,
+        &context.providers,
+    );
+    e.finish()
+}
+
+/// The mapping, guidance, and graph fields, shared by both context layouts.
+fn encode_graph_tail(
+    e: &mut Encoder,
+    mapping: &SectionMapIdentity,
+    guidance: GuidanceDigest,
+    imports: &[ImportEdge],
+    consumer_edges: &[ConsumerEdge],
+    providers: &[ProviderDescriptor],
+) {
     // Mapping. The tag separates absent, valid, and invalid mapping states.
-    e.u64(context.mapping.tag());
-    let pairs = context.mapping.pairs();
+    e.u64(mapping.tag());
+    let pairs = mapping.pairs();
     e.list_len(pairs.len());
     for (id, sources) in pairs {
         e.str(id);
@@ -323,16 +440,16 @@ pub fn encode_review_context(context: &ReviewContext) -> Vec<u8> {
         }
     }
     // Guidance.
-    e.u64(context.guidance.0.0);
+    e.u64(guidance.0.0);
     // Imports and graph.
-    encode_import_edges(&mut e, &context.imports);
-    let mut consumers: Vec<&ConsumerEdge> = context.consumer_edges.iter().collect();
+    encode_import_edges(e, imports);
+    let mut consumers: Vec<&ConsumerEdge> = consumer_edges.iter().collect();
     consumers.sort();
     e.list_len(consumers.len());
     for edge in consumers {
         e.str(&edge.export_id).str(&edge.consumer);
     }
-    let mut providers: Vec<&ProviderDescriptor> = context.providers.iter().collect();
+    let mut providers: Vec<&ProviderDescriptor> = providers.iter().collect();
     providers.sort();
     e.list_len(providers.len());
     for provider in providers {
@@ -346,9 +463,8 @@ pub fn encode_review_context(context: &ReviewContext) -> Vec<u8> {
         for (id, reason) in invalidations {
             e.u64(*id).str(reason);
         }
-        encode_import_edges(&mut e, &provider.imports);
+        encode_import_edges(e, &provider.imports);
     }
-    e.finish()
 }
 
 /// `memoria-review-token-v3` canonical bytes.
@@ -392,13 +508,22 @@ mod tests {
 
     fn context() -> ReviewContext {
         ReviewContext {
-            selection_version: 1,
+            selection_version: 2,
             owner: "container/README.md".into(),
-            ancestor_boundaries: vec!["README.md".into()],
-            descendant_boundaries: vec!["container/inner/README.md".into()],
+            document_kind: "readme".into(),
+            handoffs: vec![
+                HandoffEdge {
+                    subtree: "container/inner".into(),
+                    target: "container/inner/README.md".into(),
+                },
+                HandoffEdge {
+                    subtree: "container/api".into(),
+                    target: "container/api/guide.md".into(),
+                },
+            ],
             nested_repositories: vec![],
             policy_hash: Hash64(0x44),
-            owned_paths: vec!["container/service.go".into(), "container/handle.go".into()],
+            scope_paths: vec!["container/service.go".into(), "container/handle.go".into()],
             mapping: SectionMapIdentity::Valid(vec![(
                 "persistence".into(),
                 vec!["container/service.go".into()],
@@ -432,21 +557,29 @@ mod tests {
         let base = encode_review_context(&context());
         // Author and traversal order never change the token.
         let mut reordered = context();
-        reordered.owned_paths.reverse();
+        reordered.scope_paths.reverse();
+        reordered.handoffs.reverse();
         reordered.providers[0].active_invalidations.reverse();
         assert_eq!(base, encode_review_context(&reordered));
         // Every bound component changes it.
         let mut changed = context();
-        changed.selection_version = 2;
+        changed.selection_version = 3;
         assert_ne!(base, encode_review_context(&changed));
         let mut changed = context();
         changed.policy_hash = Hash64(0x45);
         assert_ne!(base, encode_review_context(&changed));
         let mut changed = context();
-        changed.owned_paths.push("container/extra.go".into());
+        changed.scope_paths.push("container/extra.go".into());
+        assert_ne!(base, encode_review_context(&changed));
+        // Adding, removing, or retargeting a handoff changes the context.
+        let mut changed = context();
+        changed.handoffs.pop();
         assert_ne!(base, encode_review_context(&changed));
         let mut changed = context();
-        changed.descendant_boundaries.clear();
+        changed.handoffs[0].target = "container/inner/notes.md".into();
+        assert_ne!(base, encode_review_context(&changed));
+        let mut changed = context();
+        changed.document_kind = "opted_in".into();
         assert_ne!(base, encode_review_context(&changed));
         let mut changed = context();
         changed.guidance = GuidanceDigest(Hash64(0x56));
@@ -517,6 +650,10 @@ mod tests {
                 worktree_dirty: false,
             },
             acknowledged_invalidations: vec![2, 1],
+            coverage: CoverageEvidence::Recorded(vec![
+                crate::path::DirPath::parse("a").unwrap(),
+                crate::path::DirPath::parse("a/b").unwrap(),
+            ]),
         };
         let base = encode_review_baseline(Some(&record));
         assert_ne!(base, encode_review_baseline(None));
@@ -524,6 +661,21 @@ mod tests {
         let mut reordered = record.clone();
         reordered.acknowledged_invalidations = vec![1, 2];
         assert_eq!(base, encode_review_baseline(Some(&reordered)));
+        // The evidence ends the record: tag 1, the count, then each sorted
+        // folder as a length-prefixed string.
+        assert!(hex(&base).ends_with(
+            "01\
+0000000000000002\
+000000000000000161\
+0000000000000003612f62"
+        ));
+        let mut unrecorded = record.clone();
+        unrecorded.coverage = CoverageEvidence::Unrecorded;
+        let unrecorded = encode_review_baseline(Some(&unrecorded));
+        assert!(hex(&unrecorded).ends_with("0000000000000001000000000000000200"));
+        let mut empty = record.clone();
+        empty.coverage = CoverageEvidence::Recorded(vec![]);
+        assert!(hex(&encode_review_baseline(Some(&empty))).ends_with("010000000000000000"));
         for mutate in [
             (|r: &mut ReviewRecord| r.revision = 8) as fn(&mut ReviewRecord),
             |r| r.input_fingerprint = H(40),
@@ -536,6 +688,12 @@ mod tests {
             |r| r.git.base_commit = None,
             |r| r.git.worktree_dirty = true,
             |r| r.acknowledged_invalidations = vec![1],
+            |r| r.coverage = CoverageEvidence::Unrecorded,
+            |r| r.coverage = CoverageEvidence::Recorded(vec![]),
+            |r| {
+                r.coverage =
+                    CoverageEvidence::Recorded(vec![crate::path::DirPath::parse("a").unwrap()])
+            },
         ] {
             let mut changed = record.clone();
             mutate(&mut changed);
@@ -619,9 +777,54 @@ mod tests {
         assert_eq!(
             hex(&encode_review_baseline(None)),
             "000000000000001a\
+6d656d6f7269612d7265766965772d626173656c696e652d763200"
+        );
+        // The legacy proof's absent baseline stays byte-identical to v1.
+        assert_eq!(
+            hex(&encode_legacy_absent_review_baseline_v1()),
+            "000000000000001a\
 6d656d6f7269612d7265766965772d626173656c696e652d763100"
         );
         let minimal = ReviewContext {
+            selection_version: 2,
+            owner: "README.md".into(),
+            document_kind: "readme".into(),
+            handoffs: vec![],
+            nested_repositories: vec![],
+            policy_hash: Hash64(0),
+            scope_paths: vec![],
+            mapping: SectionMapIdentity::Absent,
+            guidance: GuidanceDigest(Hash64(0)),
+            imports: vec![],
+            consumer_edges: vec![],
+            providers: vec![],
+        };
+        assert_eq!(
+            hex(&encode_review_context(&minimal)),
+            "0000000000000019\
+6d656d6f7269612d7265766965772d636f6e746578742d7632\
+0000000000000002\
+0000000000000009\
+524541444d452e6d64\
+0000000000000006\
+726561646d65\
+0000000000000000\
+0000000000000000\
+0000000000000000\
+0000000000000000\
+0000000000000000\
+0000000000000000\
+0000000000000000\
+0000000000000000\
+0000000000000000\
+0000000000000000"
+        );
+    }
+
+    #[test]
+    fn legacy_v1_context_matches_the_released_0_6_vector() {
+        // The exact minimal vector that Memoria 0.6.0 froze in its own tests.
+        let minimal = LegacyReviewContextV1 {
             selection_version: 1,
             owner: "README.md".into(),
             ancestor_boundaries: vec![],
@@ -636,7 +839,7 @@ mod tests {
             providers: vec![],
         };
         assert_eq!(
-            hex(&encode_review_context(&minimal)),
+            hex(&encode_legacy_review_context_v1(&minimal)),
             "0000000000000019\
 6d656d6f7269612d7265766965772d636f6e746578742d7631\
 0000000000000001\

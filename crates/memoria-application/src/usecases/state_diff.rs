@@ -28,7 +28,10 @@ impl StateDiffReport {
 }
 
 // Lists with identities become maps only for comparison. The inspection
-// projection and its existing JSON contract remain unchanged.
+// projection and its existing JSON contract remain unchanged. A record's
+// `coverage_evidence` (null or its sorted folder list) is compared as one
+// value, so a change between unrecorded and recorded evidence, or between
+// two folder sets, is reported at `reviews.<document>.coverage_evidence`.
 fn identities(value: &mut Detail, field: &str) {
     match value {
         Detail::Map(map) => {

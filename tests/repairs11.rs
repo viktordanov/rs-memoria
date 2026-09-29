@@ -169,11 +169,11 @@ fn deleting_the_packet_document_is_a_snapshot_conflict() {
         panic!()
     };
     assert_eq!(get_str(&diagnostics[0], &["path"]), document);
-    assert!(get_str(&diagnostics[0], &["message"]).contains("removed document README"));
+    assert!(get_str(&diagnostics[0], &["message"]).contains("removed document text"));
     assert_eq!(
         removed_document_changes(&value),
         vec![
-            ("document".into(), "removed".into(), "README".into()),
+            ("document".into(), "removed".into(), "document".into()),
             (
                 "file".into(),
                 "removed".into(),
@@ -202,7 +202,7 @@ fn deleting_the_packet_document_is_a_snapshot_conflict() {
         text.split_whitespace()
             .collect::<Vec<_>>()
             .join(" ")
-            .contains("removed document README"),
+            .contains("removed document text"),
         "{text}"
     );
     assert!(text.contains("src/disconnected/item.rs"), "{text}");
@@ -295,7 +295,7 @@ fn document_deleted_during_final_revalidation_is_a_snapshot_conflict() {
     assert_eq!(diagnostic_codes(&value), vec!["snapshot_changed"]);
     assert_eq!(
         removed_document_changes(&value)[0],
-        ("document".into(), "removed".into(), "README".into())
+        ("document".into(), "removed".into(), "document".into())
     );
     assert_eq!(project.state(), before, "nothing was written");
 }

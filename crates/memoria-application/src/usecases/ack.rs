@@ -18,7 +18,9 @@ use super::{acquire_lock, diff_changes, parse_document};
 pub struct AckArgs {
     pub document: String,
     pub packet: PacketSource,
-    pub token: String,
+    /// The token to check against the artifact. Without it, the token comes
+    /// from the decoded, integrity-checked artifact itself.
+    pub token: Option<String>,
     pub reviewer: String,
     pub result: String,
     pub note: String,
@@ -32,6 +34,8 @@ pub struct AckReport {
     pub reviewer: String,
     pub cleared: Vec<u64>,
     pub still_pending: Vec<(u64, String)>,
+    /// `argument` when `--token` was given, `artifact` otherwise.
+    pub token_source: String,
 }
 
 impl AckReport {
@@ -41,6 +45,7 @@ impl AckReport {
             .number("revision", self.revision)
             .text("result", self.result.clone())
             .text("reviewer", self.reviewer.clone())
+            .text("token_source", self.token_source.clone())
             .with(
                 "cleared_invalidations",
                 Detail::list(self.cleared.iter().map(|id| Detail::Number(*id))),
@@ -83,10 +88,10 @@ pub fn verify_packet_with_hasher(
     let manifest = &packet.manifest;
     let content = &packet.content;
     let mismatch = |what: String| AppError::usage("packet_content_mismatch", what);
-    if content.readme.path != manifest.document.as_str() {
+    if content.document.path != manifest.document.as_str() {
         return Err(mismatch(format!(
-            "readme content path {} does not match the manifest document",
-            content.readme.path
+            "document content path {} does not match the manifest document",
+            content.document.path
         )));
     }
     let check_body = |name: &str,
@@ -112,14 +117,14 @@ pub fn verify_packet_with_hasher(
         Ok(())
     };
     check_body(
-        "readme",
+        "document",
         manifest.document_bytes,
         manifest.document_hash,
-        content.readme.encoding,
-        &content.readme.body,
+        content.document.encoding,
+        &content.document.body,
     )?;
-    if std::str::from_utf8(&content.readme.body).is_err() {
-        return Err(mismatch("readme content must be valid UTF-8".into()));
+    if std::str::from_utf8(&content.document.body).is_err() {
+        return Err(mismatch("document content must be valid UTF-8".into()));
     }
     if content.files.len() != manifest.files().len() {
         return Err(mismatch(format!(
@@ -254,7 +259,7 @@ fn counts_mismatch(
         manifest.raw_input_bytes(),
     );
     let reported = (
-        requirements.selected_files,
+        requirements.scope_files,
         requirements.imports,
         requirements.raw_input_bytes,
     );
@@ -262,7 +267,7 @@ fn counts_mismatch(
         return None;
     }
     Some(format!(
-        "the artifact reports {} selected files, {} imports and {} raw input bytes, but the boundary has {}, {} and {}",
+        "the artifact reports {} scope files, {} imports and {} raw input bytes, but the document's scope has {}, {} and {}",
         reported.0, reported.1, reported.2, expected.0, expected.1, expected.2
     ))
 }
@@ -270,8 +275,9 @@ fn counts_mismatch(
 pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>, AppError> {
     // 1. Argument validation without I/O.
     let document = parse_document(&args.document)?;
-    validate_token_text(&args.token)
-        .map_err(|message| AppError::usage("token_invalid", message))?;
+    if let Some(token) = &args.token {
+        validate_token_text(token).map_err(|message| AppError::usage("token_invalid", message))?;
+    }
     let reviewer = ReviewerName::parse(&args.reviewer)
         .map_err(|err| AppError::usage("reviewer_invalid", err.to_string()))?;
     let result = ReviewResult::parse(&args.result).ok_or_else(|| {
@@ -293,12 +299,25 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
     if let Some(packet) = artifact.full() {
         verify_packet(services, packet)?;
     }
-    if artifact.token() != args.token {
-        return Err(AppError::usage(
-            "token_mismatch",
-            "--token does not equal the artifact token",
-        ));
-    }
+    // Without `--token`, the token comes from the artifact, which the codec
+    // has already decoded strictly and checked against its integrity digest.
+    // The complete token is still recomputed from the repository below.
+    let token_source = match &args.token {
+        Some(token) => {
+            if artifact.token() != token {
+                return Err(AppError::usage(
+                    "token_mismatch",
+                    "--token does not equal the artifact token",
+                ));
+            }
+            "argument"
+        }
+        None => {
+            validate_token_text(artifact.token())
+                .map_err(|message| AppError::usage("token_invalid", message))?;
+            "artifact"
+        }
+    };
     if artifact.document() != &document {
         return Err(AppError::usage(
             "packet_document_mismatch",
@@ -327,7 +346,7 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
             ),
             None => AppError::conflict(
                 "snapshot_changed",
-                format!("{document} is no longer a discovered README; obtain a fresh review"),
+                format!("{document} is no longer a tracked document; obtain a fresh review"),
             ),
         });
     };
@@ -439,6 +458,9 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
             result,
             note,
             git: reviewed_git,
+            // Provisional: the final revalidated snapshot below supplies the
+            // evidence that is saved.
+            coverage: snapshot.scopes.handed_off_subtrees(&document),
         })
         .map_err(|err| match err {
             AckError::SnapshotChanged(diff) => match artifact.full() {
@@ -534,6 +556,14 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
     // The complete v3 token is recomputed once more immediately before the
     // durable write, after the precise readiness diagnostics above.
     revalidate_token(services, &recheck, &document, &artifact)?;
+    // Coverage evidence comes from this final snapshot, whose recomputed
+    // token just passed. The token binds the handoff list, so these are
+    // exactly the handed-off folders the reviewer's scope excluded.
+    if let Some(record) = state.reviews.get_mut(&document) {
+        record.coverage = memoria_domain::CoverageEvidence::recorded(
+            recheck.scopes.handed_off_subtrees(&document),
+        );
+    }
     services
         .state
         .save(&state, expected.as_deref())
@@ -548,6 +578,7 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
             reviewer: reviewer.as_str().to_string(),
             cleared: outcome.cleared,
             still_pending: outcome.still_pending,
+            token_source: token_source.to_string(),
         },
         diagnostics,
     ))
@@ -750,7 +781,7 @@ fn snapshot_changed(
         let mut detail = change.to_detail();
         let text_diff = match change.kind {
             "document" => Some(diff_bytes(
-                &packet.content.readme.body,
+                &packet.content.document.body,
                 snapshot.document_bytes(&packet.document),
             )),
             "file" => match diff
@@ -810,7 +841,10 @@ fn snapshot_changed(
     }
     let summary: Vec<String> = diff_changes(diff)
         .iter()
-        .map(|c| format!("{} {} {}", c.change, c.kind, c.identity))
+        .map(|c| match c.kind {
+            "document" => format!("{} document text", c.change),
+            _ => format!("{} {} {}", c.change, c.kind, c.identity),
+        })
         .collect();
     AppError::new(
         ExitClass::Conflict,

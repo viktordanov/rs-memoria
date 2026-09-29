@@ -7,6 +7,139 @@ use std::fs;
 use common::*;
 use memoria_infrastructure::json::Json;
 
+/// The shipped package files, in package order.
+const PACKAGE_FILES: [&str; 4] = [
+    "SKILL.md",
+    "review-details.md",
+    "saved-exports.md",
+    "integrations.md",
+];
+
+fn shipped(name: &str) -> String {
+    fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("skills/memoria")
+            .join(name),
+    )
+    .unwrap()
+}
+
+/// Completeness and anchors of one installed package (plan §11.3).
+fn assert_skill_package(dir: &std::path::Path) {
+    // Four files plus the record, byte-identical to the repository files.
+    for name in PACKAGE_FILES {
+        let installed = fs::read_to_string(dir.join(name)).unwrap();
+        assert_eq!(installed, shipped(name), "{name} is the shipped file");
+        assert!(!installed.contains("/tmp/memoria/"), "{name}");
+        // Every relative Markdown link resolves inside the package.
+        for (index, _) in installed.match_indices("](") {
+            let rest = &installed[index + 2..];
+            let target = &rest[..rest.find(')').unwrap()];
+            if target.contains("://") || target.starts_with('#') {
+                continue;
+            }
+            assert!(
+                PACKAGE_FILES.contains(&target) && !target.contains('/'),
+                "{name} links {target}, which is not a package file"
+            );
+        }
+    }
+    let record = fs::read_to_string(dir.join(".memoria-install.json")).unwrap();
+    for name in PACKAGE_FILES {
+        assert!(
+            record.contains(&format!("\"{name}\"")),
+            "record hashes {name}"
+        );
+    }
+    let mut entries: Vec<String> = fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    entries.sort();
+    assert_eq!(entries.len(), 5, "{entries:?}");
+
+    let skill = shipped("SKILL.md");
+    assert!(skill.lines().count() <= 500);
+    let description = skill
+        .lines()
+        .find(|l| l.starts_with("description:"))
+        .expect("frontmatter description");
+    assert!(description.contains("memoria.toml"), "{description}");
+    // Stage headings appear in order.
+    let headings: Vec<&str> = skill.lines().filter(|l| l.starts_with("## ")).collect();
+    let stage = |name: &str| {
+        headings
+            .iter()
+            .position(|h| *h == format!("## {name}"))
+            .unwrap_or_else(|| panic!("stage {name} in {headings:?}"))
+    };
+    let order: Vec<usize> = ["Select", "Capture", "Inspect", "Reconcile", "Record"]
+        .iter()
+        .map(|name| stage(name))
+        .collect();
+    assert!(order.windows(2).all(|w| w[0] < w[1]), "{headings:?}");
+    let section = |name: &str| -> String {
+        let start = skill.find(&format!("## {name}\n")).unwrap();
+        let rest = &skill[start + 3..];
+        let end = rest.find("\n## ").unwrap_or(rest.len());
+        rest[..end].to_string()
+    };
+    // Select holds the empty-plan exit to check, and never an ack.
+    let select = section("Select");
+    assert!(select.contains("`data.tasks` is empty"), "{select}");
+    assert!(select.contains("memoria check"), "{select}");
+    assert!(
+        select.contains("Never acknowledge an empty plan"),
+        "{select}"
+    );
+    assert!(!select.contains("memoria ack"), "{select}");
+    // Record acknowledges from the saved packet without a mandatory token.
+    let record_stage = section("Record");
+    for needle in ["memoria ack", "--packet", "--reviewer", "--note"] {
+        assert!(record_stage.contains(needle), "Record holds {needle}");
+    }
+    assert!(!record_stage.contains("--token <"), "{record_stage}");
+    // The concepts teach the folder-scope and handoff rule and separate reviews.
+    let concepts = section("Concepts");
+    assert!(
+        concepts.contains("covers its own folder and below"),
+        "{concepts}"
+    );
+    assert!(concepts.contains("linking or importing"), "{concepts}");
+    assert!(concepts.contains("reviewed separately"), "{concepts}");
+    // Loading conditions name every reference file.
+    for name in &PACKAGE_FILES[1..] {
+        assert!(
+            skill.contains(&format!("]({name})")),
+            "SKILL.md loads {name}"
+        );
+    }
+    // One body serves both targets: no target-specific files.
+    assert!(!dir.join("agents").exists());
+}
+
+#[test]
+fn skill_files_never_opt_in_and_stay_root_sources() {
+    let project = Project::seed();
+    for name in PACKAGE_FILES {
+        project.write(&format!("skills/memoria/{name}"), shipped(name));
+    }
+    project.commit_all("ship the skill sources");
+    for name in PACKAGE_FILES {
+        let path = format!("skills/memoria/{name}");
+        let (code, explained) = project.json(&["status", "--explain", &path]);
+        assert_eq!(code, 0, "{explained:?}");
+        assert_eq!(
+            get_str(&explained, &["data", "explanation", "outcome"]),
+            "selected"
+        );
+        assert_eq!(
+            strings(get(&explained, &["data", "explanation", "covered_by"])),
+            vec!["README.md"]
+        );
+    }
+}
+
 #[test]
 fn detection_dry_run_install_reinstall_and_uninstall() {
     let project = Project::seed();
@@ -19,52 +152,20 @@ fn detection_dry_run_install_reinstall_and_uninstall() {
     assert!(get_str(&dry, &["data", "plan", "destination"]).ends_with(".agents/skills/memoria"));
     assert_eq!(
         strings(get(&dry, &["data", "plan", "writes"])),
-        vec!["SKILL.md", ".memoria-install.json"]
+        vec![
+            "SKILL.md",
+            "review-details.md",
+            "saved-exports.md",
+            "integrations.md",
+            ".memoria-install.json"
+        ]
     );
     assert!(!project.exists(".agents/skills"));
 
     let (code, install) = project.json(&["agent", "install"]);
     assert_eq!(code, 0);
     assert!(get_bool(&install, &["data", "applied"]));
-    let skill = project.read_string(".agents/skills/memoria/SKILL.md");
-    assert!(skill.contains("memoria ack"));
-    // The installed package is the shipped file, byte for byte.
-    assert_eq!(
-        skill,
-        std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("skills/memoria/SKILL.md")
-        )
-        .unwrap()
-    );
-    // An empty plan must reach the clean check, never the acknowledgement
-    // step. There is no selected README and no saved artifact on that path.
-    let steps: Vec<&str> = skill
-        .lines()
-        .filter(|line| line.starts_with(char::is_numeric) && line.contains(". "))
-        .collect();
-    let empty_plan = steps
-        .iter()
-        .find(|line| line.contains("`data.tasks` is empty"))
-        .expect("the procedure handles an empty plan");
-    let target: usize = empty_plan
-        .split("go to step ")
-        .nth(1)
-        .and_then(|rest| rest.split('.').next())
-        .and_then(|n| n.trim().parse().ok())
-        .expect("the empty-plan branch names a step");
-    let destination = steps
-        .iter()
-        .find(|line| line.starts_with(&format!("{target}. ")))
-        .expect("the named step exists");
-    assert!(
-        destination.contains("memoria check"),
-        "an empty plan must reach the clean check: {destination}"
-    );
-    assert!(
-        !destination.contains("memoria ack"),
-        "an empty plan must not acknowledge: {destination}"
-    );
-    assert!(empty_plan.contains("Never acknowledge"), "{empty_plan}");
+    assert_skill_package(&project.root.join(".agents/skills/memoria"));
     assert!(project.exists(".agents/skills/memoria/.memoria-install.json"));
     // The installed package is guidance, not a review input.
     assert_eq!(project.json(&["check"]).0, 0);
@@ -301,6 +402,8 @@ fn global_skill_lifecycle_works_outside_git() {
         assert_eq!(code, 0, "{target}: {installed:?}");
         let destination = get_str(&installed, &["data", "plan", "destination"]).to_string();
         assert!(std::path::Path::new(&destination).join("SKILL.md").exists());
+        // Both targets receive the identical four-file package.
+        assert_skill_package(std::path::Path::new(&destination));
         let (code, status) = run(
             &["agent", "status", "--target", target, "--scope", "global"],
             None,
@@ -657,7 +760,7 @@ fn a_change_between_plan_and_apply_is_a_conflict_that_preserves_bytes() {
     let parent = dir.path().join("skills");
     let store = memoria_infrastructure::FsSkillStore::new(
         dir.path().to_path_buf(),
-        "# Skill\n",
+        &[("SKILL.md", "# Skill\n")],
         env!("CARGO_PKG_VERSION"),
     );
     let request = |operation: SkillOperation| SkillRequest {

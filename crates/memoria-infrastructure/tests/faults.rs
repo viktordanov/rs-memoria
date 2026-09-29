@@ -49,7 +49,7 @@ fn git(root: &Path, args: &[&str]) {
 fn seed() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
-    fs::write(root.join("memoria.toml"), "version = 2\n").unwrap();
+    fs::write(root.join("memoria.toml"), "version = 3\n").unwrap();
     fs::write(
         root.join("README.md"),
         "# Root\n\n<!-- memoria:import src=\"a/README.md#s\" -->\n<!-- /memoria:import -->\n<!-- memoria:import src=\"b/README.md#s\" -->\n<!-- /memoria:import -->\n",
@@ -136,6 +136,7 @@ struct Harness<'a> {
     packet_input: FsPacketInput,
     skills: FsSkillStore<'static>,
     workflows: memoria_infrastructure::FsWorkflowStore<'static>,
+    artifacts: memoria_infrastructure::FsArtifactStore,
     progress: Quiet,
 }
 
@@ -175,7 +176,11 @@ fn harness<'a>(
         locks: LockFileCoordinator::new(root.to_path_buf(), root.join(".git/memoria/write.lock")),
         writer: AtomicFileWriter::with_faults(root.to_path_buf(), writer_faults),
         packet_input: FsPacketInput,
-        skills: FsSkillStore::new(root.to_path_buf(), "# skill\n", "0.1.0"),
+        skills: FsSkillStore::new(root.to_path_buf(), &[("SKILL.md", "# skill\n")], "0.1.0"),
+        artifacts: memoria_infrastructure::FsArtifactStore::new(
+            root.to_path_buf(),
+            root.to_path_buf(),
+        ),
         workflows: memoria_infrastructure::FsWorkflowStore::new(
             root.to_path_buf(),
             root.join(".git"),
@@ -205,6 +210,7 @@ impl Harness<'_> {
             locations: &self.locations,
             hooks: &self.hooks,
             workflows: &self.workflows,
+            artifacts: &self.artifacts,
             progress: &self.progress,
         }
     }

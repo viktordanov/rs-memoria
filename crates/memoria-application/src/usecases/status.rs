@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use memoria_domain::{Exclusion, ProjectPath, RuleKind};
+use memoria_domain::{DocumentId, DocumentKind, Exclusion, Handoff, ProjectPath, RuleKind};
 
 use crate::error::{AppError, Detail, DetailMap, ExitClass, Outcome};
 use crate::ports::{FileKind, Services};
@@ -21,14 +21,148 @@ pub struct InvalidationSummary {
     pub pending_missing: Vec<String>,
 }
 
+/// One handoff as `status --explain` reports it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HandoffNote {
+    /// The parent document that hands the subtree off.
+    pub by: String,
+    /// The tracked document that covers the subtree instead.
+    pub to: String,
+    pub subtree: String,
+    /// `link`, `import`, or `both`.
+    pub via: String,
+    pub line: u64,
+}
+
+impl HandoffNote {
+    pub fn from_handoff(handoff: &Handoff) -> HandoffNote {
+        HandoffNote {
+            by: handoff.parent.as_str().to_string(),
+            to: handoff.target.as_str().to_string(),
+            subtree: handoff.subtree.as_str().to_string(),
+            via: handoff.via.as_str().to_string(),
+            line: handoff.line as u64,
+        }
+    }
+
+    pub fn to_detail(&self) -> Detail {
+        DetailMap::default()
+            .text("by", self.by.clone())
+            .text("to", self.to.clone())
+            .text("subtree", self.subtree.clone())
+            .text("via", self.via.clone())
+            .number("line", self.line)
+            .build()
+    }
+}
+
+/// Scope facts about a tracked document.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentFacts {
+    /// `readme` or `opted_in`.
+    pub kind: String,
+    pub scope_files: u64,
+    pub handoffs: Vec<HandoffNote>,
+    pub handed_off_by: Vec<HandoffNote>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Explanation {
     pub path: String,
-    /// `selected`, `excluded`, `boundary`, `git-ignored`, `not-eligible`.
+    /// `document`, `selected`, `excluded`, `deleted`, `boundary`,
+    /// `git-ignored`, or `not-eligible`.
     pub outcome: String,
-    pub owner: Option<String>,
     pub reason: String,
     pub steps: Vec<String>,
+    /// For a selected source: every document whose scope contains it.
+    pub covered_by: Vec<String>,
+    /// For a selected source: every handoff whose subtree contains it.
+    pub handed_off: Vec<HandoffNote>,
+    /// For a tracked document: its kind, scope size, and handoffs.
+    pub document: Option<DocumentFacts>,
+}
+
+impl Explanation {
+    fn plain(path: &ProjectPath, outcome: &str, reason: String) -> Explanation {
+        Explanation {
+            path: path.as_str().to_string(),
+            outcome: outcome.to_string(),
+            reason,
+            steps: vec![],
+            covered_by: vec![],
+            handed_off: vec![],
+            document: None,
+        }
+    }
+
+    pub fn to_detail(&self) -> Detail {
+        DetailMap::default()
+            .text("path", self.path.clone())
+            .text("outcome", self.outcome.clone())
+            .text("reason", self.reason.clone())
+            .with("steps", Detail::texts(self.steps.clone()))
+            .with("covered_by", Detail::texts(self.covered_by.clone()))
+            .with(
+                "handed_off",
+                Detail::list(self.handed_off.iter().map(HandoffNote::to_detail)),
+            )
+            .with(
+                "document",
+                match &self.document {
+                    None => Detail::Null,
+                    Some(facts) => DetailMap::default()
+                        .text("kind", facts.kind.clone())
+                        .number("scope_files", facts.scope_files)
+                        .with(
+                            "handoffs",
+                            Detail::list(facts.handoffs.iter().map(HandoffNote::to_detail)),
+                        )
+                        .with(
+                            "handed_off_by",
+                            Detail::list(facts.handed_off_by.iter().map(HandoffNote::to_detail)),
+                        )
+                        .build(),
+                },
+            )
+            .build()
+    }
+}
+
+/// Document and scope counters shared by `status` and `status --summary`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct DocumentCounts {
+    pub documents: u64,
+    pub readmes: u64,
+    pub opted_in: u64,
+    pub handoffs: u64,
+    pub overlapping_sources: u64,
+}
+
+impl DocumentCounts {
+    pub fn of(snapshot: &Snapshot) -> DocumentCounts {
+        let readmes = snapshot
+            .collected
+            .documents
+            .iter()
+            .filter(|d| d.kind() == DocumentKind::Readme)
+            .count() as u64;
+        let documents = snapshot.collected.documents.len() as u64;
+        DocumentCounts {
+            documents,
+            readmes,
+            opted_in: documents - readmes,
+            handoffs: snapshot.scopes.handoff_count() as u64,
+            overlapping_sources: snapshot.scopes.overlapping().len() as u64,
+        }
+    }
+
+    fn insert(self, map: DetailMap) -> DetailMap {
+        map.number("documents", self.documents)
+            .number("readmes", self.readmes)
+            .number("opted_in_documents", self.opted_in)
+            .number("handoffs", self.handoffs)
+            .number("overlapping_sources", self.overlapping_sources)
+    }
 }
 
 /// Advisory guidance counters. Guidance never makes a document stale.
@@ -55,7 +189,7 @@ impl GuidanceCounts {
 /// The bounded counters that `status --summary` publishes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StatusSummary {
-    pub readmes: u64,
+    pub counts: DocumentCounts,
     pub selected_files: u64,
     pub selected_bytes: u64,
     pub current: u64,
@@ -74,8 +208,8 @@ pub struct StatusSummary {
 
 impl StatusSummary {
     pub fn to_detail(&self) -> Detail {
-        DetailMap::default()
-            .number("readmes", self.readmes)
+        self.counts
+            .insert(DetailMap::default())
             .number("selected_files", self.selected_files)
             .number("selected_bytes", self.selected_bytes)
             .with(
@@ -109,7 +243,7 @@ impl StatusSummary {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StatusReport {
     pub root: String,
-    pub readmes: u64,
+    pub counts: DocumentCounts,
     pub selected_files: u64,
     pub selected_bytes: u64,
     pub current: u64,
@@ -128,9 +262,8 @@ pub struct StatusReport {
 
 impl StatusReport {
     pub fn to_detail(&self) -> Detail {
-        DetailMap::default()
-            .text("root", self.root.clone())
-            .number("readmes", self.readmes)
+        self.counts
+            .insert(DetailMap::default().text("root", self.root.clone()))
             .number("selected_files", self.selected_files)
             .number("selected_bytes", self.selected_bytes)
             .with(
@@ -177,13 +310,7 @@ impl StatusReport {
                 "explanation",
                 match &self.explanation {
                     None => Detail::Null,
-                    Some(e) => DetailMap::default()
-                        .text("path", e.path.clone())
-                        .text("outcome", e.outcome.clone())
-                        .with("owner", Detail::option_text(e.owner.clone()))
-                        .text("reason", e.reason.clone())
-                        .with("steps", Detail::texts(e.steps.clone()))
-                        .build(),
+                    Some(e) => e.to_detail(),
                 },
             )
             .build()
@@ -236,7 +363,7 @@ pub fn summary(snapshot: &Snapshot) -> StatusSummary {
         })
         .sum();
     StatusSummary {
-        readmes: snapshot.collected.documents.len() as u64,
+        counts: DocumentCounts::of(snapshot),
         selected_files: snapshot.collected.file_bytes.len() as u64,
         selected_bytes: snapshot.selected_bytes(),
         current,
@@ -244,7 +371,7 @@ pub fn summary(snapshot: &Snapshot) -> StatusSummary {
         never_reviewed: never,
         waiting,
         guidance: guidance_counts(snapshot),
-        unowned: snapshot.ownership.unowned().len() as u64,
+        unowned: snapshot.scopes.uncovered().len() as u64,
         disconnected: snapshot.disconnected.len() as u64,
         open_invalidations: snapshot.state.invalidations.len() as u64,
         missing_invalidation_targets: missing_targets,
@@ -337,8 +464,22 @@ pub fn summarize(services: &Services<'_>, snapshot: &Snapshot) -> StatusReport {
                         .build(),
                 );
                 map.insert(
-                    "owned_files".into(),
-                    Detail::Number(snapshot.ownership.owned_by(&status.document).len() as u64),
+                    "document_kind".into(),
+                    Detail::Text(status.document.kind().as_str().to_string()),
+                );
+                map.insert(
+                    "scope_files".into(),
+                    Detail::Number(snapshot.scopes.scope_of(&status.document).len() as u64),
+                );
+                map.insert(
+                    "handoffs".into(),
+                    Detail::list(
+                        snapshot
+                            .scopes
+                            .handoffs_of(&status.document)
+                            .iter()
+                            .map(|h| HandoffNote::from_handoff(h).to_detail()),
+                    ),
                 );
                 map.insert(
                     "disconnected".into(),
@@ -368,7 +509,7 @@ pub fn summarize(services: &Services<'_>, snapshot: &Snapshot) -> StatusReport {
     }
     StatusReport {
         root: services.files.root_display(),
-        readmes: snapshot.collected.documents.len() as u64,
+        counts: DocumentCounts::of(snapshot),
         selected_files: snapshot.collected.file_bytes.len() as u64,
         selected_bytes: snapshot.selected_bytes(),
         current,
@@ -378,8 +519,8 @@ pub fn summarize(services: &Services<'_>, snapshot: &Snapshot) -> StatusReport {
         guidance: guidance_counts(snapshot),
         invalidations,
         unowned: snapshot
-            .ownership
-            .unowned()
+            .scopes
+            .uncovered()
             .iter()
             .map(|p| p.as_str().to_string())
             .collect(),
@@ -407,6 +548,42 @@ fn explain(
 ) -> Result<Explanation, AppError> {
     let path =
         ProjectPath::parse(raw).map_err(|err| AppError::usage("path_invalid", err.to_string()))?;
+    if let Ok(document) = DocumentId::from_path(path.clone())
+        && snapshot.collected.documents.contains(&document)
+    {
+        let kind = document.kind();
+        let reason = match kind {
+            DocumentKind::Readme => "a README.md: always a tracked document".to_string(),
+            DocumentKind::OptedIn => format!(
+                "Markdown with a Memoria marker (first at line {}): an opted-in document",
+                snapshot
+                    .collected
+                    .opted_in
+                    .get(&document)
+                    .copied()
+                    .unwrap_or(1)
+            ),
+        };
+        return Ok(Explanation {
+            document: Some(DocumentFacts {
+                kind: kind.as_str().to_string(),
+                scope_files: snapshot.scopes.scope_of(&document).len() as u64,
+                handoffs: snapshot
+                    .scopes
+                    .handoffs_of(&document)
+                    .iter()
+                    .map(HandoffNote::from_handoff)
+                    .collect(),
+                handed_off_by: snapshot
+                    .scopes
+                    .handed_off_by(&document)
+                    .into_iter()
+                    .map(HandoffNote::from_handoff)
+                    .collect(),
+            }),
+            ..Explanation::plain(&path, "document", reason)
+        });
+    }
     if let Some(decision) = snapshot.collected.decisions.get(&path) {
         let steps: Vec<String> = decision
             .steps
@@ -424,10 +601,23 @@ fn explain(
                 format!("{scope}: {kind} {:?}", step.pattern)
             })
             .collect();
-        let owner = snapshot
-            .ownership
-            .owner_of(&path)
-            .map(|d| d.as_str().to_string());
+        let covered_by: Vec<String> = snapshot
+            .scopes
+            .covering(&path)
+            .iter()
+            .map(|d| d.as_str().to_string())
+            .collect();
+        let handed_off: Vec<HandoffNote> = if covered_by.is_empty() {
+            Vec::new()
+        } else {
+            snapshot
+                .scopes
+                .documents()
+                .flat_map(|d| snapshot.scopes.handoffs_of(d))
+                .filter(|h| path.is_within(&h.subtree))
+                .map(HandoffNote::from_handoff)
+                .collect()
+        };
         let (outcome, reason) = match &decision.exclusion {
             None => {
                 let kind = snapshot
@@ -472,42 +662,34 @@ fn explain(
         return Ok(Explanation {
             path: path.as_str().to_string(),
             outcome,
-            owner,
             reason,
             steps,
+            covered_by,
+            handed_off,
+            document: None,
         });
     }
     if snapshot.collected.boundaries.iter().any(|b| {
         &path == b
             || path.is_within(&memoria_domain::DirPath::parse(b.as_str()).unwrap_or_default())
     }) {
-        return Ok(Explanation {
-            path: path.as_str().to_string(),
-            outcome: "boundary".into(),
-            owner: None,
-            reason: "inside a nested repository or submodule; Memoria does not enter it".into(),
-            steps: vec![],
-        });
+        return Ok(Explanation::plain(
+            &path,
+            "boundary",
+            "inside a nested repository or submodule; Memoria does not enter it".into(),
+        ));
     }
     let explanation = services
         .git
         .explain_ignore(path.as_str())
         .map_err(|err| AppError::io("git_unavailable", err.to_string()))?;
     Ok(match explanation {
-        Some(rule) => Explanation {
-            path: path.as_str().to_string(),
-            outcome: "git-ignored".into(),
-            owner: None,
-            reason: format!("ignored by Git: {rule}"),
-            steps: vec![],
-        },
-        None => Explanation {
-            path: path.as_str().to_string(),
-            outcome: "not-eligible".into(),
-            owner: None,
-            reason: "not tracked, not present, or otherwise not listed by Git".into(),
-            steps: vec![],
-        },
+        Some(rule) => Explanation::plain(&path, "git-ignored", format!("ignored by Git: {rule}")),
+        None => Explanation::plain(
+            &path,
+            "not-eligible",
+            "not tracked, not present, or otherwise not listed by Git".into(),
+        ),
     })
 }
 

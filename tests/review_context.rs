@@ -106,7 +106,7 @@ fn incremental_is_opt_in_and_keeps_semantic_context_retrievable() {
     assert!(!get_bool(&view, &["model_quality_gate_passed"]));
     assert!(!get_bool(&view, &["full_review_required"]));
     assert_eq!(items(get(&view, &["files"])).len(), 1);
-    assert!(get_str(&view, &["readme", "body"]).contains("limit is ten"));
+    assert!(get_str(&view, &["document", "body"]).contains("limit is ten"));
     let coverage = items(get(&view, &["coverage"]));
     assert_eq!(coverage.len(), 3);
     let contract = coverage
@@ -369,7 +369,7 @@ fn source_only_commit_is_the_review_baseline_and_content_hashes_remain_required(
         let Json::Object(content) = data.get_mut("content").unwrap() else {
             panic!()
         };
-        let Json::Object(readme) = content.get_mut("readme").unwrap() else {
+        let Json::Object(readme) = content.get_mut("document").unwrap() else {
             panic!()
         };
         let Json::String(body) = readme.get_mut("body").unwrap() else {

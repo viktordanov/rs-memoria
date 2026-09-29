@@ -10,6 +10,10 @@ pub const MAX_RENDERED_BYTES: u64 = 64 * 1024 * 1024;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExplainReport {
     pub document: String,
+    /// `readme` or `opted_in`.
+    pub document_kind: String,
+    /// The document's scope size and handoffs.
+    pub scope: Detail,
     pub state: Detail,
     pub changes: Vec<Detail>,
     pub policy: Detail,
@@ -25,6 +29,11 @@ impl ExplainReport {
             unreachable!()
         };
         map.insert("kind".into(), Detail::text("freshness_explanation"));
+        map.insert(
+            "document_kind".into(),
+            Detail::text(self.document_kind.clone()),
+        );
+        map.insert("scope".into(), self.scope.clone());
         map.insert("changes".into(), Detail::List(self.changes.clone()));
         map.insert("policy".into(), self.policy.clone());
         map.insert("guidance".into(), self.guidance.clone());
@@ -63,12 +72,7 @@ pub fn run(
         .statuses
         .iter()
         .find(|s| s.document == document)
-        .ok_or_else(|| {
-            AppError::validation(
-                "document_not_found",
-                format!("{document} is not a discovered README"),
-            )
-        })?;
+        .ok_or_else(|| super::document_not_found(&snapshot, &document))?;
     let manifest = &snapshot.manifests[&document];
     let previous = snapshot.state.reviews.get(&document);
     let mut state = document_status_detail(status);
@@ -335,6 +339,8 @@ pub fn run(
         .build();
     let report = ExplainReport {
         document: document.to_string(),
+        document_kind: document.kind().as_str().to_string(),
+        scope: super::requirements::scope_info(&snapshot, &document).to_detail(),
         state,
         changes: changes.iter().map(|c| c.to_detail()).collect(),
         policy,

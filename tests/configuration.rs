@@ -43,7 +43,7 @@ fn init_creates_only_the_toml_contract_and_preserves_legacy_files() {
         strings(get(&init, &["data", "created"])),
         ["memoria.toml", "memoria.lock"]
     );
-    assert!(project.read_string("memoria.toml").contains("version = 2"));
+    assert!(project.read_string("memoria.toml").contains("version = 3"));
     // Apply never writes README prose.
     assert_eq!(
         project.read_string("README.md"),

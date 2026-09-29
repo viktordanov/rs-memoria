@@ -1,4 +1,4 @@
-//! `memoria review <README.md>`: the review requirements, and on request the
+//! `memoria review <DOCUMENT>`: the review requirements, and on request the
 //! complete offline export of the same snapshot.
 //!
 //! The default artifact states what must be read. `--full` adds the bytes.
@@ -73,10 +73,7 @@ pub fn resolve_limit(max_bytes: Option<u64>) -> Result<u64, AppError> {
 /// Reasons a document cannot receive a packet right now.
 pub fn readiness_error(snapshot: &Snapshot, document: &DocumentId) -> Result<(), AppError> {
     let Some(status) = snapshot.status_of(document) else {
-        return Err(AppError::validation(
-            "document_not_found",
-            format!("{document} is not a discovered README"),
-        ));
+        return Err(super::document_not_found(snapshot, document));
     };
     if status.waiting() {
         let waiting: Vec<String> = status
@@ -348,7 +345,7 @@ pub fn build_packet(
         if let Some(((prev_len, prev_hash), _)) = diff.document {
             diffs.push(diff_entry(
                 record,
-                "README",
+                "document",
                 document.as_str(),
                 Some((prev_len, prev_hash)),
                 Some(readme_bytes),
@@ -455,7 +452,7 @@ pub fn build_packet(
         token: token.clone(),
         packet_digest: String::new(),
         content: PacketContent {
-            readme: readme.clone(),
+            document: readme.clone(),
             files: files.clone(),
             imports: imports.clone(),
         },
@@ -499,7 +496,7 @@ pub fn build_packet(
         token,
         packet_digest: String::new(),
         content: PacketContent {
-            readme,
+            document: readme,
             files,
             imports,
         },

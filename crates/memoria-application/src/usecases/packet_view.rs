@@ -5,6 +5,9 @@ use crate::ports::{
     FingerprintHasher, PacketFailure, PacketInput, PacketSource, ReviewPacketCodec,
 };
 
+/// The reading projection schema version.
+pub const VIEW_VERSION: u64 = 2;
+
 pub fn run(
     input: &dyn PacketInput,
     codec: &dyn ReviewPacketCodec,
@@ -69,7 +72,7 @@ fn project(
     let content = get(&data, "content");
     let context = get(&data, "context");
     let selected = if let Some(path) = file {
-        let readme = get(&content, "readme");
+        let readme = get(&content, "document");
         let files = get(&content, "files");
         let Detail::List(files) = files else {
             unreachable!()
@@ -104,7 +107,7 @@ fn project(
                         if let Detail::Map(m) = &mut d { m.remove("old_body"); m.remove("old_encoding"); }
                         d
                     })))
-                    .number("owned_files", p.content.files.len() as u64)
+                    .number("scope_files", p.content.files.len() as u64)
                     .number("raw_input_bytes", p.raw_input_bytes)
                     .with("invalidations", get(&data, "covered_invalidations"))
                     .text("guidance_digest", p.context.guidance.digest.to_hex())
@@ -115,7 +118,7 @@ fn project(
     };
     Ok(DetailMap::default()
         .text("kind", "packet_view")
-        .number("view_version", 1)
+        .number("view_version", VIEW_VERSION)
         .bool("canonical", false)
         .text("document", p.document.as_str())
         .text("snapshot_token", &p.token)
@@ -131,7 +134,7 @@ fn incremental(p: &FocusedReviewPacket, data: &Detail, trust: bool) -> Detail {
         reasons.push("prior_review_not_trusted");
     }
     match &p.context.previous_review {
-        None => reasons.push("new_boundary"),
+        None => reasons.push("new_document"),
         Some(previous) => {
             if previous.guidance != p.context.guidance.digest {
                 reasons.push("guidance_changed");
@@ -149,7 +152,7 @@ fn incremental(p: &FocusedReviewPacket, data: &Detail, trust: bool) -> Detail {
         .iter()
         .any(|c| c.kind == "import" || (c.kind == "file" && c.change != "changed"))
     {
-        reasons.push("ownership_or_import_set_changed");
+        reasons.push("scope_or_import_set_changed");
     }
     if !p.context.changes.is_empty() && !p.context.consumers.is_empty() {
         reasons.push("dependent_effects_require_full_review");
@@ -180,15 +183,15 @@ fn incremental(p: &FocusedReviewPacket, data: &Detail, trust: bool) -> Detail {
     };
     DetailMap::default().text("policy", "P1-legacy").bool("model_quality_gate_passed", false)
         .bool("full_review_required", !eligible).with("fallback_reasons", Detail::texts(reasons))
-        .text("obligation", "Preparation is not review. Examine required content and guidance; justify reuse for every candidate, retrieve named dependent context, or use one full owner review. Save the actual examined/reused inventory and rationale separately. Acknowledge only the original full packet.")
-        .with("readme", get(&content, "readme")).with("files", Detail::List(files))
+        .text("obligation", "Preparation is not review. Examine required content and guidance; justify reuse for every candidate, retrieve named dependent context, or use one full document review. Save the actual examined/reused inventory and rationale separately. Acknowledge only the original full packet.")
+        .with("document", get(&content, "document")).with("files", Detail::List(files))
         .with("imports", get(&content, "imports")).with("guidance", get(&context, "guidance"))
         .with("changes", get(&context, "changes")).with("diffs", get(&context, "diffs"))
         .with("exports", get(&context, "exports")).with("consumers", get(&context, "consumers"))
         .with("invalidations", get(data, "covered_invalidations"))
         .with("prior_review", get(&context, "previous_review"))
         .with("coverage", Detail::list(std::iter::once(DetailMap::default()
-            .text("kind", "document").text("path", &p.content.readme.path)
+            .text("kind", "document").text("path", &p.content.document.path)
             .text("required_disposition", "examine").bool("reviewed_by_this_view", false).build())
             .chain(p.content.files.iter().map(|f| DetailMap::default()
             .text("kind", "file").text("path", &f.path).text("hash", f.hash.to_hex()).number("bytes", f.bytes)

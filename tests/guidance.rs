@@ -90,7 +90,7 @@ fn init_apply_requires_authored_root_and_preserves_existing_files() {
     assert!(!project.exists("docs"), "no hierarchy");
     // The generated configuration is generic, with empty guidance.
     let config = project.read_string("memoria.toml");
-    assert!(config.contains("version = 2"), "{config}");
+    assert!(config.contains("version = 3"), "{config}");
     assert!(config.contains("guidance = []"), "{config}");
     assert!(config.contains("guidance_files = []"), "{config}");
     assert!(
@@ -116,15 +116,15 @@ fn legacy_guidance_keys_have_actionable_errors() {
         ),
         (
             "instructions",
-            "version = 2\n[documentation]\ninstructions = [\"Old key.\"]\n",
+            "version = 3\n[documentation]\ninstructions = [\"Old key.\"]\n",
         ),
         (
             "instruction_files",
-            "version = 2\n[documentation]\ninstruction_files = [\"x.md\"]\n",
+            "version = 3\n[documentation]\ninstruction_files = [\"x.md\"]\n",
         ),
         (
             "mixed",
-            "version = 2\n[documentation]\nguidance = [\"New.\"]\ninstructions = [\"Old.\"]\n",
+            "version = 3\n[documentation]\nguidance = [\"New.\"]\ninstructions = [\"Old.\"]\n",
         ),
     ] {
         project.write("memoria.toml", config);
@@ -152,7 +152,7 @@ fn effective_guidance_preserves_scope_order_and_exact_text() {
     let project = Project::seed();
     project.write(
         "memoria.toml",
-        "version = 2\nignore = [\"**/generated/**\", \"**/fixtures/**\"]\n\n[documentation]\nguidance = [\"Root one.\", \"Root two: keep '#' literal.\"]\nguidance_files = [\".agents/writing.md\", \"docs/extra.md\"]\n",
+        "version = 3\nignore = [\"**/generated/**\", \"**/fixtures/**\"]\n\n[documentation]\nguidance = [\"Root one.\", \"Root two: keep '#' literal.\"]\nguidance_files = [\".agents/writing.md\", \"docs/extra.md\"]\n",
     );
     project.write("docs/extra.md", "Root file text with caf\u{e9}.\n");
     project.write(
@@ -436,7 +436,7 @@ fn guidance_limits_and_unsafe_paths_fail_without_omission() {
         project.write(
             "memoria.toml",
             format!(
-                "version = 2\nignore = [\"**/generated/**\", \"**/fixtures/**\"]\n[documentation]\nguidance_files = [{entry}]\n"
+                "version = 3\nignore = [\"**/generated/**\", \"**/fixtures/**\"]\n[documentation]\nguidance_files = [{entry}]\n"
             ),
         );
         let (exit, lint) = project.json(&["lint"]);
@@ -450,7 +450,7 @@ fn guidance_limits_and_unsafe_paths_fail_without_omission() {
     // A symlinked guidance file is rejected, not followed.
     project.write(
         "memoria.toml",
-        "version = 2\nignore = [\"**/generated/**\", \"**/fixtures/**\"]\n[documentation]\nguidance_files = [\"linked.md\"]\n",
+        "version = 3\nignore = [\"**/generated/**\", \"**/fixtures/**\"]\n[documentation]\nguidance_files = [\"linked.md\"]\n",
     );
     std::os::unix::fs::symlink(
         outside.path().join("rules.md"),
@@ -465,7 +465,7 @@ fn guidance_limits_and_unsafe_paths_fail_without_omission() {
     project.write("huge.md", "x".repeat(33 * 1024 * 1024));
     project.write(
         "memoria.toml",
-        "version = 2\nignore = [\"**/generated/**\", \"**/fixtures/**\", \"huge.md\"]\n[documentation]\nguidance_files = [\"huge.md\"]\n",
+        "version = 3\nignore = [\"**/generated/**\", \"**/fixtures/**\", \"huge.md\"]\n[documentation]\nguidance_files = [\"huge.md\"]\n",
     );
     project.append("src/execution/runner.rs", "// pending\n");
     // A full export transports every guidance byte, so the decoded budget
@@ -517,7 +517,7 @@ fn guidance_role_changes_preserve_real_selection_diffs() {
     // change for its owner.
     project.write(
         "memoria.toml",
-        "version = 2\nignore = [\"**/generated/**\", \"**/fixtures/**\"]\n[documentation]\nguidance = [\"Use short sentences.\"]\nguidance_files = [\".agents/writing.md\", \"src/corpus/notes.md\"]\n",
+        "version = 3\nignore = [\"**/generated/**\", \"**/fixtures/**\"]\n[documentation]\nguidance = [\"Use short sentences.\"]\nguidance_files = [\".agents/writing.md\", \"src/corpus/notes.md\"]\n",
     );
     assert_eq!(
         project.cause_codes("src/corpus/README.md"),
@@ -565,7 +565,7 @@ fn guidance_never_hides_a_missing_or_invalid_guidance_file() {
         project.write(
             "memoria.toml",
             format!(
-                "version = 2\nignore = [\"**/generated/**\", \"**/fixtures/**\"]\n[documentation]\nguidance = [\"Root rule.\"]\nguidance_files = [{entry}]\n"
+                "version = 3\nignore = [\"**/generated/**\", \"**/fixtures/**\"]\n[documentation]\nguidance = [\"Root rule.\"]\nguidance_files = [{entry}]\n"
             ),
         );
         // `status` already reports it.
@@ -603,7 +603,7 @@ fn guidance_never_hides_a_missing_or_invalid_guidance_file() {
     .unwrap();
     project.write(
         "memoria.toml",
-        "version = 2\nignore = [\"**/generated/**\", \"**/fixtures/**\"]\n[documentation]\nguidance_files = [\"linked.md\"]\n",
+        "version = 3\nignore = [\"**/generated/**\", \"**/fixtures/**\"]\n[documentation]\nguidance_files = [\"linked.md\"]\n",
     );
     let (exit, value) = project.json(&["guidance", "README.md"]);
     assert_eq!(exit, 1, "{value:?}");

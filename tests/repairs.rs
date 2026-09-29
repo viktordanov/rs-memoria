@@ -290,6 +290,9 @@ fn nested_repositories_stay_opaque_even_when_the_parent_tracks_their_files() {
     let project = Project::seed();
     project.write("child/README.md", "# Child\n");
     project.write("child/a.rs", "one\n");
+    // The root hands child/ to the child README, so child/a.rs is in the
+    // child's scope only.
+    project.append("README.md", "\nSee [the child](child/README.md).\n");
     project.commit_all("child");
     project.baseline();
     project.git_in(&project.root.join("child"), &["init", "-q"]);
@@ -309,7 +312,8 @@ fn nested_repositories_stay_opaque_even_when_the_parent_tracks_their_files() {
         get_str(&explain, &["data", "explanation", "outcome"]),
         "boundary"
     );
-    // child/a.rs belonged to the child README, so no remaining owner changed; the dormant child review stays in state.
+    // child/a.rs was in the child README's scope only, so no remaining
+    // document's inputs changed; the dormant child review stays in state.
     assert_eq!(project.cause_codes("README.md"), Vec::<String>::new());
     assert_eq!(project.json(&["check"]).0, 0);
     assert!(project.state_text().contains("child/README.md"));
@@ -366,7 +370,7 @@ fn deleted_tracked_readmes_and_sidecars_recalculate_ownership() {
     assert!(diagnostic_codes(&status).contains(&"import_missing_document".to_string()));
     let (_, explain) = project.json(&["status", "--explain", "src/retrieval/naive/search.rs"]);
     assert_eq!(
-        get_str(&explain, &["data", "explanation", "owner"]),
+        strings(get(&explain, &["data", "explanation", "covered_by"])).join(", "),
         "src/retrieval/README.md"
     );
     // Staging the deletion changes nothing.
@@ -383,7 +387,7 @@ fn deleted_tracked_readmes_and_sidecars_recalculate_ownership() {
     assert_eq!(project.cause_codes("README.md"), vec!["input_changed"]);
     let (_, explain) = project.json(&["status", "--explain", "src/corpus/types.rs"]);
     assert_eq!(
-        get_str(&explain, &["data", "explanation", "owner"]),
+        strings(get(&explain, &["data", "explanation", "covered_by"])).join(", "),
         "README.md"
     );
     // Moving a README before staging.
@@ -394,10 +398,17 @@ fn deleted_tracked_readmes_and_sidecars_recalculate_ownership() {
     .unwrap();
     let (code, _) = project.json(&["status"]);
     assert_eq!(code, 0);
+    // The moved file keeps its export marker, so it is an opted-in document
+    // under a new identity that covers its own folder. The root never handed
+    // that folder off, so it covers the file too.
     let (_, explain) = project.json(&["status", "--explain", "src/disconnected/item.rs"]);
     assert_eq!(
-        get_str(&explain, &["data", "explanation", "owner"]),
-        "README.md"
+        strings(get(&explain, &["data", "explanation", "covered_by"])).join(", "),
+        "README.md, src/disconnected/moved.md"
+    );
+    assert_eq!(
+        project.status_label("src/disconnected/moved.md"),
+        "never_reviewed"
     );
     // A deleted sidecar drops its rules; the fixture becomes excluded again.
     let project = Project::seed();
@@ -1052,8 +1063,8 @@ fn stale_policy_and_file_set_snapshots_are_rejected_with_exact_entries() {
     project.write(
         "memoria.toml",
         project.read_string("memoria.toml").replace(
-            "version = 2\n",
-            "version = 2\ninclude = [\n    \"nothing/**\",\n]\n",
+            "version = 3\n",
+            "version = 3\ninclude = [\n    \"nothing/**\",\n]\n",
         ),
     );
     let output = ack_json(&project, "src/execution/README.md", &packet, &token);

@@ -21,6 +21,45 @@ fn frozen(name: &str) -> Vec<u8> {
     std::fs::read(fixture(name)).unwrap_or_else(|e| panic!("cannot read {name}: {e}"))
 }
 
+fn fixture_v3(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/state-v3")
+        .join(name)
+}
+
+/// A committed format 3 golden vector. `MEMORIA_WRITE_VECTORS` rewrites it
+/// from the given bytes; the assertion then still compares the two.
+fn frozen_v3(name: &str, encoded: &[u8]) -> Vec<u8> {
+    let path = fixture_v3(name);
+    if std::env::var_os("MEMORIA_WRITE_VECTORS").is_some() {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, encoded).unwrap();
+    }
+    std::fs::read(&path).unwrap_or_else(|e| panic!("cannot read state-v3/{name}: {e}"))
+}
+
+/// Frame a raw payload exactly as the writer does, with any format byte.
+fn frame(format: u8, payload: &[u8]) -> Vec<u8> {
+    let mut wire = Vec::new();
+    wire.extend_from_slice(&lock_codec::MAGIC);
+    wire.push(format);
+    wire.push(lock_codec::CODEC_RAW);
+    let mut length = payload.len() as u64;
+    loop {
+        let byte = (length & 0x7f) as u8;
+        length >>= 7;
+        if length == 0 {
+            wire.push(byte);
+            break;
+        }
+        wire.push(byte | 0x80);
+    }
+    wire.extend_from_slice(payload);
+    let checksum = memoria_infrastructure::hash::xxh3_128(&wire);
+    wire.extend_from_slice(&checksum);
+    wire
+}
+
 #[test]
 fn state_v2_golden_round_trip_is_deterministic() {
     for name in [
@@ -32,11 +71,26 @@ fn state_v2_golden_round_trip_is_deterministic() {
         "merge-left.lock",
         "merge-right.lock",
         "merge-same.lock",
+        "documents.lock",
     ] {
+        // The committed format 2 vectors are read-compatibility input.
         let bytes = frozen(name);
         let decoded = lock_codec::decode(&bytes).unwrap_or_else(|e| panic!("{name}: {e}"));
         assert_eq!(decoded.file_bytes, bytes.len() as u64, "{name}");
-        assert_eq!(decoded.format_version, lock_codec::FORMAT_VERSION, "{name}");
+        assert_eq!(
+            decoded.format_version,
+            lock_codec::LEGACY_FORMAT_VERSION,
+            "{name}"
+        );
+        // Format 2 stores no coverage evidence: every record is unrecorded.
+        assert!(
+            decoded
+                .state
+                .reviews
+                .values()
+                .all(|r| r.coverage == memoria_domain::CoverageEvidence::Unrecorded),
+            "{name}"
+        );
         assert_eq!(decoded.checksum.len(), 32, "{name}");
         assert!(
             decoded
@@ -45,33 +99,47 @@ fn state_v2_golden_round_trip_is_deterministic() {
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
             "{name}: the checksum must be lowercase hexadecimal"
         );
-        // Re-encoding the decoded state reproduces the exact frozen bytes.
+        // Encoding the decoded state gives the committed format 3 vector
+        // byte-exactly. The writer never writes format 2.
         let reencoded =
             lock_codec::encode(&decoded.state).unwrap_or_else(|e| panic!("{name} re-encode: {e}"));
-        assert_eq!(reencoded, bytes, "{name} is not byte-stable");
-        // Decoding the re-encoded bytes yields semantically equal state.
+        assert_eq!(
+            reencoded,
+            frozen_v3(name, &reencoded),
+            "{name} is not byte-stable"
+        );
+        assert_eq!(reencoded[4], 3, "{name}: the writer always writes format 3");
+        // Decoding that vector yields the same state, and it round-trips.
         let again = lock_codec::decode(&reencoded).unwrap();
+        assert_eq!(again.format_version, lock_codec::FORMAT_VERSION, "{name}");
         assert_eq!(again.state, decoded.state, "{name}");
         assert_eq!(again.guidance, decoded.guidance, "{name}");
+        assert_eq!(
+            lock_codec::encode(&again.state).unwrap(),
+            reencoded,
+            "{name}"
+        );
     }
 }
 
 #[test]
-fn state_v2_size_vectors_match_the_measured_contract() {
-    // Section 3.1 of the approved plan. Reviews / files / imports /
-    // invalidations, then the final lock bytes and codec.
+fn state_v3_size_vectors_match_the_measured_contract() {
+    // Section 3.1 of the approved plan, re-measured for format 3 (plan
+    // §17.5). Reviews / files / imports / invalidations, then the final lock
+    // bytes and codec. The measured states predate evidence, so each review
+    // row carries one coverage byte (`0`).
     let expected: [(&str, usize, usize, usize, usize, usize, u8); 8] = [
         ("empty", 0, 0, 0, 0, 23, lock_codec::CODEC_RAW),
-        ("tiny", 1, 2, 0, 0, 275, lock_codec::CODEC_RAW),
-        ("current", 6, 83, 6, 0, 2194, lock_codec::CODEC_ZSTD),
-        ("mixed", 12, 166, 12, 2, 3376, lock_codec::CODEC_ZSTD),
+        ("tiny", 1, 2, 0, 0, 276, lock_codec::CODEC_RAW),
+        ("current", 6, 83, 6, 0, 2198, lock_codec::CODEC_ZSTD),
+        ("mixed", 12, 166, 12, 2, 3379, lock_codec::CODEC_ZSTD),
         (
             "scaled-shared-600",
             600,
             8300,
             600,
             0,
-            18460,
+            18463,
             lock_codec::CODEC_ZSTD,
         ),
         (
@@ -80,7 +148,7 @@ fn state_v2_size_vectors_match_the_measured_contract() {
             830,
             60,
             0,
-            11342,
+            11349,
             lock_codec::CODEC_ZSTD,
         ),
         (
@@ -89,7 +157,7 @@ fn state_v2_size_vectors_match_the_measured_contract() {
             8300,
             600,
             0,
-            100933,
+            100959,
             lock_codec::CODEC_ZSTD,
         ),
         (
@@ -98,7 +166,7 @@ fn state_v2_size_vectors_match_the_measured_contract() {
             83000,
             6000,
             0,
-            992135,
+            993262,
             lock_codec::CODEC_ZSTD,
         ),
     ];
@@ -146,7 +214,8 @@ fn state_v2_size_vectors_match_the_measured_contract() {
 #[test]
 fn measured_vectors_reproduce_the_frozen_committed_files() {
     // The four small vectors are also committed as fixtures, so the frozen
-    // bytes and the builders cannot drift apart.
+    // bytes and the builders cannot drift apart. The builders give the same
+    // logical states as the format 2 files, and encode to the format 3 ones.
     for (name, file) in [
         ("empty", "empty.lock"),
         ("tiny", "tiny.lock"),
@@ -158,8 +227,67 @@ fn measured_vectors_reproduce_the_frozen_committed_files() {
             .find(|v| v.name == name)
             .expect("a measured vector");
         let encoded = lock_codec::encode(&vector.state).unwrap();
-        assert_eq!(encoded, frozen(file), "{name} differs from {file}");
+        assert_eq!(
+            encoded,
+            frozen_v3(file, &encoded),
+            "{name} differs from {file}"
+        );
+        // Fingerprints are derived on decode, so the encoding is the identity.
+        assert_eq!(
+            lock_codec::encode(&lock_codec::decode(&frozen(file)).unwrap().state).unwrap(),
+            encoded,
+            "{name}: the format 2 file holds the same state"
+        );
     }
+}
+
+#[test]
+fn the_documents_vector_keeps_the_row_rule_with_wider_identities() {
+    let state = state_vectors::documents();
+    let encoded = lock_codec::encode(&state).unwrap();
+    assert_eq!(
+        encoded,
+        frozen_v3("documents.lock", &encoded),
+        "documents.lock is frozen"
+    );
+    // The committed format 2 file holds the same logical state.
+    assert_eq!(
+        lock_codec::encode(&lock_codec::decode(&frozen("documents.lock")).unwrap().state).unwrap(),
+        encoded
+    );
+    let decoded = lock_codec::decode(&encoded).unwrap();
+    assert_eq!(decoded.format_version, 3);
+    // Fingerprints are derived on decode, so byte stability is the identity.
+    assert_eq!(lock_codec::encode(&decoded.state).unwrap(), encoded);
+    assert!(
+        decoded
+            .state
+            .reviews
+            .keys()
+            .any(|id| id.as_str() == "docs/guide.md")
+    );
+    // A record's files still lie inside its document's folder: an opted-in
+    // record that names a file outside it cannot be stored.
+    let mut outside = state.clone();
+    let guide = memoria_domain::DocumentId::parse("docs/guide.md").unwrap();
+    let record = outside.reviews.get(&guide).unwrap().clone();
+    let manifest = memoria_domain::InputManifest::new(
+        guide.clone(),
+        record.manifest.policy_hash,
+        record.manifest.document_bytes,
+        record.manifest.document_hash,
+        vec![memoria_domain::FileInput {
+            path: memoria_domain::ProjectPath::parse("Cargo.toml").unwrap(),
+            bytes: 1,
+            hash: memoria_domain::Hash64(1),
+        }],
+        Vec::new(),
+    )
+    .unwrap();
+    outside
+        .reviews
+        .insert(guide, memoria_domain::ReviewRecord { manifest, ..record });
+    assert!(lock_codec::encode(&outside).is_err());
 }
 
 #[test]
@@ -186,13 +314,21 @@ fn state_v2_rejects_corruption_before_mutation() {
     let mut doubled = good.clone();
     doubled.extend_from_slice(&good);
     assert!(lock_codec::decode(&doubled).is_err());
-    // An unsupported version and codec have their own diagnostics.
-    let mut version = good.clone();
-    version[4] = 3;
-    assert!(matches!(
-        lock_codec::decode(&version),
-        Err(lock_codec::LockError::UnsupportedSchema(_))
-    ));
+    // An unsupported version and codec have their own diagnostics. Formats
+    // 2 and 3 are read; every other format byte is unsupported.
+    for format in [0u8, 1, 4, 255] {
+        let mut version = good.clone();
+        version[4] = format;
+        match lock_codec::decode(&version) {
+            Err(lock_codec::LockError::UnsupportedSchema(message)) => assert_eq!(
+                message,
+                format!(
+                    "unsupported memoria.lock format version {format}; this release supports versions 2 and 3"
+                )
+            ),
+            other => panic!("format {format}: {other:?}"),
+        }
+    }
     let mut codec = good.clone();
     codec[5] = 2;
     assert!(matches!(
@@ -367,7 +503,9 @@ fn state_v2_profile_uses_the_pinned_bundled_library() {
     let bytes = frozen("current.lock");
     assert_eq!(bytes[5], lock_codec::CODEC_ZSTD);
     let decoded = lock_codec::decode(&bytes).unwrap();
-    assert_eq!(lock_codec::encode(&decoded.state).unwrap(), bytes);
+    let encoded = lock_codec::encode(&decoded.state).unwrap();
+    assert_eq!(encoded[5], lock_codec::CODEC_ZSTD);
+    assert_eq!(encoded, frozen_v3("current.lock", &encoded));
     // The frame carries no Zstandard content checksum and no dictionary id.
     // Its own trailer is the only checksum, and it covers every prior byte.
     let split = bytes.len() - 16;
@@ -464,6 +602,7 @@ fn state_v2_shared_tables_cannot_amplify_past_limits() {
             ),
             git: memoria_domain::GitContext::default(),
             acknowledged_invalidations: vec![],
+            coverage: memoria_domain::CoverageEvidence::Unrecorded,
         },
     );
     // Front coding keeps the encoded form small, so the serialized size
@@ -584,6 +723,7 @@ fn review_state_with(
             ),
             git: memoria_domain::GitContext::default(),
             acknowledged_invalidations: vec![],
+            coverage: memoria_domain::CoverageEvidence::Unrecorded,
         },
     );
     state
@@ -679,6 +819,7 @@ fn every_successful_encode_decodes() {
             ),
             git: memoria_domain::GitContext::default(),
             acknowledged_invalidations: vec![],
+            coverage: memoria_domain::CoverageEvidence::Unrecorded,
         },
     );
     let bytes = lock_codec::encode(&state).expect("a state inside the budget encodes");
@@ -768,7 +909,7 @@ fn state_inspect_is_read_only_inside_and_outside_git() {
     let (code, value) = project.json(&["state", "inspect"]);
     assert_eq!(code, 0, "{value:?}");
     assert_eq!(get_str(&value, &["data", "path"]), "memoria.lock");
-    assert_eq!(get_u64(&value, &["data", "format_version"]), 2);
+    assert_eq!(get_u64(&value, &["data", "format_version"]), 3);
     let checksum = get_str(&value, &["data", "checksum"]).to_string();
     assert_eq!(checksum.len(), 32);
     assert!(
@@ -1346,4 +1487,228 @@ fn the_private_write_lock_refuses_substituted_paths() {
         String::from_utf8_lossy(&output.stdout)
     );
     project.git(&["worktree", "remove", "--force", linked.to_str().unwrap()]);
+}
+
+/// One review of `document` with a distinctive token and the given evidence.
+fn evidence_state(
+    document: &str,
+    coverage: memoria_domain::CoverageEvidence,
+) -> memoria_domain::ReviewState {
+    let document = memoria_domain::DocumentId::parse(document).unwrap();
+    let mut state = review_state_with(document.clone(), vec![], vec![]);
+    let record = state.reviews.get_mut(&document).unwrap();
+    record.token_digest = memoria_domain::Hash64(0x5eed_5eed_5eed_5eed);
+    record.coverage = coverage;
+    state
+}
+
+/// The payload offset of the coverage field: right after the token digest
+/// and the one-byte acknowledged-invalidations vector index.
+fn coverage_offset(payload: &[u8]) -> usize {
+    let token = 0x5eed_5eed_5eed_5eedu64.to_be_bytes();
+    let starts: Vec<usize> = payload
+        .windows(8)
+        .enumerate()
+        .filter(|(_, window)| *window == token)
+        .map(|(index, _)| index)
+        .collect();
+    assert_eq!(starts.len(), 1, "the token digest occurs once");
+    starts[0] + 8 + 1
+}
+
+fn folders(raw: &[&str]) -> memoria_domain::CoverageEvidence {
+    memoria_domain::CoverageEvidence::Recorded(
+        raw.iter()
+            .map(|f| memoria_domain::DirPath::parse(f).unwrap())
+            .collect(),
+    )
+}
+
+#[test]
+fn state_v3_evidence_vector_is_frozen_and_round_trips() {
+    // Recorded nested folders, Recorded(∅), in one committed vector.
+    let state = state_vectors::evidence();
+    let encoded = lock_codec::encode(&state).unwrap();
+    assert_eq!(
+        encoded,
+        frozen_v3("evidence.lock", &encoded),
+        "evidence.lock is frozen"
+    );
+    assert_eq!(encoded[4], 3);
+    let decoded = lock_codec::decode(&encoded).unwrap();
+    assert_eq!(lock_codec::encode(&decoded.state).unwrap(), encoded);
+    let root = memoria_domain::DirPath::root().readme();
+    let guide = memoria_domain::DocumentId::parse("docs/guide.md").unwrap();
+    assert_eq!(
+        decoded.state.reviews[&root].coverage,
+        folders(&["crates", "crates/memoria-domain", "docs"])
+    );
+    assert_eq!(decoded.state.reviews[&guide].coverage, folders(&[]));
+    // Unrecorded, Recorded(∅) and Recorded(X) are three distinct encodings,
+    // and each one is its own single canonical byte sequence.
+    let mut seen = std::collections::BTreeSet::new();
+    for coverage in [
+        memoria_domain::CoverageEvidence::Unrecorded,
+        folders(&[]),
+        folders(&["a"]),
+        folders(&["a", "a/b"]),
+    ] {
+        let state = evidence_state("README.md", coverage.clone());
+        let bytes = lock_codec::encode(&state).unwrap();
+        let decoded = lock_codec::decode(&bytes).unwrap().state;
+        assert_eq!(decoded.reviews.values().next().unwrap().coverage, coverage);
+        assert_eq!(lock_codec::encode(&decoded).unwrap(), bytes);
+        assert_eq!(lock_codec::encode(&state).unwrap(), bytes);
+        assert!(seen.insert(bytes), "{coverage:?} shares bytes");
+        let payload = lock_codec::encode_payload(&state).unwrap();
+        let tag = payload[coverage_offset(&payload)];
+        match coverage {
+            memoria_domain::CoverageEvidence::Unrecorded => assert_eq!(tag, 0),
+            _ => assert!(tag >= 1),
+        }
+    }
+}
+
+#[test]
+fn state_v3_rejects_malformed_coverage_evidence() {
+    let corrupt = |bytes: &[u8], label: &str| match lock_codec::decode(bytes) {
+        Err(lock_codec::LockError::Corrupt(message)) => message,
+        other => panic!("{label}: {other:?}"),
+    };
+    let state = evidence_state("svc/README.md", folders(&["svc/a", "svc/a/b"]));
+    let payload = lock_codec::encode_payload(&state).unwrap();
+    assert!(lock_codec::decode(&frame(3, &payload)).is_ok());
+    let at = coverage_offset(&payload);
+
+    // A coverage index beyond the vectors table.
+    let mut beyond = payload.clone();
+    beyond[at] = 0x7f;
+    let message = corrupt(&frame(3, &beyond), "index out of range");
+    assert!(message.contains("coverage evidence vector"), "{message}");
+
+    // Unrecorded while the evidence vector and its folder rows stay: both
+    // are unused table rows.
+    let mut unused = payload.clone();
+    unused[at] = 0;
+    let message = corrupt(&frame(3, &unused), "unused rows");
+    assert!(message.contains("never referenced"), "{message}");
+
+    // The same format 3 payload read as format 2 has one byte too many in
+    // every review row, so it is rejected, never silently misread.
+    assert!(lock_codec::decode(&frame(2, &payload)).is_err());
+
+    // The evidence vector [i, j] follows the empty acknowledged vector in
+    // section 6 as `02 00 02 i (j - i)`.
+    let marker = payload
+        .windows(3)
+        .enumerate()
+        .filter(|(_, w)| *w == [2, 0, 2])
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    assert_eq!(marker.len(), 1, "one vectors section header");
+    let first = marker[0] + 3;
+    // Ids not strictly increasing: a zero delta repeats a path id.
+    let mut repeated = payload.clone();
+    repeated[first + 1] = 0;
+    let message = corrupt(&frame(3, &repeated), "repeated id");
+    assert!(message.contains("repeats a value"), "{message}");
+    // A path id beyond the path table.
+    let mut far = payload.clone();
+    far[first + 1] = 0x7f;
+    let message = corrupt(&frame(3, &far), "path id out of range");
+    assert!(message.contains("path index"), "{message}");
+
+    // A folder outside the document folder, or the document folder itself,
+    // written by a fixture that skips the writer's checks.
+    for (outside, label) in [
+        (folders(&["other"]), "outside"),
+        (folders(&["svc"]), "the document folder itself"),
+    ] {
+        let state = evidence_state("svc/README.md", outside);
+        let bytes = lock_codec::encode_unverified(&state).unwrap();
+        let message = corrupt(&bytes, label);
+        assert!(
+            message.contains("not a folder strictly inside svc/"),
+            "{label}: {message}"
+        );
+        assert!(
+            lock_codec::encode(&state).is_err(),
+            "{label}: the writer refuses it"
+        );
+    }
+}
+
+#[test]
+fn state_inspect_reports_evidence_and_the_old_format() {
+    // Human output names the recorded folders, or says it is not recorded;
+    // JSON carries `coverage_evidence` as null or the folder list.
+    let project = Project::seed();
+    project.write("old.lock", frozen("documents.lock"));
+    let (code, v2) = project.json(&["state", "inspect", "--file", "old.lock"]);
+    assert_eq!(code, 0, "{v2:?}");
+    assert_eq!(get_u64(&v2, &["data", "format_version"]), 2);
+    assert!(matches!(
+        get(
+            &v2,
+            &["data", "state", "reviews", "README.md", "coverage_evidence"]
+        ),
+        memoria_infrastructure::json::Json::Null
+    ));
+    let human = stdout(&project.run(&["state", "inspect", "--file", "old.lock"]));
+    assert!(human.contains("coverage evidence: not recorded"), "{human}");
+
+    project.write(
+        "new.lock",
+        lock_codec::encode(&state_vectors::evidence()).unwrap(),
+    );
+    let human = stdout(&project.run(&["state", "inspect", "--file", "new.lock"]));
+    assert!(
+        human.contains("coverage evidence: crates/, crates/memoria-domain/, docs/"),
+        "{human}"
+    );
+    assert!(
+        human.contains("coverage evidence: none handed off"),
+        "{human}"
+    );
+    let (code, v3) = project.json(&["state", "inspect", "--file", "new.lock"]);
+    assert_eq!(code, 0, "{v3:?}");
+    assert_eq!(get_u64(&v3, &["data", "format_version"]), 3);
+    assert_eq!(
+        strings(get(
+            &v3,
+            &["data", "state", "reviews", "README.md", "coverage_evidence"]
+        )),
+        ["crates", "crates/memoria-domain", "docs"]
+    );
+    assert!(
+        strings(get(
+            &v3,
+            &[
+                "data",
+                "state",
+                "reviews",
+                "docs/guide.md",
+                "coverage_evidence"
+            ]
+        ))
+        .is_empty()
+    );
+    // `state diff` reports the evidence difference between the two files.
+    let (code, diff) = project.json(&["state", "diff", "old.lock", "new.lock"]);
+    assert_eq!(code, 0, "{diff:?}");
+    let memoria_infrastructure::json::Json::Array(changes) = get(&diff, &["data", "changes"])
+    else {
+        panic!()
+    };
+    let paths: Vec<Vec<String>> = changes.iter().map(|c| strings(get(c, &["path"]))).collect();
+    for document in ["README.md", "docs/guide.md"] {
+        assert!(
+            paths.contains(&vec![
+                "reviews".to_string(),
+                document.to_string(),
+                "coverage_evidence".to_string()
+            ]),
+            "{paths:?}"
+        );
+    }
 }

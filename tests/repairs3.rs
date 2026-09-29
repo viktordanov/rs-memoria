@@ -138,7 +138,9 @@ fn unrelated_memoria_prefixed_siblings_stay_owned_sources() {
         let (_, explain) = project.json(&["status", "--explain", path]);
         (
             get_str(&explain, &["data", "explanation", "outcome"]).to_string(),
-            get_str(&explain, &["data", "explanation", "owner"]).to_string(),
+            strings(get(&explain, &["data", "explanation", "covered_by"]))
+                .join(", ")
+                .to_string(),
         )
     };
     for path in [

@@ -1,0 +1,29 @@
+# Memoria root configuration. See docs/cli.md in the Memoria project.
+version = 2
+
+# Memoria-specific exclusions. Patterns are relative to the project root.
+# Tracked generated output, snapshots, and fixtures stay selected until you
+# exclude them here. Local README.memoria.toml files can restore them.
+ignore = []
+
+# Root includes restore files that a root ignore pattern excluded.
+include = []
+
+[documentation]
+# Project documentation guidance. Every review names these sources, and
+# `memoria guidance <README.md>` prints the text. Guidance states your
+# documentation goals, your readers, and your writing standards. It is
+# advisory context for the reviewer. It never selects files and never
+# decides freshness.
+guidance = []
+# Guidance files, relative to this file. Missing files are errors.
+guidance_files = []
+
+[fingerprints]
+# Only raw byte hashing is supported in this release.
+default = "raw"
+languages = {}
+
+[lint]
+# Report local README links that have no matching import as hints.
+missing_import_hint = true

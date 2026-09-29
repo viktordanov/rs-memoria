@@ -171,10 +171,19 @@ pub struct MarkdownIssue {
     pub location: Option<SourceLocation>,
 }
 
+/// One normal Markdown link outside code, before resolution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedLink {
+    /// The destination exactly as authored.
+    pub destination: String,
+    /// Where the link starts.
+    pub location: SourceLocation,
+}
+
 /// One advisory section mapping exactly as authored.
 ///
 /// The parser validates only the grammar. Resolving `files` against the
-/// README's directory, and checking selection and ownership, belong to the
+/// document's directory, and checking selection and scope, belong to the
 /// application, which knows the project.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedSection {
@@ -194,7 +203,7 @@ pub struct ParsedSection {
     pub location: SourceLocation,
 }
 
-/// Declarations and links found in a README.
+/// Declarations and links found in a Markdown document.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ParsedDocument {
     pub exports: Vec<Export>,
@@ -202,8 +211,8 @@ pub struct ParsedDocument {
     /// Advisory section mappings, in authored order. Empty when the README
     /// authored none or when `section_issues` is not empty.
     pub sections: Vec<ParsedSection>,
-    /// Raw link destinations outside export bodies and code.
-    pub links: Vec<String>,
+    /// Normal link destinations outside code, in authored order.
+    pub links: Vec<ParsedLink>,
     /// Validation issues. Errors make the document invalid.
     pub issues: Vec<MarkdownIssue>,
     /// Section problems. These are advisory: they never make a document
@@ -211,9 +220,65 @@ pub struct ParsedDocument {
     pub section_issues: Vec<MarkdownIssue>,
 }
 
+/// Structural marker codes that still opt a Markdown file in: a malformed
+/// marker never drops the obligation to review the file.
+pub const OPT_IN_ISSUE_CODES: [&str; 6] = [
+    "marker_malformed",
+    "marker_nested",
+    "marker_mismatch",
+    "marker_unclosed",
+    "export_invalid",
+    "export_duplicate",
+];
+
+impl ParsedDocument {
+    /// Whether the parse found a recognized Memoria marker outside code: an
+    /// export, an import, a section, a structural marker error, or a section
+    /// problem. Links never count.
+    pub fn has_markers(&self) -> bool {
+        !self.exports.is_empty()
+            || !self.imports.is_empty()
+            || !self.sections.is_empty()
+            || !self.section_issues.is_empty()
+            || self
+                .issues
+                .iter()
+                .any(|issue| OPT_IN_ISSUE_CODES.contains(&issue.code))
+    }
+
+    /// The first line that carries a recognized marker, if any.
+    pub fn first_marker_line(&self) -> Option<usize> {
+        let exports = self.exports.iter().map(|e| e.location.line);
+        let imports = self.imports.iter().map(|i| i.location.line);
+        let sections = self.sections.iter().map(|s| s.location.line);
+        let issues = self
+            .issues
+            .iter()
+            .filter(|issue| OPT_IN_ISSUE_CODES.contains(&issue.code))
+            .chain(self.section_issues.iter())
+            .filter_map(|issue| issue.location.map(|l| l.line));
+        exports.chain(imports).chain(sections).chain(issues).min()
+    }
+}
+
 /// Markdown parsing with exact byte offsets.
 pub trait MarkdownCodec {
     fn parse(&self, document: &DocumentId, bytes: &[u8]) -> ParsedDocument;
+
+    /// Whether a Markdown candidate opts in: valid UTF-8 with at least one
+    /// recognized marker outside code. Returns the first marker line.
+    fn recognizes_markers(&self, document: &DocumentId, bytes: &[u8]) -> Option<usize> {
+        let text = std::str::from_utf8(bytes).ok()?;
+        if !text.contains("memoria:") {
+            return None;
+        }
+        let parsed = self.parse(document, bytes);
+        if parsed.has_markers() {
+            Some(parsed.first_marker_line().unwrap_or(1))
+        } else {
+            None
+        }
+    }
 }
 
 /// Streaming hash accumulator.
@@ -793,6 +858,39 @@ pub trait Progress {
 }
 
 /// Every port a use case can need.
+/// Why a saved review artifact could not be written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SaveFailure {
+    /// A file with the name already exists; nothing was written.
+    Exists,
+    /// The write failed after or before creation. `leftover` names a created
+    /// file that could not be removed again.
+    Io {
+        error: AdapterError,
+        leftover: Option<String>,
+    },
+}
+
+/// Saved review artifacts outside the project.
+///
+/// The store never writes into the project: the use case refuses any
+/// destination inside the Git worktree before it calls `create_new`. The
+/// containment check guards against accidental self-invalidation; it is not
+/// a security boundary against a local user who can already write the
+/// project.
+pub trait ArtifactStore {
+    /// The canonical absolute path of an existing directory, resolved
+    /// against the invocation directory. `None` when the path does not
+    /// exist or is not a directory.
+    fn canonical_directory(&self, path: &str) -> Result<Option<String>, AdapterError>;
+    /// The canonical absolute Git worktree root.
+    fn worktree_root(&self) -> Result<String, AdapterError>;
+    /// Create `directory/name` exclusively with mode 0600, without following
+    /// a symlink at the final name, write `bytes`, sync, and close. Returns
+    /// the absolute path. On a failure after creation the file is removed.
+    fn create_new(&self, directory: &str, name: &str, bytes: &[u8]) -> Result<String, SaveFailure>;
+}
+
 pub struct Services<'a> {
     pub files: &'a dyn ProjectFiles,
     pub git: &'a dyn GitRepository,
@@ -811,5 +909,6 @@ pub struct Services<'a> {
     pub locations: &'a dyn AgentLocations,
     pub hooks: &'a dyn HookStore,
     pub workflows: &'a dyn WorkflowStore,
+    pub artifacts: &'a dyn ArtifactStore,
     pub progress: &'a dyn Progress,
 }

@@ -4,8 +4,8 @@ These tests compare Memoria command behavior with its public contract.
 
 A test harness is shared code that prepares a test and captures its results.
 The `Project` harness prepares a Git worktree, invokes Memoria commands, and captures output and file changes.
-This README owns the test harness and integration suites in this directory.
-The crate directories own their unit, property, and adapter tests.
+This README covers the test harness and integration suites in this directory.
+The crate READMEs cover their unit, property, and adapter tests.
 
 Read [workflow.rs](workflow.rs#L9) to start with the scenario that makes all reviews current.
 
@@ -29,18 +29,19 @@ The sample repositories stay outside this project documentation scope.
 ## A fixture becomes a repository
 
 A fixture is sample input for a test.
-`Project::seed` copies the three-level fixture into a temporary directory.
+`Project::seed` copies the three-level fixture into a temporary directory, and `Project::seed_from` copies any named fixture.
+`Project::worked_example` builds the worked example of the specification: a root that links `auth/`, imports an opted-in guide, and never mentions `legacy/`.
 It restores the fixture document names to `README.md` and `README.memoria.toml`.
 It creates a local Git repository for the test.
 
-A review artifact identifies the snapshot of one README's review. The default
+A review artifact identifies the snapshot of one document's review. The default
 manifest states requirements. The full export adds the exact input bytes.
 `Project::review_packet` captures the manifest, and `Project::review_full`
 captures the export. Both write into a separate temporary directory, outside
 that repository.
 
-A document boundary groups the selected files that one README explains.
-The fixture names prevent sample READMEs from becoming real boundaries in this project.
+Every `README.md` in this repository is a tracked document, even under an ignored folder.
+The fixture names prevent sample READMEs from becoming real documents in this project.
 The root `memoria.toml` also excludes `tests/fixtures/**` from selected source inputs.
 This decision leaves the real test suites inside the documentation scope.
 
@@ -51,16 +52,17 @@ Source evidence: [common/mod.rs](common/mod.rs#L1), [common/state_vectors.rs](co
 
 ## The assertions describe observable behavior
 
-A pending README requires review.
-An export is a marked section that another README can copy through a declared import.
-An acknowledgement records who reviewed a README and why its explanation is correct.
+A pending document requires review.
+An export is a marked section that another document can copy through a declared import.
+An acknowledgement records who reviewed a document and why its explanation is correct.
 The `check` command requires valid structure, current reviews, and current imported text.
 
 The baseline scenario starts with pending documents and empty import bodies.
 After import updates and acknowledgements, `memoria check` succeeds.
 Navigation warnings remain visible without causing that check to fail.
 
-The source-change scenario makes one README owner pending while the READMEs that import its text wait.
+The source-change scenario makes the document that covers the file pending while the documents that import its text wait.
+The three-level fixture keeps `src/disconnected/README.md` deliberately unlinked, so the root also covers `src/disconnected/item.rs`: the built-in overlap case, with its `handoff_absent` hint.
 An acknowledgement with an unchanged export ends that review path.
 The snapshot-conflict scenario changes a file after the review. It expects
 exit 3 and unchanged state bytes. A full export yields exact per-input
@@ -78,7 +80,12 @@ An invalidation requests a review with an explicit reason, even without a file c
 
 | Suite | Coverage |
 | --- | --- |
-| [workflow.rs](workflow.rs) | Ownership, review order, imports, and invalidation |
+| [workflow.rs](workflow.rs) | Scopes, review order, imports, and invalidation |
+| [handoffs.rs](handoffs.rs) | The backbone rule: the `auth/` before and after, changes A–G of the worked example, hints, waiting, and fan-out |
+| [documents.rs](documents.rs) | Discovery: every marker line shape, name variants, selection, encoding, symlinks, and nested repositories |
+| [document_reviews.rs](document_reviews.rs) | Sections over scope, relationships, bounded downstream lists, full exports, and render convergence |
+| [save_ack.rs](save_ack.rs) | `review --save` destinations, bytes, mode, collisions, and `ack` without a token |
+| [upgrade.rs](upgrade.rs) | Configuration version 3 and projects acknowledged by the real Memoria 0.6.0 |
 | [review_context.rs](review_context.rs) | Saved export views, P1 fallback, and verified historical coverage |
 | [sections.rs](sections.rs) | Advisory mappings, review mode, fallback reasons, and snapshot safety |
 | [configuration.rs](configuration.rs) | Supported settings and explicit configuration errors |
@@ -134,8 +141,11 @@ The harness clears inherited Git parameters, so a host signing rule cannot chang
 Tests that exercise host ignore rules override those locations explicitly.
 
 Some corruption tests construct invalid state deliberately.
-The frozen `memoria.lock` vectors under `fixtures/state-v2` measure representation and size.
+The frozen `memoria.lock` vectors under `fixtures/state-v2` measure representation and size in format 2. They stay as read-compatibility input.
+Each one decodes with every record unrecorded and encodes to the committed format 3 vector of the same name under `fixtures/state-v3`, which also holds `evidence.lock` with recorded nested folders and an empty recorded set.
 They are not project review records, and no test uses them as one.
+`fixtures/upgrade-0.6` holds seven small projects whose `memoria.lock` the real Memoria 0.6.0 executable acknowledged: one with a linked child README, one without the link, one without the link whose child was reviewed a second after its root, one whose root was reviewed twice, one whose root review covered an invalidation, and two with 12 and 13 unlinked child READMEs.
+`common/counting.rs` runs the review use case in process with a counting hasher, so a test can pin how many legacy proof recomputations a review performs.
 
 Normal documentation review uses review artifacts and the Memoria CLI.
 Test results do not establish whether a human explanation is correct.
@@ -143,7 +153,7 @@ Test results do not establish whether a human explanation is correct.
 ## Review context regression cases
 
 `review_context.rs` exercises saved-export retrieval, legacy P1 preparation, and historical commit coverage through the CLI.
-Its shapes include small and large owners, deep ownership, ordinary Markdown inputs, and shared-export fan-out.
+Its shapes include small and large scopes, deep nesting, ordinary Markdown inputs, and shared-export fan-out.
 It tests dirty acknowledgement, later exact matches, missing objects, shallow ancestry, and exhausted candidate or byte budgets.
 Path changes require full-review fallback.
 A semantic control needs an unchanged limit definition.
@@ -161,7 +171,7 @@ with its advisory diagnostic. It checks that one invalid mapping withdraws
 every suggestion, and that a new mapping cannot reduce the required scope.
 
 It also checks the snapshot binding itself. Each bound component of the review
-context must change the token: an unrelated owned source, the README body, the
+context must change the token: an unrelated scope source, the document body, the
 mapping associations, the effective guidance, and the effective selection
 policy. A provider context change refuses a consumer artifact even when the
 imported export body stays byte-identical.
@@ -173,8 +183,8 @@ artifact and write nothing.
 Three further groups guard the artifact contract itself:
 
 1. A manifest that violates its own schema cannot acknowledge. The cases are
-   an unsupported selection version, an absent README input, an inconsistent
-   selected-file count, a repeated reading identity, and a wrong document. A
+   an unsupported selection version, an absent document input, an inconsistent
+   scope-file count, a repeated reading identity, and a wrong document. A
    full export's embedded requirements go through the same rules.
 2. An artifact from an earlier release is refused with regeneration
    instructions, never converted and never called corrupt. A supported

@@ -180,14 +180,16 @@ acknowledge_all() {
             mem render "$document" >/dev/null 2>&1
             continue
         fi
-        mem review "$document" --format json > "$WORK/packet.json" 2>/dev/null
-        token="$(json_field token "$WORK/packet.json")"
-        if [ -z "$token" ]; then
+        # Save the artifact outside the project; the token comes from it.
+        mkdir -p "$WORK/saved"
+        mem review "$document" --save "$WORK/saved" --format json > "$WORK/receipt.json" 2>/dev/null
+        saved="$(json_field path "$WORK/receipt.json")"
+        if [ -z "$saved" ]; then
             set -e
-            fail "acknowledge" "no token for $document"
+            fail "acknowledge" "no saved artifact for $document"
             return 1
         fi
-        mem ack "$document" --packet "$WORK/packet.json" --token "$token" \
+        mem ack "$document" --packet "$saved" \
             --reviewer "Acceptance" --result no-update \
             --note "The acceptance fixture explanation matches its reviewed inputs." \
             >/dev/null 2>&1
@@ -294,7 +296,7 @@ printf '\n== guidance ==\n'
 new_project guidance
 mem init --apply >/dev/null
 cat > memoria.toml <<'TOML'
-version = 2
+version = 3
 ignore = []
 include = []
 
@@ -309,7 +311,7 @@ expect_contains "guidance-command-shows-text" "operational workflow" mem guidanc
 
 guidance_state="$(cksum memoria.lock)"
 cat > memoria.toml <<'TOML'
-version = 2
+version = 3
 ignore = []
 include = []
 
@@ -327,7 +329,7 @@ fi
 
 # The retired keys name their replacement.
 cat > memoria.toml <<'TOML'
-version = 2
+version = 3
 [documentation]
 instructions = ["Old key."]
 TOML
@@ -362,7 +364,7 @@ new_project inspect
 mem init --apply >/dev/null
 acknowledge_all
 expect_exit "state-inspect-exit" 0 mem state inspect
-expect_contains "state-inspect-format" '"format_version": 2' mem state inspect --format json
+expect_contains "state-inspect-format" '"format_version": 3' mem state inspect --format json
 expect_contains "state-inspect-no-freshness-claim" "memoria status" mem state inspect
 inspect_state="$(cksum memoria.lock)"
 mem state inspect >/dev/null
@@ -372,16 +374,26 @@ else
     fail "state-inspect-is-read-only" "memoria.lock changed"
 fi
 
-# The four committed vectors decode through the release CLI, outside Git.
+# The committed vectors decode through the release CLI, outside Git: the
+# format 2 read-compatibility vectors and the format 3 vectors.
 mkdir -p "$WORK/outside"
 cd "$WORK/outside"
-for vector in empty tiny current mixed; do
+for vector in empty tiny current mixed documents; do
     file="$REPO/tests/fixtures/state-v2/$vector.lock"
     if [ ! -f "$file" ]; then
         fail "vector-$vector-present" "missing $file"
         continue
     fi
     expect_exit "vector-$vector-inspects" 0 mem state inspect --file "$file" --format json
+done
+for vector in empty tiny current mixed documents evidence; do
+    file="$REPO/tests/fixtures/state-v3/$vector.lock"
+    if [ ! -f "$file" ]; then
+        fail "vector-v3-$vector-present" "missing $file"
+        continue
+    fi
+    expect_contains "vector-v3-$vector-inspects" '"format_version": 3' \
+        mem state inspect --file "$file" --format json
 done
 expect_exit "state-inspect-missing-file" 4 mem state inspect --file "$WORK/outside/absent.lock"
 expect_contains "state-inspect-missing-diagnostic" "state_missing" \
@@ -393,6 +405,113 @@ printf 'x' | dd of="$WORK/outside/broken.lock" bs=1 seek=8 conv=notrunc status=n
 expect_exit "state-inspect-corruption" 4 mem state inspect --file "$WORK/outside/broken.lock"
 expect_contains "state-inspect-corruption-diagnostic" "state_corrupt" \
     mem state inspect --file "$WORK/outside/broken.lock" --format json
+
+# ----------------------------------------------------------------- handoffs
+
+printf '\n== handoffs ==\n'
+new_project handoffs
+mkdir -p auth
+cat > auth/README.md <<'MD'
+# Authentication
+
+<!-- memoria:export id="summary" -->
+The authentication folder holds the login code.
+<!-- /memoria:export -->
+MD
+printf 'fn login() {}\n' > auth/login.rs
+git add -A
+git commit -qm auth
+mem init --apply >/dev/null
+acknowledge_all
+expect_exit "handoff-baseline-clean" 0 mem check
+# No link: the root and auth/README.md both cover auth/.
+printf '// edit\n' >> auth/login.rs
+mem status --format json > "$WORK/status.json" 2>/dev/null
+pending="$(grep -c '"status": "pending"' "$WORK/status.json")"
+if [ "$pending" -eq 2 ]; then pass "no-link-makes-both-pending"; else
+    fail "no-link-makes-both-pending" "expected 2 pending documents, found $pending"
+fi
+expect_contains "no-link-hints-handoff-absent" "handoff_absent" mem lint --format json
+# The link hands auth/ off: after review, only auth/README.md is pending.
+printf '\nSee [authentication](auth/README.md).\n' >> README.md
+acknowledge_all
+printf '// another edit\n' >> auth/login.rs
+mem status --format json > "$WORK/status.json" 2>/dev/null
+pending="$(grep -c '"status": "pending"' "$WORK/status.json")"
+if [ "$pending" -eq 1 ] && grep -q '"document": "auth/README.md"' "$WORK/status.json"; then
+    pass "link-hands-off-auth"
+else
+    fail "link-hands-off-auth" "expected only auth/README.md pending, found $pending"
+fi
+# review --save, then ack --packet without a token.
+mkdir -p "$WORK/handoff-saved"
+mem review auth/README.md --save "$WORK/handoff-saved" --format json > "$WORK/receipt.json" 2>/dev/null
+saved="$(json_field path "$WORK/receipt.json")"
+expect_exit "save-then-ack-without-token" 0 mem ack auth/README.md --packet "$saved" \
+    --reviewer "Acceptance" --result no-update \
+    --note "The authentication summary still matches the login code."
+# One explicit --token path stays supported.
+printf '// token path\n' >> auth/login.rs
+expect_exit "save-inside-worktree-refused" 2 mem review auth/README.md --save auth
+mem review auth/README.md --format json > "$WORK/packet.json" 2>/dev/null
+token="$(json_field token "$WORK/packet.json")"
+expect_exit "ack-with-explicit-token" 0 mem ack auth/README.md --packet "$WORK/packet.json" \
+    --token "$token" --reviewer "Acceptance" --result no-update \
+    --note "The authentication summary still matches the login code."
+expect_contains "handoff-state-format-three" '"format_version": 3' mem state inspect --format json
+
+# ---------------------------------------------------------- handoff evidence
+
+printf '\n== handoff evidence ==\n'
+# The R1 sequence: the root links auth/README.md, is acknowledged, its own
+# text changes, it is acknowledged again (revision 2), and auth/README.md is
+# deleted. The recorded coverage evidence names the ended handoff exactly.
+new_project evidence
+mkdir -p auth
+printf '# Authentication\n' > auth/README.md
+printf 'fn login() {}\n' > auth/login.rs
+printf '\nSee [authentication](auth/README.md).\n' >> README.md
+git add -A
+git commit -qm auth
+mem init --apply >/dev/null
+acknowledge_all
+printf '\nThe root explains the fixture layout.\n' >> README.md
+acknowledge_all
+if mem state inspect | grep -A1 '^  README.md$' | grep -q '^    revision 2 '; then
+    pass "evidence-root-at-revision-two"
+else
+    fail "evidence-root-at-revision-two" "the root is not at review revision 2"
+fi
+expect_contains "evidence-recorded-auth" 'coverage evidence: auth/' mem state inspect
+rm auth/README.md
+evidence_state="$(cksum memoria.lock)"
+mem review README.md --format json > "$WORK/evidence-review.json" 2>/dev/null
+if [ "$evidence_state" = "$(cksum memoria.lock)" ]; then
+    pass "evidence-review-is-read-only"
+else
+    fail "evidence-review-is-read-only" "memoria.lock changed"
+fi
+if grep -q '"code": "handoff_changed"' "$WORK/evidence-review.json" \
+    && grep -q '"identity": "auth"' "$WORK/evidence-review.json"; then
+    pass "evidence-handoff-changed-auth"
+else
+    fail "evidence-handoff-changed-auth" "no handoff_changed for auth"
+fi
+# Keys are sorted: the change's own kind precedes its relationship, which
+# ends with `unrecorded_reason`.
+if sed -n '/"identity": "auth\/login.rs"/,/"unrecorded_reason"/p' "$WORK/evidence-review.json" \
+    | grep -q '"kind": "handoff"'; then
+    pass "evidence-relationship-handoff"
+else
+    fail "evidence-relationship-handoff" "auth/login.rs is not a handoff relationship"
+fi
+expect_contains "evidence-human-relationship" \
+    'auth/login.rs · entered the scope: a handoff no longer applies' mem review README.md
+if grep -q '"path_set_changed"\|"coverage_unrecorded"' "$WORK/evidence-review.json"; then
+    fail "evidence-no-approximation" "an approximate or unrecorded code appeared"
+else
+    pass "evidence-no-approximation"
+fi
 
 # -------------------------------------------------------------- integrations
 

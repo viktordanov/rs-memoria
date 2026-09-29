@@ -18,7 +18,7 @@ use memoria_infrastructure::github_workflow::{
 };
 use tempfile::TempDir;
 
-const VERSION: &str = "0.5.0";
+const VERSION: &str = "0.7.0";
 
 struct Fixture {
     _dir: TempDir,
@@ -348,7 +348,7 @@ fn an_unrecognized_interrupted_state_preserves_both_files() {
         WorkflowFailure::Conflict { code, .. } => assert_eq!(code, "github_recovery_needed"),
         other => panic!("expected a recovery refusal, got {other:?}"),
     }
-    let expected = render(TEMPLATE_VERSION, "ubuntu-24.04", "v0.5.0", VERSION).unwrap();
+    let expected = render(TEMPLATE_VERSION, "ubuntu-24.04", "v0.7.0", VERSION).unwrap();
     assert_eq!(fixture.read(DEFAULT_PATH), expected);
     assert!(
         Path::new(&intent).exists(),

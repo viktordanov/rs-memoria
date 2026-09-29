@@ -1,4 +1,5 @@
-//! `memoria graph`: ownership, imports, navigation, and review status.
+//! `memoria graph`: document scopes, handoffs, imports, navigation, and
+//! review status.
 
 use crate::error::{AppError, Detail, DetailMap, ExitClass, Outcome};
 use crate::ports::Services;
@@ -10,6 +11,10 @@ use super::{cause_detail, status_label};
 pub struct GraphReport {
     pub nodes: Vec<Detail>,
     pub edges: Vec<Detail>,
+    /// Every handoff: `{parent, target, subtree, via, line}`.
+    pub handoffs: Vec<Detail>,
+    /// Sources more than one document covers: `{path, covered_by}`.
+    pub overlaps: Vec<Detail>,
 }
 
 impl GraphReport {
@@ -17,6 +22,8 @@ impl GraphReport {
         DetailMap::default()
             .with("nodes", Detail::List(self.nodes.clone()))
             .with("edges", Detail::List(self.edges.clone()))
+            .with("handoffs", Detail::List(self.handoffs.clone()))
+            .with("overlaps", Detail::List(self.overlaps.clone()))
             .build()
     }
 }
@@ -25,19 +32,21 @@ pub fn run(services: &Services<'_>) -> Result<Outcome<GraphReport>, AppError> {
     let snapshot = snapshot::build(services)?;
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
+    let mut handoffs = Vec::new();
     for document in &snapshot.collected.documents {
         let status = snapshot.status_of(document);
         let node = DetailMap::default()
             .text("document", document.as_str())
+            .text("kind", document.kind().as_str())
             .number(
-                "owned_files",
-                snapshot.ownership.owned_by(document).len() as u64,
+                "scope_files",
+                snapshot.scopes.scope_of(document).len() as u64,
             )
             .number(
-                "owned_bytes",
+                "scope_bytes",
                 snapshot
-                    .ownership
-                    .owned_by(document)
+                    .scopes
+                    .scope_of(document)
                     .iter()
                     .map(|p| snapshot.file_bytes(p).len() as u64)
                     .sum(),
@@ -89,12 +98,24 @@ pub fn run(services: &Services<'_>) -> Result<Outcome<GraphReport>, AppError> {
             )
             .build();
         nodes.push(node);
-        if let Some(parent) = snapshot.ownership.parent_of(document) {
+        for handoff in snapshot.scopes.handoffs_of(document) {
             edges.push(
                 DetailMap::default()
-                    .text("kind", "owner")
-                    .text("from", parent.as_str())
-                    .text("to", document.as_str())
+                    .text("kind", "handoff")
+                    .text("from", document.as_str())
+                    .text("to", handoff.target.as_str())
+                    .text("subtree", handoff.subtree.as_str())
+                    .text("via", handoff.via.as_str())
+                    .number("line", handoff.line as u64)
+                    .build(),
+            );
+            handoffs.push(
+                DetailMap::default()
+                    .text("parent", document.as_str())
+                    .text("target", handoff.target.as_str())
+                    .text("subtree", handoff.subtree.as_str())
+                    .text("via", handoff.via.as_str())
+                    .number("line", handoff.line as u64)
                     .build(),
             );
         }
@@ -111,19 +132,45 @@ pub fn run(services: &Services<'_>) -> Result<Outcome<GraphReport>, AppError> {
                 );
             }
             for link in &parsed.links {
-                if !parsed.imports.iter().any(|i| &i.provider == link) {
+                if !parsed.imports.iter().any(|i| i.provider == link.target) {
                     edges.push(
                         DetailMap::default()
                             .text("kind", "link")
                             .text("from", document.as_str())
-                            .text("to", link.as_str())
+                            .text("to", link.target.as_str())
+                            .number("line", link.location.line as u64)
                             .build(),
                     );
                 }
             }
         }
     }
-    let report = GraphReport { nodes, edges };
+    let overlaps: Vec<Detail> = snapshot
+        .scopes
+        .overlapping()
+        .into_iter()
+        .map(|path| {
+            DetailMap::default()
+                .text("path", path.as_str())
+                .with(
+                    "covered_by",
+                    Detail::texts(
+                        snapshot
+                            .scopes
+                            .covering(path)
+                            .iter()
+                            .map(|d| d.as_str().to_string()),
+                    ),
+                )
+                .build()
+        })
+        .collect();
+    let report = GraphReport {
+        nodes,
+        edges,
+        handoffs,
+        overlaps,
+    };
     if !snapshot.structural_errors().is_empty() {
         return Err(
             AppError::many(ExitClass::Validation, snapshot.diagnostics.clone())

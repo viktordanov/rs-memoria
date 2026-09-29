@@ -30,7 +30,7 @@ use memoria_application::ports::{
 };
 use memoria_application::usecases::github_workflow::{
     ACTION_REPOSITORY, DEFAULT_RUNNER, RUNNERS, compare_versions, is_commit_ref, parse_action_ref,
-    parse_runner, parse_version,
+    parse_runner, parse_stable_version, parse_version,
 };
 
 use crate::fs::{check_ancestors, kind_of, lock_file_within, sync_dir};
@@ -216,7 +216,7 @@ impl Record {
                 "the recorded workflow is larger than {MAX_EXPECTED_BYTES} bytes"
             ));
         }
-        if parse_version(&binary_version).is_err() {
+        if parse_stable_version(&binary_version).is_err() {
             return Err(format!(
                 "the recorded binary version {binary_version} is invalid"
             ));

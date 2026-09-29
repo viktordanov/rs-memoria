@@ -76,7 +76,7 @@ An installed hook launcher keeps the `memoria agent hook run` text. An existing 
 
 Install and upgrade in the `github` branch need an initialized project, because the generated job runs `memoria check`. The skill and hook branches need none.
 
-The skill and the hook stay outside the documentation inputs, so an installation never changes freshness. The workflow file and its ownership record belong in your Git history, so they are ordinary inputs. A new workflow makes the owning README pending. Review follows the change, as it does for any other new file.
+The skill and the hook stay outside the documentation inputs, so an installation never changes freshness. The workflow file and its ownership record belong in your Git history, so they are ordinary inputs. A new workflow makes pending every document whose scope contains it. Review follows the change, as it does for any other new file.
 
 No integration command acknowledges a review. Only `memoria ack` does that.
 

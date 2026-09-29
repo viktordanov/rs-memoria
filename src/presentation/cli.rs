@@ -25,8 +25,10 @@ pub struct Cli {
 pub enum Command {
     /// Print a shell completion script without project discovery or installation.
     Completions { shell: CompletionShell },
-    /// Explain one README's whole-file freshness with verified local Git evidence.
+    /// Explain one document's whole-file freshness with verified local Git evidence.
     Explain {
+        /// Project-relative document path: a README.md or an opted-in Markdown file.
+        #[arg(value_name = "DOCUMENT")]
         document: String,
         #[arg(long)]
         full: bool,
@@ -44,16 +46,17 @@ pub enum Command {
     },
     /// Show coverage, input size, and review state.
     Status {
-        /// Explain why one project-relative path is selected or excluded.
+        /// Explain why one project-relative path is selected or excluded, and which documents cover it.
         #[arg(long, value_name = "PATH")]
         explain: Option<String>,
         /// Emit bounded counts only. Cannot be combined with --explain.
         #[arg(long)]
         summary: bool,
     },
-    /// Show the project documentation guidance that applies to a README.
+    /// Show the project documentation guidance that applies to a document.
     Guidance {
-        /// Project-relative README path. Defaults to the root README.
+        /// Project-relative document path. Defaults to the root README.
+        #[arg(value_name = "DOCUMENT")]
         document: Option<String>,
     },
     /// Inspect or compare committed state without changing it.
@@ -63,9 +66,10 @@ pub enum Command {
     },
     /// Check structure, configuration, markers, and link hints.
     Lint,
-    /// Show the ordered review plan, or the review requirements for one README.
+    /// Show the ordered review plan, or the review requirements for one document.
     Review {
-        /// Project-relative README path for one README's review requirements.
+        /// Project-relative document path for one document's review requirements.
+        #[arg(value_name = "DOCUMENT")]
         document: Option<String>,
         /// Raw input budget in bytes for the reviewed inputs (default 8 MiB, at most 32 MiB).
         #[arg(long, value_name = "BYTES")]
@@ -73,10 +77,17 @@ pub enum Command {
         /// Export the complete content packet instead of the default manifest.
         #[arg(long)]
         full: bool,
+        /// Save the JSON artifact into DIR, an existing directory outside the Git worktree.
+        #[arg(long, value_name = "DIR")]
+        save: Option<String>,
+        /// Add tokens, digests, and per-input sizes and hashes to the human view.
+        #[arg(long)]
+        details: bool,
     },
     /// Refresh declared import blocks only.
     Render {
-        /// Project-relative README path. Defaults to every README.
+        /// Project-relative document path. Defaults to every document.
+        #[arg(value_name = "DOCUMENT")]
         document: Option<String>,
         /// Show planned changes without writing.
         #[arg(long)]
@@ -84,9 +95,9 @@ pub enum Command {
     },
     /// Record a review result against the exact reviewed snapshot.
     Ack(AckArgs),
-    /// Mark one README, a subtree, or the whole project for semantic review.
+    /// Mark one document, a subtree, or the whole project for semantic review.
     Invalidate {
-        /// `all`, `doc:<README.md>`, or `subtree:<directory>`.
+        /// `all`, `doc:<DOCUMENT>`, or `subtree:<directory>`.
         scope: String,
         /// Why the documentation needs review (at least three words).
         #[arg(long, value_name = "TEXT")]
@@ -94,7 +105,7 @@ pub enum Command {
     },
     /// Run read-only validation for CI.
     Check,
-    /// Show documentation ownership, imports, navigation, and status.
+    /// Show document scopes, handoffs, imports, navigation, and status.
     Graph,
     /// Install or remove the managed Memoria skill and hooks for an agent.
     Agent {
@@ -173,7 +184,7 @@ pub struct GithubArgs {
     /// Workflow file. One direct .yml or .yaml child of .github/workflows.
     #[arg(long, value_name = "FILE")]
     pub path: Option<String>,
-    /// Exact stable Memoria version the workflow installs, 0.5.0 or later.
+    /// Exact stable Memoria version the workflow installs, 0.7.0 or later.
     #[arg(long, value_name = "VERSION")]
     pub version: Option<String>,
     /// Action code reference: a full 40-character commit SHA or an exact vX.Y.Z tag.
@@ -249,21 +260,22 @@ pub enum StateCommand {
 
 #[derive(Debug, Args)]
 pub struct AckArgs {
-    /// Project-relative README path.
+    /// Project-relative document path.
+    #[arg(value_name = "DOCUMENT")]
     pub document: String,
-    /// Review manifest or full export from `memoria review <README.md> [--full] --format json`, or `-` for stdin.
+    /// Saved artifact from `memoria review <DOCUMENT> --save <DIR>`, or from `--format json` output, or `-` for stdin.
     #[arg(long, value_name = "FILE|-")]
     pub packet: String,
-    /// The 21-byte token from the artifact (`data.token`).
+    /// Optional check: the 21-byte token the artifact must carry. Defaults to the artifact's own token.
     #[arg(long, value_name = "TOKEN")]
-    pub token: String,
+    pub token: Option<String>,
     /// Who reviewed (1–128 characters). Overrides the opt-in MEMORIA_REVIEWER environment default.
     #[arg(long, value_name = "NAME")]
     pub reviewer: Option<String>,
     /// `updated` or `no-update`.
     #[arg(long, value_name = "RESULT")]
     pub result: String,
-    /// Why this README is correct for this snapshot. After trim: 12–1000 Unicode characters,
+    /// Why this document is correct for this snapshot. After trim: 12–1000 Unicode characters,
     /// at least three words; CR/LF allowed, tabs and other controls forbidden. Generic notes are rejected.
     #[arg(long, value_name = "TEXT")]
     pub note: String,

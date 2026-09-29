@@ -1,10 +1,11 @@
 //! Advisory section mappings.
 //!
-//! A section is an optional reading hint authored in a README. It never
-//! creates ownership, never carries its own freshness, and never narrows the
+//! A section is an optional reading hint authored in a tracked document. Its
+//! `files` must name selected sources in that document's scope. It adds or
+//! removes no input, never carries its own freshness, and never narrows the
 //! complete input state that an acknowledgement validates. One invalid
-//! mapping makes the whole README's advice unusable, so a reviewer falls back
-//! to the full baseline instead of trusting partial advice.
+//! mapping makes the whole document's advice unusable, so a reviewer falls
+//! back to the full baseline instead of trusting partial advice.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -13,10 +14,10 @@ use crate::path::ProjectPath;
 
 /// The selection policy version that section advice belongs to. It enters the
 /// review context so a policy change invalidates an outstanding token.
-pub const SELECTION_VERSION: u64 = 1;
+pub const SELECTION_VERSION: u64 = 2;
 
 /// The built-in workflow identifier reported beside section advice.
-pub const SELECTION_POLICY: &str = "section-review-v1";
+pub const SELECTION_POLICY: &str = "section-review-v2";
 
 /// Validated section identifier: `[A-Za-z][A-Za-z0-9_-]{0,63}`.
 ///

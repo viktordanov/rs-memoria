@@ -110,6 +110,41 @@ fn texts_of(detail: &Detail, key: &str) -> Vec<String> {
     }
 }
 
+/// Plan wording for a task's causes: "input changed: a.rs, b.rs".
+fn plan_causes(detail: &Detail) -> String {
+    let Some(Detail::List(items)) = detail.get("causes") else {
+        return String::new();
+    };
+    items
+        .iter()
+        .map(|cause| match text_of(cause, "code").as_str() {
+            "never_reviewed" => "never reviewed".to_string(),
+            "document_changed" => "own text changed".to_string(),
+            "input_changed" => {
+                let identities: Vec<String> = match cause.get("changes") {
+                    Some(Detail::List(changes)) => changes
+                        .iter()
+                        .map(|change| text_of(change, "identity"))
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                let mut shown: Vec<String> = identities.iter().take(3).cloned().collect();
+                if identities.len() > 3 {
+                    shown.push(format!("and {} more", identities.len() - 3));
+                }
+                format!("input changed: {}", shown.join(", "))
+            }
+            "explicit_invalidation" => format!(
+                "semantic review [{}]: {}",
+                text_of(cause, "id"),
+                text_of(cause, "reason")
+            ),
+            other => other.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(" · ")
+}
+
 fn causes_of(detail: &Detail) -> String {
     match detail.get("causes") {
         Some(Detail::List(items)) => items
@@ -245,9 +280,30 @@ pub fn guidance(report: &memoria_application::usecases::guidance::GuidanceReport
     out
 }
 
+/// "Documents N: M READMEs, K opted-in documents; H handoffs; S sources
+/// covered by more than one document".
+fn document_counts(counts: &memoria_application::usecases::status::DocumentCounts) -> String {
+    format!(
+        "Documents       {}: {} README{}, {} opted-in document{}; {} handoff{}; {} source{} covered by more than one document",
+        counts.documents,
+        counts.readmes,
+        if counts.readmes == 1 { "" } else { "s" },
+        counts.opted_in,
+        if counts.opted_in == 1 { "" } else { "s" },
+        counts.handoffs,
+        if counts.handoffs == 1 { "" } else { "s" },
+        counts.overlapping_sources,
+        if counts.overlapping_sources == 1 {
+            ""
+        } else {
+            "s"
+        },
+    )
+}
+
 pub fn summary(report: &memoria_application::usecases::status::StatusSummary) -> String {
     let mut out = String::new();
-    let _ = writeln!(out, "READMEs         {}", report.readmes);
+    let _ = writeln!(out, "{}", document_counts(&report.counts));
     let _ = writeln!(out, "Selected files  {}", report.selected_files);
     let _ = writeln!(
         out,
@@ -268,7 +324,7 @@ pub fn summary(report: &memoria_application::usecases::status::StatusSummary) ->
     );
     let _ = writeln!(
         out,
-        "Coverage        {} unowned, {} disconnected",
+        "Coverage        {} uncovered, {} disconnected",
         report.unowned, report.disconnected
     );
     let _ = writeln!(
@@ -332,6 +388,19 @@ pub fn state_inspect(
                 ""
             }
         );
+        let _ = writeln!(
+            out,
+            "    coverage evidence: {}",
+            match record.coverage.folders() {
+                None => "not recorded".to_string(),
+                Some([]) => "none handed off".to_string(),
+                Some(folders) => folders
+                    .iter()
+                    .map(|folder| format!("{folder}/"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            }
+        );
         let _ = writeln!(out, "    note {}", record.note.as_str());
     }
     let _ = writeln!(
@@ -364,7 +433,7 @@ pub fn state_inspect(
 
 pub fn status(report: &StatusReport) -> String {
     let mut out = String::new();
-    let _ = writeln!(out, "READMEs         {}", report.readmes);
+    let _ = writeln!(out, "{}", document_counts(&report.counts));
     let _ = writeln!(out, "Selected files  {}", report.selected_files);
     let _ = writeln!(
         out,
@@ -383,18 +452,18 @@ pub fn status(report: &StatusReport) -> String {
         .sum();
     let _ = writeln!(
         out,
-        "Invalidations   {} active, {} READMEs pending",
+        "Invalidations   {} active, {} documents pending",
         report.invalidations.len(),
         pending_total
     );
     let _ = writeln!(
         out,
-        "Navigation      {} README(s) not reachable from the root",
+        "Navigation      {} document(s) not reachable from the root",
         report.disconnected.len()
     );
     let _ = writeln!(
         out,
-        "Coverage        {} selected file(s) without an owner",
+        "Coverage        {} selected file(s) that no document covers",
         report.unowned.len()
     );
     if !report.boundaries.is_empty() {
@@ -451,14 +520,42 @@ pub fn status(report: &StatusReport) -> String {
         }
     }
     for path in &report.unowned {
-        let _ = writeln!(out, "unowned  {path}");
+        let _ = writeln!(out, "uncovered  {path}");
     }
     if let Some(explanation) = &report.explanation {
         let _ = writeln!(out, "\nExplain {}", explanation.path);
         let _ = writeln!(out, "  outcome  {}", explanation.outcome);
         let _ = writeln!(out, "  reason   {}", explanation.reason);
-        if let Some(owner) = &explanation.owner {
-            let _ = writeln!(out, "  owner    {owner}");
+        if !explanation.covered_by.is_empty() {
+            let _ = writeln!(out, "  covered by {}", explanation.covered_by.join(", "));
+        }
+        for handoff in &explanation.handed_off {
+            let _ = writeln!(
+                out,
+                "  handed off by {} ({} at {}:{}) to {}",
+                handoff.by, handoff.via, handoff.by, handoff.line, handoff.to
+            );
+        }
+        if let Some(facts) = &explanation.document {
+            let _ = writeln!(
+                out,
+                "  kind     {}\n  scope    {} source(s)",
+                facts.kind, facts.scope_files
+            );
+            for handoff in &facts.handoffs {
+                let _ = writeln!(
+                    out,
+                    "  hands off {}/ to {} ({}, line {})",
+                    handoff.subtree, handoff.to, handoff.via, handoff.line
+                );
+            }
+            for handoff in &facts.handed_off_by {
+                let _ = writeln!(
+                    out,
+                    "  handed its folder by {} ({}, line {})",
+                    handoff.by, handoff.via, handoff.line
+                );
+            }
         }
         for step in &explanation.steps {
             let _ = writeln!(out, "  rule     {step}");
@@ -469,46 +566,46 @@ pub fn status(report: &StatusReport) -> String {
 
 pub fn lint(report: &LintReport) -> String {
     format!(
-        "READMEs {}: {} error(s), {} warning(s), {} hint(s)\n",
-        report.readmes, report.errors, report.warnings, report.hints
+        "Documents {} ({} README(s)): {} error(s), {} warning(s), {} hint(s)\n",
+        report.documents, report.readmes, report.errors, report.warnings, report.hints
     )
 }
 
 pub fn plan(report: &ReviewPlan) -> String {
     let mut out = String::new();
     if report.tasks.is_empty() {
-        let _ = writeln!(out, "No README needs review.");
+        let _ = writeln!(out, "No document needs review.");
     } else {
         let _ = writeln!(
             out,
-            "Review plan ({} task(s), dependency order):",
-            report.tasks.len()
+            "Review plan: {} pending document{} (dependency order)",
+            report.tasks.len(),
+            if report.tasks.len() == 1 { "" } else { "s" }
         );
         for task in &report.tasks {
-            let state = if text_of(task, "ready") == "true" {
-                "ready"
+            let kind = if text_of(task, "document_kind") == "opted_in" {
+                "opted-in document"
             } else {
-                "waiting"
+                "README"
             };
             let mut line = format!(
-                "{:>3}. {:<8} {}",
+                "{:>3}. {}  {kind}",
                 text_of(task, "order"),
-                state,
                 text_of(task, "document")
             );
-            let _ = write!(
-                line,
-                "  {} in {} record(s)",
-                human_bytes(text_of(task, "raw_input_bytes").parse().unwrap_or(0)),
-                text_of(task, "record_count")
-            );
-            let causes = causes_of(task);
+            let causes = plan_causes(task);
             if !causes.is_empty() {
-                let _ = write!(line, "  [{causes}]");
+                let _ = write!(line, " · {causes}");
             }
             let waiting = texts_of(task, "waiting_on");
-            if !waiting.is_empty() {
-                let _ = write!(line, "  waiting on {}", waiting.join(", "));
+            if waiting.is_empty() {
+                line.push_str(" · ready");
+            } else {
+                let _ = write!(line, " · waiting on {}", waiting.join(", "));
+            }
+            let co = texts_of(task, "co_covering");
+            if !co.is_empty() {
+                let _ = write!(line, " · also covered by {}", co.join(", "));
             }
             if text_of(task, "render_required") == "true" {
                 line.push_str("  (run `memoria render` first)");
@@ -667,10 +764,10 @@ pub fn packet(packet: &FocusedReviewPacket) -> String {
     }
     let _ = writeln!(
         out,
-        "\n==== README {} ({} bytes) ====",
-        packet.content.readme.path, packet.content.readme.bytes
+        "\n==== DOCUMENT {} ({} bytes) ====",
+        packet.content.document.path, packet.content.document.bytes
     );
-    out.push_str(&String::from_utf8_lossy(&packet.content.readme.body));
+    out.push_str(&String::from_utf8_lossy(&packet.content.document.body));
     for file in &packet.content.files {
         let _ = writeln!(
             out,
@@ -703,7 +800,7 @@ pub fn render(report: &RenderReport) -> String {
     if changed.is_empty() {
         let _ = writeln!(
             out,
-            "All import blocks are current ({} README(s) checked).",
+            "All import blocks are current ({} document(s) checked).",
             report.documents.len()
         );
         return out;
@@ -766,7 +863,7 @@ pub fn check(report: &CheckReport) -> String {
     if ok {
         let _ = writeln!(
             out,
-            "OK: {} README(s) current, imports rendered, no coverage or structure errors.",
+            "OK: {} document(s) current, imports rendered, no coverage or structure errors.",
             report.readmes
         );
         return out;
@@ -800,7 +897,7 @@ pub fn graph(report: &GraphReport) -> String {
             "  {:<16} {} ({} file(s))",
             text_of(node, "status"),
             text_of(node, "document"),
-            text_of(node, "owned_files")
+            text_of(node, "scope_files")
         );
         if text_of(node, "waiting") == "true" {
             let _ = write!(

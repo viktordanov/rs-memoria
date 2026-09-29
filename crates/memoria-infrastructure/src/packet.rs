@@ -18,13 +18,14 @@ use memoria_application::ports::{
     PacketSource, ReviewPacketCodec,
 };
 use memoria_application::review::{
-    BaselineInfo, EvidenceStatus, FallbackReason, GuidanceReference, InputEntry, InputRole,
-    MANIFEST_KIND, MANIFEST_VERSION, ReviewManifest, ReviewMode, SectionSuggestion,
-    SnapshotDigests, WORKFLOW_STEPS,
+    BaselineInfo, CoCovering, ConsumerInfo, Downstream, EvidenceStatus, FallbackReason,
+    GuidanceReference, IncomingHandoff, InputEntry, InputRole, MANIFEST_KIND, MANIFEST_VERSION,
+    MAX_LIST_ENTRIES, Relationship, RelationshipKind, ReviewManifest, ReviewMode, ScopeHandoff,
+    ScopeInfo, SectionSuggestion, SnapshotDigests, WORKFLOW_STEPS,
 };
 use memoria_domain::canonical::{
-    ConsumerEdge, ImportEdge, PACKET_V3_DOMAIN, ProviderDescriptor, REVIEW_MANIFEST_DOMAIN,
-    ReviewContext,
+    ConsumerEdge, HandoffEdge, ImportEdge, PACKET_V3_DOMAIN, ProviderDescriptor,
+    REVIEW_MANIFEST_DOMAIN, ReviewContext,
 };
 use memoria_domain::section::SELECTION_VERSION;
 use memoria_domain::{
@@ -476,6 +477,17 @@ impl ReviewPacketCodec for JsonPacketCodec<'_> {
         if let Some(failure) = unsupported_version(&envelope, manifest_kind) {
             return Err(failure);
         }
+        // A save receipt describes an artifact; it is not one. Say so before
+        // any integrity check, so it is never reported as corruption.
+        if let Json::Object(map) = &envelope
+            && let Some(Json::Object(data)) = map.get("data")
+            && data.get("kind") == Some(&Json::String("saved_review_artifact".into()))
+        {
+            return Err(invalid(
+                "packet_schema_invalid",
+                "this is the receipt of `memoria review --save`, not a review artifact; pass the saved file named by data.path",
+            ));
+        }
         let (digest_key, domain) = if manifest_kind {
             ("artifact_digest", REVIEW_MANIFEST_DOMAIN)
         } else {
@@ -585,6 +597,14 @@ fn decode_requirements(mut data: ObjectReader, ctx: &str) -> Result<ReviewManife
     }
     let document = DocumentId::parse(&data.take_string("document")?)
         .map_err(|e| schema(format!("{ctx}.document: {e}")))?;
+    let document_kind = data.take_string("document_kind")?;
+    if document_kind != document.kind().as_str() {
+        return Err(schema(format!(
+            "{ctx}.document_kind is {document_kind:?}, but {document} is {:?}",
+            document.kind().as_str()
+        )));
+    }
+    let scope = decode_scope(data.take("scope")?, &format!("{ctx}.scope"))?;
     let review_revision = data.take_u64("review_revision")?;
     let token = data.take_string("token")?;
 
@@ -645,6 +665,7 @@ fn decode_requirements(mut data: ObjectReader, ctx: &str) -> Result<ReviewManife
     };
 
     let mut changes = Vec::new();
+    let mut relationships = Vec::new();
     for (index, item) in data.take_array("changes")?.into_iter().enumerate() {
         let entry_ctx = format!("{ctx}.changes[{index}]");
         let mut entry = ObjectReader::new(item, &entry_ctx)?;
@@ -655,6 +676,29 @@ fn decode_requirements(mut data: ObjectReader, ctx: &str) -> Result<ReviewManife
         let before_hash = optional_hash(entry.take("before_hash")?, &entry_ctx)?;
         let after_bytes = optional_u64(entry.take("after_bytes")?, &entry_ctx)?;
         let after_hash = optional_hash(entry.take("after_hash")?, &entry_ctx)?;
+        let relationship = decode_relationship(
+            entry.take("relationship")?,
+            &format!("{entry_ctx}.relationship"),
+        )?;
+        let fits = match kind.as_str() {
+            "document" => relationship.kind == RelationshipKind::OwnText,
+            "policy" => relationship.kind == RelationshipKind::SelectionPolicy,
+            "import" => relationship.kind == RelationshipKind::Import,
+            "file" => matches!(
+                relationship.kind,
+                RelationshipKind::ScopeSource
+                    | RelationshipKind::Handoff
+                    | RelationshipKind::CoverageUnrecorded
+            ),
+            _ => false,
+        };
+        if !fits {
+            return Err(schema(format!(
+                "{entry_ctx}.relationship.kind {} does not fit a {kind:?} change",
+                relationship.kind.as_str()
+            )));
+        }
+        relationships.push(relationship);
         entry.finish()?;
         changes.push(ChangeEntry {
             kind,
@@ -719,9 +763,9 @@ fn decode_requirements(mut data: ObjectReader, ctx: &str) -> Result<ReviewManife
             sources,
         });
     }
-    if !review.take_bool("whole_readme_pass")? {
+    if !review.take_bool("whole_document_pass")? {
         return Err(schema(format!(
-            "{ctx}.review.whole_readme_pass must be true; the whole-README pass is always required"
+            "{ctx}.review.whole_document_pass must be true; the whole-document pass is always required"
         )));
     }
     let mut fallback_reasons = Vec::new();
@@ -780,7 +824,7 @@ fn decode_requirements(mut data: ObjectReader, ctx: &str) -> Result<ReviewManife
         let bytes = entry.take_u64("bytes")?;
         let hash = hash_of(&mut entry, "hash", &input_ctx)?;
         let role = match entry.take_string("role")?.as_str() {
-            "whole_readme" => InputRole::WholeReadme,
+            "whole_document" => InputRole::WholeDocument,
             "changed_source" => InputRole::ChangedSource,
             "section_context" => InputRole::SectionContext,
             "current_import" => InputRole::CurrentImport,
@@ -861,12 +905,27 @@ fn decode_requirements(mut data: ObjectReader, ctx: &str) -> Result<ReviewManife
         covered_invalidations.push((id, reason));
     }
 
+    let downstream = decode_downstream(data.take("downstream")?, &format!("{ctx}.downstream"))?;
+
     let mut counts = data.take_object("counts")?;
-    let selected_files = counts.take_u64("selected_files")?;
+    let scope_files = counts.take_u64("scope_files")?;
     let imports = counts.take_u64("imports")?;
     let raw_input_bytes = counts.take_u64("raw_input_bytes")?;
     let suggested_sources = counts.take_u64("suggested_sources")?;
+    let handoffs = counts.take_u64("handoffs")?;
     counts.finish()?;
+    if handoffs != scope.handoffs_total {
+        return Err(schema(format!(
+            "{ctx}.counts.handoffs is {handoffs} but {ctx}.scope.handoffs_total is {}",
+            scope.handoffs_total
+        )));
+    }
+    if scope_files != scope.files {
+        return Err(schema(format!(
+            "{ctx}.counts.scope_files is {scope_files} but {ctx}.scope.files is {}",
+            scope.files
+        )));
+    }
 
     let mut workflow = data.take_object("workflow")?;
     let policy = workflow.take_string("policy")?;
@@ -887,7 +946,7 @@ fn decode_requirements(mut data: ObjectReader, ctx: &str) -> Result<ReviewManife
         let text = expect_string(value, &format!("{ctx}.workflow.steps[{index}]"))?;
         if text != expected {
             return Err(schema(format!(
-                "{ctx}.workflow.steps[{index}] must be {expected:?} for selection version 1"
+                "{ctx}.workflow.steps[{index}] must be {expected:?} for selection version {SELECTION_VERSION}"
             )));
         }
     }
@@ -898,9 +957,11 @@ fn decode_requirements(mut data: ObjectReader, ctx: &str) -> Result<ReviewManife
         document,
         review_revision,
         token,
+        scope,
         snapshot,
         baseline,
         changes,
+        relationships,
         mode,
         sections,
         fallback_reasons,
@@ -909,7 +970,8 @@ fn decode_requirements(mut data: ObjectReader, ctx: &str) -> Result<ReviewManife
         guidance_changed_since_review,
         guidance_references,
         covered_invalidations,
-        selected_files,
+        downstream,
+        scope_files,
         imports,
         raw_input_bytes,
         artifact_digest: String::new(),
@@ -920,8 +982,8 @@ fn decode_requirements(mut data: ObjectReader, ctx: &str) -> Result<ReviewManife
             manifest.suggested_sources()
         )));
     }
-    // The whole-README pass is always required, so the README is always a
-    // suggested read. Exactly one entry carries that identity and that role.
+    // The whole-document pass is always required, so the document is always
+    // a suggested read. Exactly one entry carries that identity and role.
     let readme: Vec<&InputEntry> = manifest
         .inputs
         .iter()
@@ -935,16 +997,16 @@ fn decode_requirements(mut data: ObjectReader, ctx: &str) -> Result<ReviewManife
                     entry.path, manifest.document
                 )));
             }
-            if entry.role != InputRole::WholeReadme {
+            if entry.role != InputRole::WholeDocument {
                 return Err(schema(format!(
-                    "{ctx}.inputs entry for {} must have role whole_readme",
+                    "{ctx}.inputs entry for {} must have role whole_document",
                     manifest.document
                 )));
             }
         }
         [] => {
             return Err(schema(format!(
-                "{ctx}.inputs must contain {} with role whole_readme; the whole-README pass is always required",
+                "{ctx}.inputs must contain {} with role whole_document; the whole-document pass is always required",
                 manifest.document
             )));
         }
@@ -958,10 +1020,10 @@ fn decode_requirements(mut data: ObjectReader, ctx: &str) -> Result<ReviewManife
     if manifest
         .inputs
         .iter()
-        .any(|entry| entry.kind != "document" && entry.role == InputRole::WholeReadme)
+        .any(|entry| entry.kind != "document" && entry.role == InputRole::WholeDocument)
     {
         return Err(schema(format!(
-            "{ctx}.inputs gives role whole_readme to an entry that is not the document"
+            "{ctx}.inputs gives role whole_document to an entry that is not the document"
         )));
     }
     // Reading identities are unique: a duplicate would misstate the work.
@@ -976,16 +1038,224 @@ fn decode_requirements(mut data: ObjectReader, ctx: &str) -> Result<ReviewManife
     if identities.len() != total {
         return Err(schema(format!("{ctx}.inputs repeats a reading identity")));
     }
-    // A boundary with a selected file cannot report an empty one, and the
-    // suggested sources are a subset of the selected files.
-    if manifest.suggested_sources() > manifest.selected_files {
+    // The suggested sources are a subset of the scope files.
+    if manifest.suggested_sources() > manifest.scope_files {
         return Err(schema(format!(
-            "{ctx}.counts.suggested_sources is {} but the boundary reports {} selected files",
+            "{ctx}.counts.suggested_sources is {} but the scope reports {} files",
             manifest.suggested_sources(),
-            manifest.selected_files
+            manifest.scope_files
         )));
     }
     Ok(manifest)
+}
+
+fn schema_error(message: String) -> JsonError {
+    JsonError {
+        code: "json_schema",
+        message,
+    }
+}
+
+/// A bounded list: at most `MAX_LIST_ENTRIES`, and never more than its total.
+fn check_bounded(ctx: &str, key: &str, len: usize, total: u64) -> Result<(), JsonError> {
+    if len > MAX_LIST_ENTRIES {
+        return Err(schema_error(format!(
+            "{ctx}.{key} has {len} entries; at most {MAX_LIST_ENTRIES} are permitted"
+        )));
+    }
+    if (len as u64) > total || (len < MAX_LIST_ENTRIES && len as u64 != total) {
+        return Err(schema_error(format!(
+            "{ctx}.{key} has {len} entries but {ctx}.{key}_total is {total}"
+        )));
+    }
+    Ok(())
+}
+
+fn decode_via(text: String, ctx: &str) -> Result<String, JsonError> {
+    if ["link", "import", "both"].contains(&text.as_str()) {
+        Ok(text)
+    } else {
+        Err(schema_error(format!(
+            "{ctx}.via must be link, import, or both"
+        )))
+    }
+}
+
+fn decode_scope(value: Json, ctx: &str) -> Result<ScopeInfo, JsonError> {
+    let mut reader = ObjectReader::new(value, ctx)?;
+    let files = reader.take_u64("files")?;
+    let mut handoffs = Vec::new();
+    for (index, item) in reader.take_array("handoffs")?.into_iter().enumerate() {
+        let entry_ctx = format!("{ctx}.handoffs[{index}]");
+        let mut entry = ObjectReader::new(item, &entry_ctx)?;
+        let subtree = entry.take_string("subtree")?;
+        DirPath::parse(&subtree).map_err(|e| schema_error(format!("{entry_ctx}.subtree: {e}")))?;
+        let target = entry.take_string("target")?;
+        DocumentId::parse(&target).map_err(|e| schema_error(format!("{entry_ctx}.target: {e}")))?;
+        let via = decode_via(entry.take_string("via")?, &entry_ctx)?;
+        let line = entry.take_u64("line")?;
+        entry.finish()?;
+        handoffs.push(ScopeHandoff {
+            subtree,
+            target,
+            via,
+            line,
+        });
+    }
+    let handoffs_total = reader.take_u64("handoffs_total")?;
+    check_bounded(ctx, "handoffs", handoffs.len(), handoffs_total)?;
+    let mut handed_off_by = Vec::new();
+    for (index, item) in reader.take_array("handed_off_by")?.into_iter().enumerate() {
+        let entry_ctx = format!("{ctx}.handed_off_by[{index}]");
+        let mut entry = ObjectReader::new(item, &entry_ctx)?;
+        let parent = entry.take_string("parent")?;
+        DocumentId::parse(&parent).map_err(|e| schema_error(format!("{entry_ctx}.parent: {e}")))?;
+        let via = decode_via(entry.take_string("via")?, &entry_ctx)?;
+        let line = entry.take_u64("line")?;
+        entry.finish()?;
+        handed_off_by.push(IncomingHandoff { parent, via, line });
+    }
+    let handed_off_by_total = reader.take_u64("handed_off_by_total")?;
+    check_bounded(
+        ctx,
+        "handed_off_by",
+        handed_off_by.len(),
+        handed_off_by_total,
+    )?;
+    reader.finish()?;
+    Ok(ScopeInfo {
+        files,
+        handoffs,
+        handoffs_total,
+        handed_off_by,
+        handed_off_by_total,
+    })
+}
+
+fn decode_relationship(value: Json, ctx: &str) -> Result<Relationship, JsonError> {
+    let mut reader = ObjectReader::new(value, ctx)?;
+    let text = reader.take_string("kind")?;
+    let kind = RelationshipKind::parse(&text).ok_or_else(|| {
+        schema_error(format!(
+            "{ctx}.kind {text:?} must be own_text, scope_source, handoff, coverage_unrecorded, import, or selection_policy"
+        ))
+    })?;
+    let mut sections = Vec::new();
+    for (index, value) in reader.take_array("sections")?.into_iter().enumerate() {
+        let id = expect_string(value, &format!("{ctx}.sections[{index}]"))?;
+        memoria_domain::SectionId::parse(&id)
+            .map_err(|e| schema_error(format!("{ctx}.sections[{index}]: {e}")))?;
+        sections.push(id);
+    }
+    let also_covered_by_total = reader.take_u64("also_covered_by_total")?;
+    let provider = reader.take_optional_string("provider")?;
+    let export_id = reader.take_optional_string("export_id")?;
+    let unrecorded_reason = reader.take_optional_string("unrecorded_reason")?;
+    reader.finish()?;
+    if (kind == RelationshipKind::CoverageUnrecorded) != unrecorded_reason.is_some() {
+        return Err(schema_error(format!(
+            "{ctx}.unrecorded_reason is non-null exactly for coverage_unrecorded"
+        )));
+    }
+    if let Some(reason) = &unrecorded_reason
+        && !memoria_application::review::UNRECORDED_REASONS.contains(&reason.as_str())
+    {
+        return Err(schema_error(format!(
+            "{ctx}.unrecorded_reason {reason:?} must be one of {}",
+            memoria_application::review::UNRECORDED_REASONS.join(", ")
+        )));
+    }
+    if (kind == RelationshipKind::Import) != (provider.is_some() && export_id.is_some()) {
+        return Err(schema_error(format!(
+            "{ctx}.provider and export_id are non-null exactly for imports"
+        )));
+    }
+    if kind != RelationshipKind::ScopeSource && !sections.is_empty() {
+        return Err(schema_error(format!(
+            "{ctx}.sections is non-empty only for a scope_source"
+        )));
+    }
+    Ok(Relationship {
+        kind,
+        sections,
+        also_covered_by_total,
+        provider,
+        export_id,
+        unrecorded_reason,
+    })
+}
+
+fn decode_downstream(value: Json, ctx: &str) -> Result<Downstream, JsonError> {
+    let status = |text: String, ctx: &str| -> Result<String, JsonError> {
+        if ["current", "pending", "never_reviewed", "unknown"].contains(&text.as_str()) {
+            Ok(text)
+        } else {
+            Err(schema_error(format!(
+                "{ctx}.status must be current, pending, never_reviewed, or unknown"
+            )))
+        }
+    };
+    let kind = |text: String, ctx: &str| -> Result<String, JsonError> {
+        if text == "readme" || text == "opted_in" {
+            Ok(text)
+        } else {
+            Err(schema_error(format!("{ctx} must be readme or opted_in")))
+        }
+    };
+    let mut reader = ObjectReader::new(value, ctx)?;
+    let mut consumers = Vec::new();
+    for (index, item) in reader.take_array("consumers")?.into_iter().enumerate() {
+        let entry_ctx = format!("{ctx}.consumers[{index}]");
+        let mut entry = ObjectReader::new(item, &entry_ctx)?;
+        let export_id = entry.take_string("export_id")?;
+        let consumer = entry.take_string("consumer")?;
+        DocumentId::parse(&consumer)
+            .map_err(|e| schema_error(format!("{entry_ctx}.consumer: {e}")))?;
+        let consumer_kind = kind(
+            entry.take_string("consumer_kind")?,
+            &format!("{entry_ctx}.consumer_kind"),
+        )?;
+        let consumer_status = status(entry.take_string("status")?, &entry_ctx)?;
+        let waits_for_this_document = entry.take_bool("waits_for_this_document")?;
+        entry.finish()?;
+        consumers.push(ConsumerInfo {
+            export_id,
+            consumer,
+            consumer_kind,
+            status: consumer_status,
+            waits_for_this_document,
+        });
+    }
+    let consumers_total = reader.take_u64("consumers_total")?;
+    check_bounded(ctx, "consumers", consumers.len(), consumers_total)?;
+    let mut co_covering = Vec::new();
+    for (index, item) in reader.take_array("co_covering")?.into_iter().enumerate() {
+        let entry_ctx = format!("{ctx}.co_covering[{index}]");
+        let mut entry = ObjectReader::new(item, &entry_ctx)?;
+        let document = entry.take_string("document")?;
+        DocumentId::parse(&document)
+            .map_err(|e| schema_error(format!("{entry_ctx}.document: {e}")))?;
+        let document_kind = kind(
+            entry.take_string("document_kind")?,
+            &format!("{entry_ctx}.document_kind"),
+        )?;
+        let document_status = status(entry.take_string("status")?, &entry_ctx)?;
+        entry.finish()?;
+        co_covering.push(CoCovering {
+            document,
+            document_kind,
+            status: document_status,
+        });
+    }
+    let co_covering_total = reader.take_u64("co_covering_total")?;
+    check_bounded(ctx, "co_covering", co_covering.len(), co_covering_total)?;
+    reader.finish()?;
+    Ok(Downstream {
+        consumers,
+        consumers_total,
+        co_covering,
+        co_covering_total,
+    })
 }
 
 fn decode_manifest_envelope(envelope: Json, digest: String) -> Result<ReviewManifest, JsonError> {
@@ -1035,7 +1305,11 @@ fn decode_envelope(envelope: Json, digest: String) -> Result<FocusedReviewPacket
     let token = data.take_string("token")?;
     let mut budget: u64 = 0;
     let mut content = data.take_object("content")?;
-    let readme = file_content(content.take("readme")?, "data.content.readme", &mut budget)?;
+    let readme = file_content(
+        content.take("document")?,
+        "data.content.document",
+        &mut budget,
+    )?;
     let mut files = Vec::new();
     for (index, item) in content.take_array("files")?.into_iter().enumerate() {
         files.push(file_content(
@@ -1223,7 +1497,7 @@ fn decode_envelope(envelope: Json, digest: String) -> Result<FocusedReviewPacket
         token,
         packet_digest: digest,
         content: PacketContent {
-            readme,
+            document: readme,
             files,
             imports,
         },
@@ -1277,11 +1551,24 @@ fn decode_context(value: Json, ctx: &str) -> Result<ReviewContext, JsonError> {
     };
     let selection_version = reader.take_u64("selection_version")?;
     let owner = reader.take_string("owner")?;
-    let ancestor_boundaries = strings(&mut reader, "ancestor_boundaries")?;
-    let descendant_boundaries = strings(&mut reader, "descendant_boundaries")?;
+    let document_kind = reader.take_string("document_kind")?;
+    if document_kind != "readme" && document_kind != "opted_in" {
+        return Err(schema(format!(
+            "{ctx}.document_kind must be readme or opted_in"
+        )));
+    }
+    let mut handoffs = Vec::new();
+    for (index, item) in reader.take_array("handoffs")?.into_iter().enumerate() {
+        let edge_ctx = format!("{ctx}.handoffs[{index}]");
+        let mut entry = ObjectReader::new(item, &edge_ctx)?;
+        let subtree = entry.take_string("subtree")?;
+        let target = entry.take_string("target")?;
+        entry.finish()?;
+        handoffs.push(HandoffEdge { subtree, target });
+    }
     let nested_repositories = strings(&mut reader, "nested_repositories")?;
     let policy_hash = hash_of(&mut reader, "policy_hash", ctx)?;
-    let owned_paths = strings(&mut reader, "owned_paths")?;
+    let scope_paths = strings(&mut reader, "scope_paths")?;
     let mapping_state = reader.take_string("mapping_state")?;
     let mapping_value = reader.take("mapping")?;
     let mapping = match (mapping_state.as_str(), mapping_value) {
@@ -1358,11 +1645,11 @@ fn decode_context(value: Json, ctx: &str) -> Result<ReviewContext, JsonError> {
     Ok(ReviewContext {
         selection_version,
         owner,
-        ancestor_boundaries,
-        descendant_boundaries,
+        document_kind,
+        handoffs,
         nested_repositories,
         policy_hash,
-        owned_paths,
+        scope_paths,
         mapping,
         guidance,
         imports,
@@ -1551,15 +1838,17 @@ mod tests {
             document: DocumentId::parse("README.md").unwrap(),
             review_revision: 0,
             token: format!("mrv3.{}", "0".repeat(16)),
+            scope: ScopeInfo::default(),
             snapshot: SnapshotDigests {
                 inputs_digest: Hash64(0),
                 context_digest: Hash64(0),
                 guidance_digest: Hash64(0),
                 baseline_digest: Hash64(0),
-                selection_version: 1,
+                selection_version: SELECTION_VERSION,
             },
             baseline: None,
             changes: vec![],
+            relationships: vec![],
             mode: ReviewMode::FullBaseline,
             sections: vec![],
             fallback_reasons: vec![FallbackReason {
@@ -1567,7 +1856,7 @@ mod tests {
                 identity: None,
                 message: "no previous review".into(),
             }],
-            // The whole-README pass is always required, so even a minimal
+            // The whole-document pass is always required, so even a minimal
             // artifact names the document as a suggested read.
             inputs: vec![InputEntry {
                 kind: "document".into(),
@@ -1575,13 +1864,14 @@ mod tests {
                 export_id: None,
                 bytes: 0,
                 hash: Hash64(2),
-                role: InputRole::WholeReadme,
+                role: InputRole::WholeDocument,
             }],
             guidance_digest: Hash64(0),
             guidance_changed_since_review: None,
             guidance_references: vec![],
             covered_invalidations: vec![],
-            selected_files: 0,
+            downstream: Downstream::default(),
+            scope_files: 0,
             imports: 0,
             raw_input_bytes: 0,
             artifact_digest: String::new(),
@@ -1590,13 +1880,13 @@ mod tests {
 
     fn minimal_context() -> ReviewContext {
         ReviewContext {
-            selection_version: 1,
+            selection_version: SELECTION_VERSION,
             owner: "README.md".into(),
-            ancestor_boundaries: vec![],
-            descendant_boundaries: vec![],
+            document_kind: "readme".into(),
+            handoffs: vec![],
             nested_repositories: vec![],
             policy_hash: Hash64(0),
-            owned_paths: vec![],
+            scope_paths: vec![],
             mapping: SectionMapIdentity::Absent,
             guidance: GuidanceDigest::default(),
             imports: vec![],
@@ -1617,7 +1907,7 @@ mod tests {
             token: format!("mrv3.{}", "0".repeat(16)),
             packet_digest: String::new(),
             content: PacketContent {
-                readme: FileContent {
+                document: FileContent {
                     path: "README.md".into(),
                     bytes: 0,
                     hash: Hash64(2),

@@ -78,7 +78,7 @@ impl InitReport {
 /// apply response.
 pub const STRATEGY: &[&str] = &[
     "Memoria tracks documentation freshness. You choose what your README hierarchy represents.",
-    "The nearest README owns each selected file. Another README starts a new boundary.",
+    "Each document covers its folder and below; link or import a document in a subfolder to hand that subfolder to it.",
     "Memoria records the inputs a reviewer examined and shows which documents need another review.",
     "Memoria does not write documentation and does not decide whether its explanation is correct.",
     "Project documentation guidance lives in memoria.toml under [documentation]. It is advisory review context, never a selection rule.",

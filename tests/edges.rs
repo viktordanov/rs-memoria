@@ -95,7 +95,7 @@ fn no_git_missing_config_and_unborn_head() {
     let (code, again) = project.json(&["init", "--apply"]);
     assert_eq!(code, 0);
     assert!(strings(get(&again, &["data", "created"])).is_empty());
-    project.write("memoria.toml", "version = 3\n");
+    project.write("memoria.toml", "version = 4\n");
     let (code, bad) = project.json(&["init", "--apply"]);
     assert_eq!(code, 1);
     assert_eq!(diagnostic_codes(&bad), vec!["configuration_invalid"]);
@@ -142,7 +142,7 @@ fn tracked_ignored_files_stay_eligible_and_untracked_ignored_do_not() {
         "selected"
     );
     assert_eq!(
-        get_str(&explain, &["data", "explanation", "owner"]),
+        strings(get(&explain, &["data", "explanation", "covered_by"])).join(", "),
         "README.md"
     );
     assert_eq!(project.cause_codes("README.md"), vec!["input_changed"]);
@@ -157,7 +157,7 @@ fn tracked_ignored_files_stay_eligible_and_untracked_ignored_do_not() {
         "memoria.toml",
         project
             .read_string("memoria.toml")
-            .replace("version = 2\n", "version = 2\ninclude = []\n"),
+            .replace("version = 3\n", "version = 3\ninclude = []\n"),
     );
     project.write(
         "memoria.toml",

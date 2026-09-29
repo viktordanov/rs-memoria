@@ -7,9 +7,9 @@ use crate::error::{Detail, DetailMap};
 use crate::guidance::EffectiveGuidance;
 use crate::ports::FingerprintHasher;
 
-/// Full offline exports. Version 2 packets are not accepted: packets are
-/// ephemeral, so an old one is regenerated rather than converted.
-pub const PACKET_VERSION: u64 = 3;
+/// Full offline exports. Older packets are not accepted: packets are
+/// disposable, so an old one is regenerated rather than converted.
+pub const PACKET_VERSION: u64 = 4;
 /// The version of every CLI JSON envelope. The release has one clean
 /// cutover: `schema_version: 3` for envelopes, manifests, and packets alike.
 pub const ENVELOPE_SCHEMA_VERSION: u64 = 3;
@@ -74,7 +74,7 @@ impl ContentEncoding {
     }
 }
 
-/// Content of one owned file or the README.
+/// Content of one scope file or the document.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileContent {
     pub path: String,
@@ -97,7 +97,7 @@ pub struct ImportContent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PacketContent {
-    pub readme: FileContent,
+    pub document: FileContent,
     pub files: Vec<FileContent>,
     pub imports: Vec<ImportContent>,
 }
@@ -365,7 +365,19 @@ pub fn review_record_detail(record: &ReviewRecord) -> Detail {
                     .map(|id| Detail::Number(*id)),
             ),
         )
+        .with(
+            "coverage_evidence",
+            coverage_evidence_detail(&record.coverage),
+        )
         .build()
+}
+
+/// `null` for a record without evidence, or its handed-off folders.
+pub fn coverage_evidence_detail(coverage: &memoria_domain::CoverageEvidence) -> Detail {
+    match coverage.folders() {
+        None => Detail::Null,
+        Some(folders) => Detail::texts(folders.iter().map(|f| f.as_str().to_string())),
+    }
 }
 
 pub(crate) fn body_detail(encoding: ContentEncoding, body: &[u8]) -> Detail {
@@ -433,7 +445,7 @@ impl FocusedReviewPacket {
             .with(
                 "content",
                 DetailMap::default()
-                    .with("readme", file_content(&self.content.readme))
+                    .with("document", file_content(&self.content.document))
                     .with(
                         "files",
                         Detail::list(self.content.files.iter().map(file_content)),

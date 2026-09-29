@@ -10,7 +10,7 @@ use super::document_status_detail;
 pub struct ReviewPlan {
     pub tasks: Vec<Detail>,
     pub waiting_current: Vec<Detail>,
-    /// Read the effective guidance of a boundary before you review it.
+    /// Read the effective guidance of a document before you review it.
     pub guidance_first: String,
     pub next_ready: Option<String>,
     /// The next executable step: `("render", document)` when the ready
@@ -64,8 +64,21 @@ pub fn plan_from(snapshot: &Snapshot) -> ReviewPlan {
                     Detail::Number(manifest.map(|m| m.record_count()).unwrap_or(0)),
                 );
                 map.insert(
-                    "owned_files".into(),
-                    Detail::Number(snapshot.ownership.owned_by(&status.document).len() as u64),
+                    "document_kind".into(),
+                    Detail::Text(status.document.kind().as_str().to_string()),
+                );
+                map.insert(
+                    "scope_files".into(),
+                    Detail::Number(snapshot.scopes.scope_of(&status.document).len() as u64),
+                );
+                map.insert(
+                    "co_covering".into(),
+                    Detail::texts(
+                        snapshot
+                            .co_covering(&status.document)
+                            .iter()
+                            .map(|d| d.as_str().to_string()),
+                    ),
                 );
                 map.insert("render_required".into(), Detail::Bool(!outdated.is_empty()));
                 let effective = snapshot.guidance_of(&status.document);
@@ -114,7 +127,7 @@ pub fn plan_from(snapshot: &Snapshot) -> ReviewPlan {
         tasks,
         waiting_current,
         guidance_first:
-            "Read the effective guidance of a boundary before you review it: `memoria guidance <README.md>`."
+            "Read the effective guidance of a document before you review it: `memoria guidance <DOCUMENT>`."
                 .to_string(),
         next_ready,
         next_action,

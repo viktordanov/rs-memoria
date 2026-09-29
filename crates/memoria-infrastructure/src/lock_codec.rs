@@ -18,9 +18,9 @@
 use std::collections::BTreeMap;
 
 use memoria_domain::{
-    DirPath, DocumentId, ExportId, FileInput, GitContext, GuidanceDigest, Hash64, ImportInput,
-    InputManifest, Invalidation, InvalidationScope, ProjectPath, Reason, ReviewNote, ReviewRecord,
-    ReviewResult, ReviewState, ReviewerName, Timestamp, canonical,
+    CoverageEvidence, DirPath, DocumentId, ExportId, FileInput, GitContext, GuidanceDigest, Hash64,
+    ImportInput, InputManifest, Invalidation, InvalidationScope, ProjectPath, Reason, ReviewNote,
+    ReviewRecord, ReviewResult, ReviewState, ReviewerName, Timestamp, canonical,
 };
 
 use crate::hash::{xxh3_64, xxh3_128};
@@ -28,7 +28,10 @@ use crate::hash::{xxh3_64, xxh3_128};
 /// `MML` followed by NUL. The NUL makes Git treat the artifact as binary.
 pub const MAGIC: [u8; 4] = [0x4d, 0x4d, 0x4c, 0x00];
 /// The only supported format version.
-pub const FORMAT_VERSION: u8 = 2;
+pub const FORMAT_VERSION: u8 = 3;
+/// The previous format: read as legacy input, never written. Its review
+/// rows carry no coverage evidence, so every record decodes as unrecorded.
+pub const LEGACY_FORMAT_VERSION: u8 = 2;
 /// Raw payload.
 pub const CODEC_RAW: u8 = 0;
 /// One ordinary Zstandard frame under the fixed profile.
@@ -465,6 +468,12 @@ fn build_tables(state: &ReviewState) -> Result<Tables, LockError> {
             strings.insert(import.export_id.as_str().to_string());
             count((import.bytes, import.hash), &mut content_counts);
         }
+        // Handed-off folders join the trie like invalidation subtree scopes.
+        if let CoverageEvidence::Recorded(folders) = &record.coverage {
+            for folder in folders {
+                paths.insert(folder.as_str().to_string());
+            }
+        }
     }
     for invalidation in &state.invalidations {
         strings.insert(invalidation.reason.as_str().to_string());
@@ -543,6 +552,9 @@ fn build_tables(state: &ReviewState) -> Result<Tables, LockError> {
     let mut vector_set: BTreeSet<Vec<u64>> = BTreeSet::new();
     for record in state.reviews.values() {
         vector_set.insert(record.acknowledged_invalidations.clone());
+        if let Some(ids) = coverage_ids(&record.coverage, &path_id) {
+            vector_set.insert(ids);
+        }
     }
     for invalidation in &state.invalidations {
         for group in [&invalidation.targets, &invalidation.pending] {
@@ -576,6 +588,21 @@ fn build_tables(state: &ReviewState) -> Result<Tables, LockError> {
         vector_id,
         base_time: times.into_iter().min().unwrap_or(0),
     })
+}
+
+/// The strictly increasing path-table ids of recorded coverage evidence.
+fn coverage_ids(
+    coverage: &CoverageEvidence,
+    path_id: &BTreeMap<String, usize>,
+) -> Option<Vec<u64>> {
+    let folders = coverage.folders()?;
+    let mut ids: Vec<u64> = folders
+        .iter()
+        .map(|folder| path_id[folder.as_str()] as u64)
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    Some(ids)
 }
 
 fn timestamp_seconds(stamp: &Timestamp) -> Result<i64, LockError> {
@@ -634,6 +661,14 @@ fn measure_expansion(state: &ReviewState) -> Result<(), LockError> {
         let acknowledged = record.acknowledged_invalidations.len() as u64;
         budget.spend_values(acknowledged)?;
         budget.spend_string_bytes(acknowledged.saturating_mul(8))?;
+        if let Some(folders) = record.coverage.folders() {
+            let count = folders.len() as u64;
+            budget.spend_values(count)?;
+            budget.spend_string_bytes(count.saturating_mul(8))?;
+            for folder in folders {
+                budget.spend_string_bytes(folder.as_str().len() as u64)?;
+            }
+        }
         let owner = document.directory();
         let owner_bytes = owner.as_str().len() as u64;
         for file in record.manifest.files() {
@@ -770,6 +805,15 @@ pub fn encode_payload(state: &ReviewState) -> Result<Vec<u8>, LockError> {
         put_u(
             &mut out,
             tables.vector_id[&record.acknowledged_invalidations] as u64,
+        );
+        // Coverage evidence: 0 when unrecorded, otherwise the vector index
+        // of its path ids plus one.
+        put_u(
+            &mut out,
+            match coverage_ids(&record.coverage, &tables.path_id) {
+                None => 0,
+                Some(ids) => tables.vector_id[&ids] as u64 + 1,
+            },
         );
 
         let mut files: Vec<(usize, &FileInput)> = Vec::with_capacity(manifest.files().len());
@@ -1066,9 +1110,9 @@ pub fn decode(bytes: &[u8]) -> Result<DecodedLock, LockError> {
         return corrupt("the state file does not begin with the memoria.lock magic bytes");
     }
     let format_version = bytes[4];
-    if format_version != FORMAT_VERSION {
+    if format_version != FORMAT_VERSION && format_version != LEGACY_FORMAT_VERSION {
         return Err(LockError::UnsupportedSchema(format!(
-            "unsupported memoria.lock format version {format_version}; this release supports version {FORMAT_VERSION} only"
+            "unsupported memoria.lock format version {format_version}; this release supports versions {LEGACY_FORMAT_VERSION} and {FORMAT_VERSION}"
         )));
     }
     let codec = bytes[5];
@@ -1110,7 +1154,7 @@ pub fn decode(bytes: &[u8]) -> Result<DecodedLock, LockError> {
         _ => decompress(body, declared as usize)?,
     };
     // 4 and 5. Canonical tables, references, and domain invariants.
-    let (state, guidance) = decode_payload(&payload)?;
+    let (state, guidance) = decode_payload(&payload, format_version)?;
     Ok(DecodedLock {
         file_bytes: bytes.len() as u64,
         payload_bytes: payload.len() as u64,
@@ -1157,6 +1201,7 @@ fn index<T>(items: &[T], value: u64, what: &str) -> Result<usize, LockError> {
 
 fn decode_payload(
     payload: &[u8],
+    format_version: u8,
 ) -> Result<(ReviewState, BTreeMap<DocumentId, GuidanceDigest>), LockError> {
     if payload.is_empty() {
         return Ok((ReviewState::empty(), BTreeMap::new()));
@@ -1343,7 +1388,7 @@ fn decode_payload(
         inline_counts: BTreeMap::new(),
     };
 
-    let (reviews, guidance_map) = decode_reviews(&mut r, &mut tables)?;
+    let (reviews, guidance_map) = decode_reviews(&mut r, &mut tables, format_version)?;
     let invalidations = decode_invalidations(&mut r, &mut tables)?;
     r.finish()?;
 
@@ -1502,6 +1547,55 @@ fn take_vector(r: &mut Reader<'_>, tables: &mut DecodedTables) -> Result<Vec<u64
     Ok(tables.vectors[position].clone())
 }
 
+/// Read one coverage evidence field: `0` for unrecorded, or the vector
+/// index plus one of strictly increasing path ids, each a folder strictly
+/// inside the document's folder.
+fn take_coverage(
+    r: &mut Reader<'_>,
+    tables: &mut DecodedTables,
+    document: &DocumentId,
+) -> Result<CoverageEvidence, LockError> {
+    let tag = r.u()?;
+    if tag == 0 {
+        return Ok(CoverageEvidence::Unrecorded);
+    }
+    let position = index(&tables.vectors, tag - 1, "coverage evidence vector")?;
+    tables.vector_uses[position] += 1;
+    let ids = tables.vectors[position].clone();
+    let length = ids.len() as u64;
+    r.spend_values(length)?;
+    r.spend_string_bytes(length * 8)?;
+    if ids.windows(2).any(|pair| pair[0] >= pair[1]) {
+        return corrupt(format!(
+            "review row for {document} coverage evidence path ids are not strictly increasing"
+        ));
+    }
+    let home = document.directory();
+    let mut folders = Vec::with_capacity(ids.len());
+    for id in ids {
+        let raw = charged_path(r, tables, id)?;
+        let folder = DirPath::parse(&raw).map_err(|err| {
+            LockError::Corrupt(format!(
+                "review row for {document} records handed-off folder {raw:?}: {err}"
+            ))
+        })?;
+        if raw.is_empty() || folder.as_str() != raw || !folder.is_strictly_within(&home) {
+            return corrupt(format!(
+                "review row for {document} records {raw:?}, which is not a folder strictly inside {}",
+                if home.is_root() {
+                    "the project root".to_string()
+                } else {
+                    format!("{home}/")
+                }
+            ));
+        }
+        folders.push(folder);
+    }
+    // Path-table order differs from folder order; the set is what counts.
+    folders.sort();
+    Ok(CoverageEvidence::Recorded(folders))
+}
+
 fn timestamp_from(tables: &DecodedTables, delta: u64) -> Result<Timestamp, LockError> {
     let seconds = tables
         .base_time
@@ -1519,6 +1613,7 @@ fn timestamp_from(tables: &DecodedTables, delta: u64) -> Result<Timestamp, LockE
 fn decode_reviews(
     r: &mut Reader<'_>,
     tables: &mut DecodedTables,
+    format_version: u8,
 ) -> Result<
     (
         BTreeMap<DocumentId, ReviewRecord>,
@@ -1569,6 +1664,11 @@ fn decode_reviews(
         let git = charged_git(r, tables)?;
         let token_digest = r.h()?;
         let acknowledged = take_vector(r, tables)?;
+        let coverage = if format_version == LEGACY_FORMAT_VERSION {
+            CoverageEvidence::Unrecorded
+        } else {
+            take_coverage(r, tables, &document)?
+        };
 
         let owner = document.directory();
         let file_count = r.u()?;
@@ -1664,6 +1764,7 @@ fn decode_reviews(
                     note,
                     git,
                     acknowledged_invalidations: acknowledged,
+                    coverage,
                 },
             )
             .is_some()
@@ -1747,4 +1848,87 @@ fn decode_invalidations(
         });
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn record(document: &DocumentId, coverage: CoverageEvidence) -> ReviewRecord {
+        ReviewRecord {
+            revision: 1,
+            manifest: InputManifest::new(document.clone(), Hash64(1), 1, Hash64(2), vec![], vec![])
+                .unwrap(),
+            input_fingerprint: Hash64(0),
+            token_digest: Hash64(0),
+            guidance: GuidanceDigest::default(),
+            reviewed_at: Timestamp("2026-09-08T00:00:00Z".into()),
+            reviewer: ReviewerName::from_stored("fixture".into()),
+            result: ReviewResult::NoUpdate,
+            note: ReviewNote::from_stored(
+                "The current summary describes all reviewed inputs.".into(),
+            ),
+            git: GitContext::default(),
+            acknowledged_invalidations: vec![],
+            coverage,
+        }
+    }
+
+    #[test]
+    fn expansion_preflight_charges_coverage_evidence() {
+        // 400 records each record one long handed-off folder. The folder
+        // component is one shared trie string, so the wire stays small, but
+        // every materialized folder path is charged. The preflight alone
+        // must refuse it: without evidence the same state fits.
+        let long = "e".repeat(200_000);
+        let mut with = ReviewState::empty();
+        let mut without = ReviewState::empty();
+        with.revision = 1;
+        without.revision = 1;
+        for index in 0..400 {
+            let document = DocumentId::parse(&format!("p{index}/README.md")).unwrap();
+            let folder = DirPath::parse(&format!("p{index}/{long}")).unwrap();
+            with.reviews.insert(
+                document.clone(),
+                record(&document, CoverageEvidence::Recorded(vec![folder])),
+            );
+            without.reviews.insert(
+                document.clone(),
+                record(&document, CoverageEvidence::Unrecorded),
+            );
+        }
+        measure_expansion(&without).unwrap();
+        match measure_expansion(&with) {
+            Err(LockError::Limit(message)) => {
+                assert!(message.contains("string bytes"), "{message}")
+            }
+            other => panic!("the preflight accepted the evidence expansion: {other:?}"),
+        }
+        // The reader charges the same materialization.
+        let unverified = encode_unverified(&with).unwrap();
+        assert!((unverified.len() as u64) < MAX_FILE_BYTES);
+        assert!(matches!(decode(&unverified), Err(LockError::Limit(_))));
+    }
+
+    #[test]
+    fn evidence_values_are_charged_like_the_reader() {
+        // Values: |X| per record, the same as the reader's vector expansion.
+        let document = DocumentId::parse("README.md").unwrap();
+        let folders: Vec<DirPath> = (0..3)
+            .map(|i| DirPath::parse(&format!("f{i}")).unwrap())
+            .collect();
+        let mut state = ReviewState::empty();
+        state.revision = 1;
+        state.reviews.insert(
+            document.clone(),
+            record(&document, CoverageEvidence::Recorded(folders.clone())),
+        );
+        let bytes = encode(&state).unwrap();
+        let decoded = decode(&bytes).unwrap();
+        assert_eq!(decoded.format_version, FORMAT_VERSION);
+        assert_eq!(
+            decoded.state.reviews[&document].coverage,
+            CoverageEvidence::Recorded(folders)
+        );
+    }
 }

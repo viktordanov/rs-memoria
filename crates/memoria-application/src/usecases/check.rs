@@ -8,6 +8,7 @@ use super::{cause_detail, status_label};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckReport {
+    pub documents: u64,
     pub readmes: u64,
     pub pending: Vec<Detail>,
     pub outdated_imports: Vec<String>,
@@ -19,6 +20,7 @@ pub struct CheckReport {
 impl CheckReport {
     pub fn to_detail(&self) -> Detail {
         DetailMap::default()
+            .number("documents", self.documents)
             .number("readmes", self.readmes)
             .with("pending", Detail::List(self.pending.clone()))
             .with(
@@ -61,7 +63,7 @@ pub fn run(services: &Services<'_>) -> Result<Outcome<CheckReport>, AppError> {
             diagnostics.push(
                 Diagnostic::error(
                     "review_pending",
-                    format!("README needs review ({})", reasons.join(", ")),
+                    format!("document needs review ({})", reasons.join(", ")),
                 )
                 .at_path(status.document.as_str())
                 .with_details(
@@ -95,7 +97,7 @@ pub fn run(services: &Services<'_>) -> Result<Outcome<CheckReport>, AppError> {
             Diagnostic::hint(
                 "guidance_changed",
                 format!(
-                    "{} reviewed document(s) show guidance that changed since their review; byte-based freshness is separate. Run `memoria guidance <README.md>`, then `memoria invalidate` the scope the change affects.",
+                    "{} reviewed document(s) show guidance that changed since their review; byte-based freshness is separate. Run `memoria guidance <DOCUMENT>`, then `memoria invalidate` the scope the change affects.",
                     guidance.changed_documents
                 ),
             )
@@ -107,7 +109,8 @@ pub fn run(services: &Services<'_>) -> Result<Outcome<CheckReport>, AppError> {
         );
     }
     let report = CheckReport {
-        readmes: snapshot.collected.documents.len() as u64,
+        documents: snapshot.collected.documents.len() as u64,
+        readmes: super::status::DocumentCounts::of(&snapshot).readmes,
         pending,
         outdated_imports: outdated,
         structural_errors,

@@ -197,6 +197,7 @@ mod tests {
                 note: ReviewNote::parse("The current summary describes all reviewed inputs.")
                     .unwrap(),
                 git: GitContext::default(),
+                coverage: vec![],
             })
             .unwrap();
     }

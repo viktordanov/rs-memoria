@@ -1,10 +1,12 @@
 # Review documentation with Memoria
 
-This procedure takes a README from a required review to a recorded result.
+This procedure takes a document from a required review to a recorded result.
 
-A document boundary groups the selected files that one README explains.
-That README is their owner.
-Memoria compares its current inputs with the inputs from its previous review.
+A tracked document is a Markdown file that Memoria reviews on its own.
+Every `README.md` is a tracked document.
+Another Markdown file becomes one when it carries a Memoria marker, like this guide.
+Each document covers the selected files in its own folder and below it.
+Memoria compares a document's current inputs with the inputs from its previous review.
 You or an agent decides whether the explanation matches those inputs.
 
 The owner chooses documentation goals.
@@ -26,25 +28,62 @@ Its review states describe the next task:
 
 | State | Meaning |
 | --- | --- |
-| Pending | The README requires a review. |
-| Current | The README has no remaining review cause. |
-| Waiting | Another README must finish review before this README can proceed. |
+| Pending | The document requires a review. |
+| Current | The document has no remaining review cause. |
+| Waiting | Another document must finish review before this document can proceed. |
 
-A README can be current and still wait for another README.
+A document can be current and still wait for another document.
 The plan chooses the order from those dependencies.
 
 ## On this page
 
+- [The review cycle](#the-review-cycle)
 - [Review one document](#review-one-document)
+- [Scopes, handoffs, and shared reviews](#scopes-handoffs-and-shared-reviews)
 - [Why an old artifact cannot approve new inputs](#why-an-old-artifact-cannot-approve-new-inputs)
 - [Prepare a project or request a review](#prepare-a-project-for-its-first-review)
-- [Read the project documentation guidance](#read-the-project-documentation-guidance)
+- [Upgrade a project to Memoria 0.7](#upgrade-a-project-to-memoria-07)
 - [Resolve a rejection and check CI](#resolve-a-rejected-acknowledgement)
 - [Agent guidance and recovery](#agent-guidance-and-state-recovery)
 
+## The review cycle
+
+<!-- memoria:export id="review-cycle" -->
+Every document covers the selected files in its own folder and below it.
+A document hands a subfolder to a tracked document there only by a link or an import.
+When an input in a document's scope changes, that document becomes pending.
+Each pending document gets its own review and its own acknowledgement.
+
+The cycle has five stages:
+
+1. `memoria review` selects the next document, in dependency order.
+2. `memoria review <DOCUMENT> --save <DIR>` saves the review artifact outside the project.
+3. You or an agent reads the changes, the listed inputs, the guidance, and the whole document.
+4. After any edit, a fresh artifact reconciles the review with the final bytes.
+5. `memoria ack <DOCUMENT> --packet <FILE>` records the result against that exact snapshot.
+
+The artifact is the handoff.
+It names what changed, how each change relates to the document, and what the review still must read.
+Its token binds the acknowledgement to one snapshot, so an old artifact cannot approve new inputs.
+`memoria check` passes when no document is pending and every import is current.
+<!-- /memoria:export -->
+
+```mermaid
+flowchart LR
+    accTitle: A code change becomes a recorded documentation review.
+    accDescr: The documents whose scope contains the changed file become pending. Memoria states each review, and an acknowledgement records one decision.
+    change["A file changes"] --> pending["Each document whose scope contains it becomes pending"]
+    pending --> artifact["Memoria saves the review artifact"]
+    artifact --> decision["A person or an agent checks the explanation"]
+    decision --> ack["The acknowledgement records the result"]
+```
+
+The diagram makes one claim: a change reaches every document whose scope contains the changed file.
+Source evidence: [scope rules](../crates/memoria-domain/src/scope.rs) and [review requirements](../crates/memoria-application/src/usecases/requirements.rs).
+
 ## Review one document
 
-The five stages that follow process one README.
+The five stages that follow process one document.
 The commands use `jq` to read fields from JSON.
 
 ### 1. Select the next action
@@ -65,15 +104,15 @@ memoria_document='README.md'
 ```
 
 The example uses `README.md`.
-Another project or another stage of the plan can name a different README.
+Another stage of the plan can name a different document, for example an opted-in guide.
 
-Some READMEs share marked sections.
-An export is the section that one README supplies.
-An import declares a managed copy in another README.
+Some documents share marked sections.
+An export is the section that one document supplies.
+An import declares a managed copy in another document.
 The supplier is the provider, and the recipient is the consumer.
 The `render` command updates these copies from their providers.
 
-If the plan requests `render`, update the reported README:
+If the plan requests `render`, update the reported document:
 
 ```sh
 memoria render "$memoria_document"
@@ -81,214 +120,173 @@ memoria render "$memoria_document"
 
 This command changes only the declared import bodies.
 It does not record a review result.
-The changed README still requires review.
+The changed document still requires review.
 
-After an import update, obtain the plan again:
+If the plan is empty, go to [finish the review cycle](#5-finish-the-review-cycle).
+Never acknowledge an empty plan.
 
-```sh
-memoria review
-```
+### 2. Save the artifact
 
-If the plan has no remaining task, continue at [finish the review cycle](#5-finish-the-review-cycle).
+A review artifact is a file that states what one document's review must read.
+It names the changes and their relationships, the review mode, the suggested sections, the suggested reads, the guidance references, and the reasons for the review.
+The default artifact carries no file content. Ordinary file tools supply the reading.
 
-### 2. Capture the manifest
-
-A review manifest is a file that states what one README's review must read.
-It names the changed inputs, the review mode, the suggested sections, the
-suggested reads, the guidance references, and the reasons for the review.
-It carries no file content. Ordinary file tools supply the reading.
-Manifest creation does not make the README current.
-
-Create a manifest file outside the project:
+Create a directory outside the project, then save the artifact there:
 
 ```sh
-memoria_packet=$(mktemp /tmp/memoria-review.XXXXXX.json)
+memoria_dir=$(mktemp -d)
+memoria review "$memoria_document" --save "$memoria_dir" --format json > "$memoria_dir/receipt.json"
+memoria_artifact=$(jq -r '.data.path' "$memoria_dir/receipt.json")
 ```
 
-Write the manifest through Memoria:
+The receipt names the saved file, its token, and the next `ack` command.
+The saved bytes are exactly the bytes that `--format json` prints for the same snapshot.
+`--save` refuses a directory inside the Git worktree, including an ignored one, because a saved artifact there could become a review input.
+
+For an offline reader, or for a machine that cannot open the project, save the complete export instead:
 
 ```sh
-memoria review "$memoria_document" --format json > "$memoria_packet"
+memoria review "$memoria_document" --full --save "$memoria_dir" --format json
 ```
 
-The JSON format supports the later command that records the review.
-Human text output supports reading only.
-A manifest outside the project does not become a new source input.
-
-If the review fails, resolve the reported error before the next stage.
-
-For an offline reader, or for a machine that cannot open the project, produce
-the complete export instead:
-
-```sh
-memoria review "$memoria_document" --full --format json > "$memoria_packet"
-```
-
-The export carries every reviewed byte and the same token. Saved-export
-retrieval keeps each selection tied to the captured bytes:
-
-```sh
-memoria packet view "$memoria_packet" --section guidance
-memoria packet view "$memoria_packet" --section content
-memoria packet view "$memoria_packet" --section history
-```
-
-`packet view` accepts a full export only. For a manifest it reports
-`packet_content_unavailable` and names the two ways to read the content.
-
-The [legacy P1 procedure](../skills/memoria/SKILL.md) permits explicit reuse
-only with owner approval and a trusted prior review. It never reduces the
-scope that `data.review.mode` requires.
+The export carries every reviewed byte and the same token.
+`memoria packet view` reads its exact saved sections.
 
 ### 3. Examine the evidence and update the explanation
 
-Read the manifest fields in this order:
+Read the artifact fields in this order:
 
-1. Read `data.guidance.references`, then invoke `memoria guidance` for the text.
+1. Read `data.guidance.references`, then run `memoria guidance` for the text.
 2. Read `data.covered_invalidations` for explicit review requests and their reasons.
-3. Read `data.review.mode` and `data.review.fallback_reasons` for the required scope.
-4. Read `data.changes` and `data.inputs` for the changed and suggested identities.
-5. Read `data.review.sections` for the suggested parts of the README.
+3. Read `data.changes` and each `relationship` for what changed and how it relates to the document.
+4. Read `data.review.mode` and `data.review.fallback_reasons` for the required reading.
+5. Read `data.inputs` and `data.review.sections` for the suggested reads.
 
-Then read the actual content with your ordinary tools:
+The human view shows the same facts, change first:
 
 ```sh
+memoria review "$memoria_document"
 memoria guidance "$memoria_document"
-jq -r '.data.inputs[].path' "$memoria_packet" | sort -u
-sed -n '42,78p' "$memoria_document"
-cat "$memoria_document"
 ```
 
-If `data.review.mode` is `full_baseline`, read all current owned sources, all
-current import bodies, the whole README, the effective guidance, and every
-active covered reason.
+If `data.review.mode` is `full_baseline`, read all current scope sources, all current import bodies, the whole document, the effective guidance, and every active covered reason.
 
-If `data.review.mode` is `focused_candidate`, the CLI found no technical
-reason to require the full baseline. That is eligibility, not certification of
-the previous review. Decide separately whether to trust that review. Without
-that trust, use the full baseline.
+If `data.review.mode` is `focused_candidate`, the CLI found no technical reason to require the full baseline.
+That is eligibility, not certification of the previous review.
+Decide separately whether to trust that review.
+Without that trust, use the full baseline.
 
-The whole-README pass is always required, in both modes.
+The whole-document pass is always required, in both modes.
 
-For verified hunks, invoke `memoria explain "$memoria_document" --full`.
+`data.downstream` names the export consumers that wait for this review and the other documents that cover the same changed sources.
+Use them as prompts for judgment.
+They are not proof that a change matters.
+
+For verified hunks, run `memoria explain "$memoria_document" --full`.
 Unavailable evidence does not mean that the input stayed unchanged.
-The current input bytes stay readable on disk.
 
 Before documentation edits, load the skills that the guidance requires.
-If a required skill is unavailable, stop documentation edits.
-Report the missing skill by name.
-
+If a required skill is unavailable, stop documentation edits and report the missing skill by name.
 If the explanation requires changes, edit its authored text.
-If shared text requires an update, invoke `memoria render "$memoria_document"`.
-Examine the final prose against the guidance writing rules.
+If shared text requires an update, run `memoria render "$memoria_document"`.
+Then run `memoria lint`.
 
-The `lint` command examines configuration and documentation structure.
-It reports problems such as invalid markers, missing exports, and import cycles.
-It does not evaluate the meaning of prose or save a review result.
-
-Invoke lint after related edits:
+After edits, save a fresh artifact:
 
 ```sh
-memoria lint
+memoria review "$memoria_document" --save "$memoria_dir" --format json > "$memoria_dir/fresh.json"
+memoria_artifact=$(jq -r '.data.path' "$memoria_dir/fresh.json")
 ```
 
-After edits, capture a fresh manifest at a new path:
-
-```sh
-memoria_fresh=$(mktemp /tmp/memoria-review.XXXXXX.json)
-memoria review "$memoria_document" --format json > "$memoria_fresh"
-```
-
-The README itself is a review input.
-The new manifest binds its final bytes.
-The command that records the review rejects an older artifact after those bytes change.
-
-Do not overwrite the previous manifest before you reconcile it. Compare the
-previous token with the new one. Record the changed obligations, the
-inspections you reuse and why, and every task you reopen. A fresh token
-completes nothing by itself.
+The document itself is a review input.
+The new artifact binds its final bytes.
+Compare the new requirements with your completed inspection, and read what is new.
+A fresh token completes nothing by itself.
 
 ### 4. Record the acknowledgement
 
-An acknowledgement records who reviewed one README and why its explanation is correct.
-A revision is the counter that increases after each successful acknowledgement for that README.
+An acknowledgement records who reviewed one document and why its explanation is correct.
+A revision is the counter that increases after each successful acknowledgement for that document.
 An invalidation is an explicit review request with a recorded reason.
-The artifact identifies the invalidations that it covers.
 
-A token identifies the document, the revision, the complete inputs, the prior
-review, the complete review context, and the covered invalidations that an
-acknowledgement must match.
-The artifact contains that token in `data.token`.
-It does not identify or authenticate the reviewer.
+The saved artifact carries its token.
+`ack` reads the token from the artifact, and then recomputes the complete token from the repository.
+Pass `--token` only to check the artifact against a token that you kept.
 
 An explicit `--reviewer` takes precedence over the optional `MEMORIA_REVIEWER` environment value.
 Without either label, acknowledgement reports `reviewer_required` with exit 2.
-Success output confirms the resolved label.
 The label provides attribution, not authority or authentication.
-Agents must supply an explicit label instead of an unknown environment value.
+Agents must supply an explicit label.
 
-The note explains why this README is correct for this snapshot.
+The note explains why this document is correct for this snapshot.
 After trim, it requires 12–1000 Unicode characters and at least three whitespace-separated words.
-CR/LF are allowed, but tabs and other controls are forbidden.
 Generic notes such as `done`, `reviewed`, `looks good`, `no changes`, and `updated` are invalid.
-The [command reference](cli.md#memoria-ack) lists all rejected generic phrases.
-The note is not an instruction, an override, or proof that the reviewer read every input.
-Reviewer and note validation precede artifact reads and state mutation.
+The [command reference](cli.md#memoria-ack) lists all rejected phrases.
 
-Read the token from the final artifact:
+Record the review:
 
 ```sh
-memoria_token=$(jq -r '.data.token' "$memoria_fresh")
-```
-
-Replace `your-name` with the actual reviewer name.
-Replace the example note with the evidence for your review result.
-If no document edit was necessary, use `--result no-update`.
-
-Record the review with `memoria ack`:
-
-```sh
-memoria ack "$memoria_document" --packet "$memoria_fresh" \
-  --token "$memoria_token" --reviewer "your-name" --result updated \
+memoria ack "$memoria_document" --packet "$memoria_artifact" \
+  --reviewer "your-name" --result updated \
   --note "The document explains the reviewed ownership and error paths."
 ```
 
-A successful acknowledgement saves the review and increases this README revision by one.
-It clears only the invalidations that the artifact covered for this README.
-If a newer invalidation remains, the result reports `still_pending: true`.
-Otherwise, the README becomes current for the reviewed inputs.
+If no document edit was necessary, use `--result no-update`.
+A successful acknowledgement saves the review and increases this document's revision by one.
+It clears only the invalidations that the artifact covered for this document.
+It never clears another document, even one that covers the same sources.
 
 The command rejects changed inputs or a conflicting revision instead of recording an outdated review.
 The [rejection table](#resolve-a-rejected-acknowledgement) gives the next action for each common error.
 
-Successful acknowledgement also reports historical coverage.
-Partial or unavailable Git evidence does not invalidate the review.
-If you want stronger future hunk availability, a source commit before acknowledgement can help.
-A source commit is optional.
-The reviewed snapshot remains the authority.
-The [history procedure](cli.md#historical-coverage) explains bounded recovery of later-committed matching bytes.
-
 ### 5. Finish the review cycle
 
 The `check` command requires valid structure, current reviews, and current imported text.
-It changes no files.
-Navigation warnings and ordinary link hints do not make it fail.
-It makes no LLM call.
+It changes no files, and it makes no LLM call.
+Navigation warnings and hints do not make it fail.
 
-Finish the cycle:
-
-1. Invoke `memoria review`.
+1. Run `memoria review`.
 2. If another task remains, process it from [select the next action](#1-select-the-next-action).
-3. After the plan is empty, invoke `memoria lint`.
-4. Invoke `memoria check`.
-5. Invoke `memoria status`.
+3. After the plan is empty, run `memoria lint`.
+4. Run `memoria check`.
 
 A successful check returns exit 0.
-The final status shows current READMEs, no pending reviews, and no waiting reviews.
-If the check fails, its diagnostics identify the remaining review or structure problem.
-
 A changed-guidance count in the check output is a hint, not a failure.
-Guidance is advisory, so it never blocks the check.
+
+## Scopes, handoffs, and shared reviews
+
+Each document covers its own folder and below it.
+A nested document alone removes nothing from a parent's scope.
+A parent stops covering a subfolder only when it links to or imports a tracked document strictly inside that subfolder.
+That reference is a handoff.
+
+```text
+README.md
+app.rs
+auth/
+  README.md
+  login.rs
+```
+
+| Root `README.md` says | An edit to `auth/login.rs` makes pending |
+| --- | --- |
+| Nothing about `auth/` | `README.md` and `auth/README.md` |
+| `[Authentication](auth/README.md)` | `auth/README.md` only |
+| An import of `auth/README.md#summary` | `auth/README.md`; the root waits for it |
+
+A handoff binds coverage into the parent's review context.
+Adding or removing the link makes the parent pending, and its next review uses the full baseline with the reason `handoff_changed`.
+A link-only handoff creates no waiting.
+An import keeps its waiting edge and its content freshness.
+
+Two documents in the same folder always cover the same sources.
+A change there makes both pending, and each needs its own review.
+The artifact lists the other document under `data.downstream.co_covering`.
+
+A link to Markdown that carries no Memoria marker is not a handoff.
+`memoria lint` reports `handoff_not_applied` with the reason, and `handoff_absent` for a nested document that its parent does not hand off.
+Before you add or remove a link to a document in a subfolder, run `memoria status --explain` for a file in that subfolder.
+The [specification](specification.md#25-scope-and-handoffs) gives the exact rules.
 
 ## Why an old artifact cannot approve new inputs
 
@@ -300,15 +298,15 @@ sequenceDiagram
     participant Memoria
     participant Repository
     participant State as Review state
-    Reviewer->>Memoria: review README.md
-    Memoria->>Repository: Read README and review inputs
-    Memoria-->>Reviewer: Requirements and token
-    Note over Reviewer,Memoria: After edits, obtain a fresh manifest and reconcile
-    Reviewer->>Memoria: ack with artifact and token
+    Reviewer->>Memoria: review DOCUMENT --save DIR
+    Memoria->>Repository: Read the document, its scope, and its imports
+    Memoria-->>Reviewer: Saved artifact and token
+    Note over Reviewer,Memoria: After edits, save a fresh artifact and reconcile
+    Reviewer->>Memoria: ack with the saved artifact
     Memoria->>Memoria: Validate the artifact digest and token grammar
-    Memoria->>Repository: Rebuild inputs and context under the write lock
+    Memoria->>Repository: Rebuild inputs, handoffs, and context under the write lock
     Memoria->>Memoria: Compare revision, providers, and the recomputed token
-    alt Inputs or revision changed, or a provider is pending
+    alt Inputs, handoffs, or revision changed, or a provider is pending
         Memoria-->>Reviewer: Conflict with exit 3
     else Reviewed inputs still match
         Memoria->>Repository: Rebuild and recompute the token before the save
@@ -322,40 +320,33 @@ sequenceDiagram
 ```
 
 The diagram shows the comparisons that separate a review from a saved acknowledgement.
-The write lock covers the state transition and final comparison.
+The write lock covers the state transition and the final comparison.
 A conflict at either comparison prevents the state save.
 Source evidence: [review requirements](../crates/memoria-application/src/usecases/requirements.rs), [acknowledgement](../crates/memoria-application/src/usecases/ack.rs), and [state save](../crates/memoria-infrastructure/src/state.rs).
 
 ## Prepare a project for its first review
 
-You choose what your README hierarchy represents.
-Memoria applies one structural rule: the nearest README above a file owns that file.
+You choose what your document tree represents.
 Common strategies are architecture modules, business concepts, and operational workflows.
 Memoria supports each strategy and selects none of them.
 
-Prepare the documentation boundaries:
-
 1. Write the root `README.md` yourself.
-2. Invoke `memoria init` at the Git worktree root to preview the setup.
-3. Invoke `memoria init --apply` to create `memoria.toml` and `memoria.lock`.
+2. Run `memoria init` at the Git worktree root to preview the setup.
+3. Run `memoria init --apply` to create `memoria.toml` and `memoria.lock`.
 4. Examine the generated `memoria.toml` for source files that require exclusion.
-5. Invoke `memoria lint`, then continue at [review one document](#review-one-document).
+5. Run `memoria lint`, then continue at [review one document](#review-one-document).
 
 The preview reads the project and writes nothing.
-It validates root setup inputs, not all project structure or prose correctness.
-It reads root README markers and import reference syntax, existing root configuration, referenced guidance, and existing state.
-It neither creates nested README boundaries nor records acknowledgements.
-Invoke `memoria status` and `memoria lint` for the broader project view.
 Apply creates only the two committed files, and it preserves valid existing files.
 If the root README is absent, apply reports `root_readme_missing` with exit 1 before any write.
 
-Add a `README.md` to each directory that requires a separate explanation.
-The first review plan includes each README without a saved review.
-The [command reference](cli.md#configuration-and-ownership) explains file selection and optional local rules.
+Add a `README.md` to each folder that requires a separate explanation, and link to it from the parent.
+To track a guide that is not a README, give it an export, an import, or a section marker.
+The first review plan includes each document without a saved review.
 
 Commit both generated files.
 `memoria.toml` is your configuration.
-`memoria.lock` is generated, machine-owned state that Memoria writes and you commit.
+`memoria.lock` is generated, machine-owned state.
 The [state guide](state.md) explains its format, its errors, and its recovery procedure.
 
 <details>
@@ -376,8 +367,8 @@ The root README can declare this import:
 <!-- /memoria:import -->
 ```
 
-The import path is relative to the consumer README.
-The plan requests `render` before a review with outdated imported text.
+The import path is relative to the consumer document.
+An import from a subfolder is also a handoff of that subfolder.
 Export bodies accept absolute web and email links.
 Relative links, raw HTML, and reference-style links are invalid inside exports.
 
@@ -386,66 +377,58 @@ Relative links, raw HTML, and reference-style links are invalid inside exports.
 ## Read the project documentation guidance
 
 Project documentation guidance states your documentation goals, your readers, and your writing standards.
-It is review context for a person or an agent.
+It is review context.
 It never selects files, and it never makes a document stale.
-
-Read the guidance of a boundary before you review that boundary:
 
 ```sh
 memoria guidance src/README.md
 ```
 
-The command works for current documents, needs no review artifact, and changes no state.
-Without a path, it shows the root guidance and lists each scope that adds more.
-
-Guidance lives in `memoria.toml` under `[documentation]`:
-
-```toml
-[documentation]
-guidance = [
-  "Explain the operational workflow before implementation details.",
-]
-guidance_files = ["docs/writing-guidance.md"]
-```
-
-A `README.memoria.toml` sidecar adds local guidance for its own boundary.
-Guidance appends from the root scope toward the document scope.
-Within each scope, inline entries come before file entries.
-
+Guidance lives in `memoria.toml` under `[documentation]`.
+A `README.memoria.toml` sidecar adds local guidance for documents in its folder and below.
 When you change the wording, `memoria status` and `memoria check` report how many reviewed documents saw the older text.
-`check` still exits 0, because guidance is advisory.
 If the change needs fresh eyes, request the review explicitly.
 
 ## Request a review after a decision or policy change
 
-A fingerprint is a hash that represents review inputs for comparison.
-Guidance enters future review artifacts but does not change input fingerprints.
-An explicit invalidation makes the requested READMEs pending.
+An explicit invalidation makes the requested documents pending.
 It stores the reason without changing their text.
-
-Request a review of all boundaries:
 
 ```sh
 memoria invalidate all --reason "Review the documentation against the new writing policy."
 ```
 
-Then invoke `memoria review`.
-
+Then run `memoria review`.
 The command reference also describes [single-document and subtree scopes](cli.md#memoria-invalidate-scope---reason-text).
-A new invalidation after the review remains pending after acknowledgement of the older artifact.
 
 ### Self-hosting cycle
 
-This repository uses six document boundaries and six imported sections from five providers in the root README.
-The root owns this guide and the command reference.
+This repository has six READMEs and one opted-in guide: this page.
+The root README links to this guide and imports its `review-cycle` export, so it hands `docs/` to this guide.
+This guide covers the other pages under `docs/`.
 The crate, command entry, and test READMEs explain their local files.
 The root policy requires `simple-english` and `i-have-adhd` before documentation edits.
 
-The self-demo uses the same five review stages.
-The plan puts providers before the root consumer.
-If a provider export changes, the plan requests `render` before the root review.
-If the export stays unchanged, the source change does not create a consumer review cause.
-An invalidation of `all` still requires all six acknowledgements.
+## Upgrade a project to Memoria 0.7
+
+Memoria 0.7 reads configuration version 3 only.
+
+1. Update every executable (local, agents, and CI) to 0.7.0 together.
+2. Change `version = 2` to `version = 3` in `memoria.toml` and in any `README.memoria.toml` that declares a version.
+3. Run `memoria status` and `memoria review`. Do not acknowledge yet.
+4. Read each `handoff_absent` hint. A README that neither links nor imports a README in a subfolder now covers that subfolder too.
+5. Add the link, or accept the extra reviews.
+6. Decide on new opted-in documents. Each one covers its folder.
+7. Save new review artifacts. Memoria 0.6 artifacts are refused.
+8. Review each document normally. There is no bulk acknowledgement.
+
+The existing `memoria.lock` is read as-is.
+Its records are the baselines, and no upgrade converts, resets, or backfills them.
+The first acknowledgement rewrites the file as lock format 3 and keeps every record.
+After that write, Memoria 0.6 cannot inspect the file.
+A record from 0.6 has no coverage evidence until its document's next acknowledgement.
+Until then, a source that enters its scope can report `coverage_unrecorded` with a reason: review the complete current scope.
+The [changelog](../CHANGELOG.md) gives the complete migration procedure.
 
 ## Resolve a rejected acknowledgement
 
@@ -453,25 +436,23 @@ These errors leave the previous saved review in place:
 
 | Diagnostic | Meaning | Next action |
 | --- | --- | --- |
-| `snapshot_changed` | A bound component changed. | Examine `details.changed`, then obtain a fresh manifest and reconcile. |
-| `revision_conflict` | Another acknowledgement advanced the README revision. | Obtain a fresh manifest. |
+| `snapshot_changed` | A bound component changed. | Examine `details.changed`, then save a fresh artifact and reconcile. |
+| `revision_conflict` | Another acknowledgement advanced the document revision. | Save a fresh artifact. |
 | `dependencies_pending` | A provider prevents this review. | Process the provider from the plan. |
-| `guidance_changed` | The documentation guidance changed after the review. | Read the new guidance, then obtain a fresh manifest. |
-| `packet_integrity_failed` | The packet differs from its integrity digest. | Obtain the packet again through the CLI. |
+| `guidance_changed` | The documentation guidance changed after the review. | Read the new guidance, then save a fresh artifact. |
+| `packet_integrity_failed` | The artifact differs from its integrity digest. | Save the artifact again through the CLI. |
+| `packet_schema_invalid` | The file is an old or foreign artifact, or a save receipt. | Pass the saved artifact from this release. |
 | `note_invalid` | The note does not satisfy the text rules. | Write a specific note with at least three words. |
 
-If output delivery fails after a mutation, `memoria status` shows the resulting state.
 The [command reference](cli.md#exit-statuses) maps all exit statuses.
 
 ## Use the final check in CI
-
-Invoke the same read-only check in CI:
 
 ```sh
 memoria check --format json
 ```
 
-The check fails for pending reviews, outdated imports, unowned files, and invalid documentation structure.
+The check fails for pending reviews, outdated imports, uncovered files, and invalid documentation structure.
 It establishes matching inputs and valid structure.
 It does not establish whether the explanation is correct.
 
@@ -493,30 +474,18 @@ It does not start a prose review.
 
 ## Agent guidance and state recovery
 
-An agent skill is a file of instructions for an agent.
-The [Memoria skill](../skills/memoria/SKILL.md) gives the generic review procedure.
-The executable embeds that text at build time.
-Each review artifact names the guidance sources. `memoria guidance` supplies the text.
-
-Examine an installation plan:
-
-```sh
-memoria agent install --target codex --dry-run
-```
-
+The [Memoria skill](../skills/memoria/SKILL.md) gives agents the review procedure in five stages, with three reference files that load on demand.
+The executable embeds all four files at build time.
 The [agent integrations guide](agents.md) describes skill scopes, the lifecycle, and the optional `Stop` hook.
-The [agent package reference](cli.md#agent-packages) gives the exact arguments.
 
 A corrupt state file causes `state_corrupt` with exit 4.
 Memoria does not reset corrupt state.
 Recovery requires a known valid `memoria.lock` from repository history or a backup.
-Inspect a candidate file before you use it:
 
 ```sh
 memoria state inspect --file /tmp/candidate.lock
 ```
 
 The [state guide](state.md#6-errors-and-recovery) gives the complete recovery procedure.
-A lock file after a crash is harmless, because the operating system releases the advisory lock.
 
-Invoke `memoria review` to obtain the next documentation action.
+Run `memoria review` to obtain the next documentation action.

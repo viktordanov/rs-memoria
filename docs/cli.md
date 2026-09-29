@@ -10,29 +10,30 @@ Read the [workflow](workflow.md) for a first review with commands in task order.
 ## On this page
 
 - [Terms, invocation, and paths](#terms-used-in-this-reference)
-- [Configuration and ownership](#configuration-and-ownership)
+- [Configuration and document scopes](#configuration-and-document-scopes)
 - [Inspection commands and review artifacts](#inspection-commands)
 - [Mutations, agent packages, and integrations](#review-mutations)
 - [Diagnostics, exits, and limits](#json-and-diagnostics)
 
 ## Terms used in this reference
 
-A document boundary groups the selected files that one README explains.
-That README is their owner.
-An export is a marked section that another README can copy.
+A tracked document is a `README.md`, or another selected Markdown file with a Memoria marker outside code.
+Its scope is the selected sources in its own folder and below, minus the subfolders it hands off.
+A handoff is a link or an import from a document to a tracked document in a strict subfolder.
+An export is a marked section that another document can copy.
 An import declares the managed copy of that section.
 The supplier is the provider, and the recipient is the consumer.
 
-A review manifest states what one README's review must read, and why it
+A review manifest states what one document's review must read, and why it
 cannot read less. A full export adds the exact bytes of those inputs.
 Both are review artifacts. Both bind the same snapshot.
-A section is an optional advisory mapping from README prose to owned sources.
+A section is an optional advisory mapping from document prose to sources in its scope.
 An acknowledgement records the reviewer, result, and reason that the explanation is correct.
-A revision counts successful acknowledgements for one README.
+A revision counts successful acknowledgements for one document.
 An invalidation is an explicit review request with a recorded reason.
 The token identifies the document, revision, inputs, and invalidations that the acknowledgement must match.
 
-Pending means that a README requires review.
+Pending means that a document requires review.
 Current means that it has no remaining review cause.
 A consumer waits until its providers finish review.
 The `render` command updates imported text without recording a review result.
@@ -51,18 +52,20 @@ Neither command changes files.
 
 Commands discover the worktree root from the current directory.
 Document and scope paths are relative to the project root.
-The `--packet` and `--path` arguments resolve from the process directory.
+The `--packet`, `--save`, and `--path` arguments resolve from the process directory.
+A document path names `README.md`, `*.md`, or `*.markdown`; any other path is `document_invalid` with exit 2.
 Arguments must contain valid UTF-8 text.
 The [CLI grammar](../src/presentation/cli.rs#L13) defines the command arguments.
 
-## Configuration and ownership
+## Configuration and document scopes
 
 | File | Purpose |
 | --- | --- |
 | `memoria.toml` | The root configuration defines project rules. |
-| `README.md` | Each README defines a documentation boundary. |
+| `README.md` | Each README is a tracked document. |
+| `*.md`, `*.markdown` with a marker | A Markdown file with an export, import, or section marker outside code is an opted-in document. |
 | `README.memoria.toml` | An optional sidecar defines local rules beside a README. |
-| `memoria.lock` | This generated file contains the latest review for each README and the active invalidations. |
+| `memoria.lock` | This generated file contains the latest review for each document and the active invalidations. |
 | `.gitattributes` | The rule `/memoria.lock binary` prevents text merging and newline conversion. |
 
 Commit `memoria.toml` and `memoria.lock` together.
@@ -70,15 +73,27 @@ Memoria owns the bytes of `memoria.lock`; do not edit it.
 The write lock is not in the worktree.
 It uses the path that `git rev-parse --git-path memoria/write.lock` returns, so linked worktrees receive separate locks.
 
-The nearest README owns each selected file.
-A child README creates a new boundary.
-The parent does not hash that child README as an ordinary source input.
+Each document covers the selected sources in its own folder and below.
+A nested document alone removes nothing.
+A document stops covering a subfolder only when it links to or imports a tracked document strictly inside it.
+No document hashes another document as an ordinary source input.
 Declared imports carry the relevant export content into consumer inputs.
+The [specification](specification.md#25-scope-and-handoffs) gives the complete handoff rules.
+
+| Reference in a document | Result |
+| --- | --- |
+| Link or import to a tracked document in a strict subfolder | Handoff: the subfolder leaves the scope |
+| Link to a same-folder, parent, or sibling document | No handoff |
+| Link to unmarked Markdown, a missing path, a folder without `README.md`, or an unselected file in a subfolder | No handoff; hint `handoff_not_applied` with reason `untracked_markdown`, `missing`, `no_document_in_directory`, or `not_selected` |
+| Link to a non-Markdown file, a URL, `mailto:`, or a fragment | No handoff, no hint |
+
+A tracked document below a document that does not hand it off gets the hint `handoff_absent` on the parent.
+Hints never fail a command.
 
 The root configuration supports these defaults:
 
 ```toml
-version = 2
+version = 3
 ignore = []
 include = []
 
@@ -106,8 +121,10 @@ Memoria does not override, deduplicate, or rank conflicting prose.
 
 A `guidance_files` entry resolves relative to its declaring configuration file.
 The destination must stay inside the project and hold a regular UTF-8 file.
-These destinations are invalid: a symlink, a missing file, Git metadata, a state artifact, a configuration file, and a README boundary file.
+These destinations are invalid: a symlink, a missing file, Git metadata, a state artifact, a configuration file, and a `README.md`.
 
+Configuration version 3 is required. Version 2 fails with `configuration_invalid`, exit 1, and names the cutover: change `version = 2` to `version = 3` in `memoria.toml` and in any `README.memoria.toml` that declares a version.
+A sidecar version, when present, must be 3.
 The retired keys `instructions` and `instruction_files` fail with the exact replacement name.
 A configuration that holds both spellings fails; Memoria never selects one silently.
 
@@ -142,12 +159,12 @@ Selection has four stages:
 1. Git supplies tracked files and untracked files that Git does not ignore.
 2. Memoria removes reserved inputs from source selection.
 3. Root rules apply before sidecar rules, with nearer scopes last.
-4. Ownership assigns each selected file to its nearest README.
+4. Discovery turns selected Markdown with a marker into opted-in documents, and each remaining source joins the scope of every document that covers it.
 
 Within one scope, `ignore` rules apply before `include` rules.
 An include can restore a Memoria exclusion, but it cannot restore a Git exclusion.
 If Git ignores a tracked path, that file remains eligible.
-Unowned selected files cause lint and check errors.
+Selected files that no document covers cause lint and check errors (`coverage_unowned`). A root README prevents these gaps.
 
 <details>
 <summary>Reserved inputs and repository boundaries</summary>
@@ -156,7 +173,7 @@ Reserved source inputs include configuration files, READMEs, sidecars, `.gitigno
 The agent integration files are also reserved, whether installed or absent: `.codex/hooks.json`, `.codex/config.toml`, `.codex/memoria-hook.json`, `.claude/settings.local.json`, and `.claude/memoria-hook.json`.
 Unrelated files in those directories stay ordinary inputs.
 Managed Memoria packages and their transaction artifacts are also reserved.
-The tool discovers neither sources nor documentation boundaries within its reserved trees.
+The tool discovers neither sources nor documents within its reserved trees.
 
 The default package parents are `.agents/skills` and `.claude/skills`.
 A custom in-project `memoria` package requires a valid `.memoria-install.json` for discovery as managed guidance.
@@ -180,12 +197,14 @@ Memoria rejects selected symlinks, selected paths behind symlink ancestors, and 
 Excluded symlinks do not cause source errors.
 A symlink at `.memoria`, its lock, or its state file prevents mutations.
 A missing tracked README or sidecar counts as a deletion.
-The current files determine the resulting ownership and local rules.
+The current files determine the resulting scopes and local rules.
 
 README discovery precedes Memoria ignore/include selection.
-An eligible nested README remains a boundary even when Memoria excludes its surrounding source files.
-A Memoria ignore rule does not hide a README boundary.
-A tracked README absent from the worktree is not a current boundary.
+An eligible nested README remains a document even when Memoria excludes its surrounding source files.
+A Memoria ignore rule does not hide a README.
+Opted-in documents are discovered after selection: an unselected Markdown file is never a document.
+A tracked README absent from the worktree is not a current document.
+Markdown that is not valid UTF-8 stays a source, with the warning `document_encoding_invalid` when a line starts with `<!-- memoria:`.
 
 Source evidence: [reserved paths](../crates/memoria-application/src/snapshot.rs#L137) and [filesystem path rules](../crates/memoria-infrastructure/src/fs.rs#L22).
 
@@ -252,15 +271,15 @@ mkdir -p ~/.config/fish/completions
 memoria completions fish > ~/.config/fish/completions/memoria.fish
 ```
 
-### `memoria explain <README.md>`
+### `memoria explain <DOCUMENT>`
 
-This read-only command explains whole-file freshness for a current, pending, waiting, or never-reviewed boundary.
+This read-only command explains whole-file freshness for a current, pending, waiting, or never-reviewed document.
 It reports changed paths, hashes, lengths, policy, guidance, imports, invalidations, and locally verified Git hunks.
 It does not acquire a write lock, fetch Git objects, or acknowledge a review.
 `status --explain <path>` remains the separate source-selection explanation.
 
 The JSON result has `kind="freshness_explanation"`.
-It includes state fields, `changes`, `policy`, `guidance`, `evidence`, `before_manifest`, and `current_manifest`.
+It includes state fields, `document_kind`, `scope` (files, handoffs, and incoming handoffs), `changes`, `policy`, `guidance`, `evidence`, `before_manifest`, and `current_manifest`.
 A missing previous review produces a null previous manifest.
 Evidence records give baseline verification, expected and observed hashes and lengths, and a fixed unavailable-hunk reason code.
 Only a verified baseline permits a hunk.
@@ -298,21 +317,26 @@ An output refusal returns `state_comparison_limit_exceeded` with exit 4.
 
 | Command | Result |
 | --- | --- |
-| `memoria status [--explain <path>]` | It shows ownership, selected bytes, review state, guidance counts, and exclusions. |
+| `memoria status [--explain <path>]` | It shows documents, handoffs, overlaps, selected bytes, review state, guidance counts, and exclusions. |
 | `memoria status --summary` | It emits bounded counts only. |
-| `memoria guidance [<README.md>]` | It shows the documentation guidance that applies to a boundary. |
+| `memoria guidance [<DOCUMENT>]` | It shows the documentation guidance that applies to a document. |
 | `memoria lint` | It examines configuration, coverage, markers, exports, imports, cycles, and navigation. |
 | `memoria review` | It shows pending documents in dependency order and the next action. |
 | `memoria check` | It requires valid structure, current reviews, and current import copies. |
-| `memoria graph` | It shows README ownership, import, and navigation edges with review state. |
+| `memoria graph` | It shows documents, handoffs, overlaps, and import and navigation edges with review state. |
 | `memoria state inspect [--file <path>]` | It decodes committed state and shows its framing. |
 
 Every command in this table is read-only.
 None of them creates a lock, a temporary file, or a directory.
 
-`status` also shows active invalidations, unowned files, disconnected READMEs, and repository boundaries.
-Its explanation names the rule chain for one path.
-A normal Markdown link supplies navigation without creating a review dependency.
+`status` also shows active invalidations, uncovered files, disconnected documents, and repository boundaries.
+Its `data` holds `documents`, `readmes`, `opted_in_documents`, `handoffs`, and `overlapping_sources`, and each document entry holds `document_kind`, `scope_files`, and `handoffs`.
+The human view starts with "Documents N: M READMEs, K opted-in documents; H handoffs; S sources covered by more than one document".
+
+`status --explain <path>` names the rule chain for one path.
+For a selected source it adds `covered_by`, the documents whose scope contains it, and `handed_off`, each handoff `{by, to, subtree, via, line}` whose subtree contains it.
+For a tracked document the outcome is `document`, and `document` holds its `kind`, `scope_files`, `handoffs`, and `handed_off_by`.
+A normal Markdown link supplies navigation without creating a review dependency, except a link to a tracked document in a strict subfolder, which is a handoff.
 Local navigation decodes URL path escapes once and leaves `+` literal.
 Invalid encodings or paths outside the root do not create navigation edges.
 
@@ -329,15 +353,16 @@ Summary mode uses the same snapshot and freshness logic as ordinary status.
 It emits counts without per-document manifests, source content, full guidance, or exclusion explanations.
 It rejects `--explain` as a usage error.
 
-Its `data` object holds `readmes`, `selected_files`, `selected_bytes`, the four review counts, guidance counts, unowned and disconnected counts, invalidation counts, and diagnostic counts.
+Its `data` object holds `documents`, `readmes`, `opted_in_documents`, `handoffs`, `overlapping_sources`, `selected_files`, `selected_bytes`, the four review counts, guidance counts, the `unowned` (uncovered) and disconnected counts, invalidation counts, and diagnostic counts.
 Waiting can overlap current, pending, or never-reviewed status.
 These counters are not disjoint categories.
 
-### `memoria guidance [<README.md>]`
+### `memoria guidance [<DOCUMENT>]`
 
 Without a path, the command shows the effective guidance of the root README.
 It also lists each scope that adds guidance, with the command that inspects that scope.
-With a path, it shows that boundary's entries, exact sources, digest, and applicable scope.
+With a path, it shows that document's entries, exact sources, digest, and applicable scope.
+A document's guidance comes from the configuration scopes in its folder and above it.
 
 The command works for current documents.
 It needs no review artifact, and it changes no state.
@@ -355,183 +380,278 @@ With `--file`, it resolves the path against the invocation directory, works outs
 
 Inspection decodes stored bytes.
 It makes no freshness claim, and it offers no export, import, reset, or migration.
+It reads lock formats 2 and 3 and reports `format_version`.
+Each record in `data.state.reviews` has `coverage_evidence`: `null` when the record has no evidence, or the sorted list of folders that the acknowledged scope handed off.
+The human view shows `coverage evidence: auth/, docs/`, `coverage evidence: none handed off`, or `coverage evidence: not recorded`.
 The [state guide](state.md) describes the format, the limits, and the recovery procedure.
 
 The review plan orders providers before consumers, with path order for ties.
 `data.next_ready` names the first ready document.
 `data.next_action` names the required `render` or `review` action for that document.
 If its imports are outdated, a ready document still requires `render` before a review.
-The plan shows input byte counts before the review.
+Each pending task adds `document_kind`, `scope_files`, and `co_covering`, the other documents that cover a source that changed for it.
+The human plan starts with "Review plan: N pending documents (dependency order)" and gives one line per document with its kind, its causes, and whether it is ready.
 
 Source evidence: [plan](../crates/memoria-application/src/usecases/plan.rs#L43), [lint](../crates/memoria-application/src/usecases/lint.rs#L26), and [check](../crates/memoria-application/src/usecases/check.rs#L37).
 
 ## Review requirements
 
 ```sh
-memoria review <README.md> [--max-bytes <n>] [--format json]
+memoria review <DOCUMENT> [--max-bytes <n>] [--full] [--save <DIR>] [--details] [--format json]
 ```
 
 A review requires a pending document. Its providers must permit review, and
 its import copies must be current.
 
 The default result is a review manifest. The manifest states what the reviewer
-must read and why the reviewer cannot read less. It contains no README body,
+must read and why the reviewer cannot read less. It contains no document body,
 no source body, no import body, no historical content, and no guidance prose.
 Read the listed paths with ordinary file tools.
 
-The manifest reports the document, the review revision, the token, the bound
-snapshot digests, the previous review, the changed inputs, the review mode,
-the suggested sections, the suggested reads, the guidance references, the
-covered invalidations, bounded counts, and the built-in workflow steps.
+The manifest (`manifest_version` 2) reports the document and its kind, its
+scope and handoffs, the review revision, the token, the bound snapshot
+digests, the previous review, the changed inputs with their relationships,
+the review mode, the suggested sections, the suggested reads, the downstream
+consumers and co-covering documents, the guidance references, the covered
+invalidations, bounded counts, and the built-in workflow steps.
+
+The human view is change-first:
+
+1. A header: "Review auth/flows.md — opted-in document, pending since revision 1".
+2. The scope: its size and each handoff with its kind and line.
+3. The baseline: revision, reviewer, and result.
+4. "What changed since that review", one line per change with its relationship.
+5. Semantic review requests.
+6. "Also pending for the same changes": co-covering documents, at most 10 lines.
+7. "Downstream": export consumers, at most 10 lines.
+8. "How to read": the mode and its reasons, suggested sections, the reads, the whole-document pass, and the guidance command.
+9. "Next": read and edit, save a fresh artifact, and acknowledge.
+10. The line "Details: memoria review DOCUMENT --details".
+
+`--details` adds the token, the digests, per-input sizes and hashes, and counts to the human view.
 
 ### A complete manifest
 
 This is one captured `review_manifest` envelope, exactly as the built
-executable wrote it. A one-boundary fixture maps a section to the source it
-describes, and that source changed after the baseline acknowledgement, so the
-review is a focused candidate with one suggested section.
+executable wrote it for the [worked example](../README.md#scope-and-handoffs)
+of change A: `auth/login.rs` changed after every document was acknowledged.
+The document is the opted-in `auth/flows.md`, whose section `login` maps that
+source, so the review is a focused candidate with one suggested section.
+`auth/README.md` covers the same folder, so it appears as a co-covering
+document.
 
 <!-- documented-manifest-example -->
 ```json
 {
   "command": "review",
   "data": {
-    "artifact_digest": "399df06464aeb237",
+    "artifact_digest": "b7d5c9162fbc2540",
     "baseline": {
       "evidence_status": "verified",
-      "recorded_commit": "1eaf0cac5555d0a4f17e38c5cfb0694b97a3d31f",
+      "recorded_commit": "ba1e8da0b5856b7050cdeda4788566d21cdd8ab5",
       "result": "no-update",
-      "reviewer": "Fixture reviewer",
+      "reviewer": "fixture",
       "revision": 1,
-      "token_digest": "c0a1b7dcefdc8280"
+      "token_digest": "4f9ff5808cbf17ff"
     },
     "changes": [
       {
-        "after_bytes": 45,
-        "after_hash": "9886c82f4a737bad",
-        "before_bytes": 29,
-        "before_hash": "8269ac528b6aa635",
+        "after_bytes": 19,
+        "after_hash": "d34917e84a73a8f6",
+        "before_bytes": 14,
+        "before_hash": "3e66e2ce1ec9dd61",
         "change": "changed",
-        "identity": "service.go",
-        "kind": "file"
+        "identity": "auth/login.rs",
+        "kind": "file",
+        "relationship": {
+          "also_covered_by_total": 1,
+          "export_id": null,
+          "kind": "scope_source",
+          "provider": null,
+          "sections": [
+            "login"
+          ],
+          "unrecorded_reason": null
+        }
       }
     ],
     "counts": {
+      "handoffs": 0,
       "imports": 0,
-      "raw_input_bytes": 264,
-      "selected_files": 1,
+      "raw_input_bytes": 159,
+      "scope_files": 3,
       "suggested_sources": 1
     },
     "covered_invalidations": [],
-    "document": "README.md",
+    "document": "auth/flows.md",
+    "document_kind": "opted_in",
+    "downstream": {
+      "co_covering": [
+        {
+          "document": "auth/README.md",
+          "document_kind": "readme",
+          "status": "pending"
+        }
+      ],
+      "co_covering_total": 1,
+      "consumers": [],
+      "consumers_total": 0
+    },
     "guidance": {
       "changed_since_review": false,
       "command": [
         "memoria",
         "guidance",
-        "README.md"
+        "auth/flows.md"
       ],
-      "digest": "63a589947c0f2b3a",
-      "references": [
-        {
-          "entry_index": 0,
-          "kind": "inline",
-          "scope": "",
-          "source": "memoria.toml"
-        }
-      ]
+      "digest": "bb97f9223e4cba99",
+      "references": []
     },
     "inputs": [
       {
-        "bytes": 219,
+        "bytes": 114,
         "export_id": null,
-        "hash": "93f8b5f4657ad4f0",
+        "hash": "68db31dcdffd1432",
         "kind": "document",
-        "path": "README.md",
-        "role": "whole_readme"
+        "path": "auth/flows.md",
+        "role": "whole_document"
       },
       {
-        "bytes": 45,
+        "bytes": 19,
         "export_id": null,
-        "hash": "9886c82f4a737bad",
+        "hash": "d34917e84a73a8f6",
         "kind": "file",
-        "path": "service.go",
+        "path": "auth/login.rs",
         "role": "changed_source"
       }
     ],
     "kind": "review_manifest",
-    "manifest_version": 1,
+    "manifest_version": 2,
     "review": {
       "fallback_reasons": [],
       "mode": "focused_candidate",
       "sections": [
         {
-          "heading": "Saving and synchronizing",
-          "id": "persistence",
+          "heading": "Login",
+          "id": "login",
           "lines": [
-            6,
-            8
+            4,
+            6
           ],
           "sources": [
-            "service.go"
+            "auth/login.rs"
           ]
         }
       ],
-      "whole_readme_pass": true
+      "whole_document_pass": true
     },
     "review_revision": 1,
-    "snapshot": {
-      "baseline_digest": "f4e57dab1d94f435",
-      "context_digest": "9b321bbb25b06cc8",
-      "guidance_digest": "63a589947c0f2b3a",
-      "inputs_digest": "5d1c339e024e3fd6",
-      "selection_version": 1
+    "scope": {
+      "files": 3,
+      "handed_off_by": [],
+      "handed_off_by_total": 0,
+      "handoffs": [],
+      "handoffs_total": 0
     },
-    "token": "mrv3.79b7db511c7846c3",
+    "snapshot": {
+      "baseline_digest": "4b63f8474376f0c9",
+      "context_digest": "ac6f9a256466da33",
+      "guidance_digest": "bb97f9223e4cba99",
+      "inputs_digest": "659dabed259ca916",
+      "selection_version": 2
+    },
+    "token": "mrv3.a5d2ebb85aefb2fe",
     "workflow": {
-      "policy": "section-review-v1",
+      "policy": "section-review-v2",
       "steps": [
         "Read current guidance and covered reasons.",
-        "Inspect suggested sections and changed sources.",
-        "Expand uncertain context or use full baseline.",
-        "Read the whole README.",
-        "Reconcile a fresh manifest after edits before acknowledgement."
+        "Inspect the changes, their relationships, and suggested sections.",
+        "Expand uncertain context or use the full baseline.",
+        "Read the whole document.",
+        "Capture a fresh artifact after edits and reconcile before acknowledgement."
       ]
     }
   },
-  "diagnostics": [],
+  "diagnostics": [
+    {
+      "code": "handoff_absent",
+      "column": null,
+      "details": {
+        "subtree": "legacy",
+        "target": "legacy/README.md"
+      },
+      "line": null,
+      "message": "legacy/README.md is a tracked document inside this document's folder, but this document neither links to it nor imports it, so both documents cover legacy/ and both are reviewed for changes there. Link to legacy/README.md to hand that folder off, or keep both reviews",
+      "path": "README.md",
+      "severity": "hint"
+    },
+    {
+      "code": "missing_import_hint",
+      "column": null,
+      "details": {
+        "target": "auth/README.md"
+      },
+      "line": null,
+      "message": "normal link to auth/README.md has no matching import; add an import if its summary belongs here",
+      "path": "README.md",
+      "severity": "hint"
+    },
+    {
+      "code": "navigation_disconnected",
+      "column": null,
+      "details": {
+        "scope_files": 3
+      },
+      "line": null,
+      "message": "no link or import path from the root README reaches this document",
+      "path": "auth/flows.md",
+      "severity": "warning"
+    },
+    {
+      "code": "navigation_disconnected",
+      "column": null,
+      "details": {
+        "scope_files": 1
+      },
+      "line": null,
+      "message": "no link or import path from the root README reaches this document",
+      "path": "legacy/README.md",
+      "severity": "warning"
+    }
+  ],
   "ok": true,
   "schema_version": 3
 }
 ```
 
-The capture, the fixture files, and the script that produces them are kept with
-the release artifacts. A fresh run of that script produces different digests, a
-different token, and a different recorded commit, because those bind the exact
-snapshot and the exact prior review. This example is a fixture capture. It is
-not an acknowledgement for a reader's repository, and copying it acknowledges
-nothing.
+The test suite regenerates the same fixture with the built executable and
+checks that the production decoder accepts these exact bytes. A fresh run
+produces different digests, a different token, and a different recorded
+commit, because those bind the exact snapshot and the exact prior review.
+This example is a fixture capture. Copying it acknowledges nothing.
 
 Reading the envelope:
 
 | Field | What the capture shows |
 | --- | --- |
-| `schema_version`, `kind`, `manifest_version` | `3`, `review_manifest`, `1`. This release accepts these values only. |
+| `schema_version`, `kind`, `manifest_version` | `3`, `review_manifest`, `2`. This release accepts these values only. |
+| `document`, `document_kind`, `scope` | `auth/flows.md`, `opted_in`, and its scope of three sources with no handoffs. |
 | `token`, `artifact_digest` | The snapshot token, and the integrity digest over the envelope without that field. |
-| `snapshot` | The four recorded digests, and `selection_version: 1`. The token binds three of them directly, and `context_digest` binds `guidance_digest`. |
+| `snapshot` | The four recorded digests, and `selection_version: 2`. The token binds three of them directly, and `context_digest` binds `guidance_digest`. |
 | `baseline` | The prior review, with `evidence_status: verified`: the reviewed bytes were recoverable. |
-| `changes` | One changed source, with both sides' lengths and hashes. |
-| `review` | `focused_candidate` with no fallback reasons, one suggested section, and the always-required whole-README pass. |
-| `inputs` | The README with role `whole_readme`, and the changed source with role `changed_source`. Advice, not the complete inventory. |
+| `changes` | One changed source, with both sides' lengths and hashes, and its relationship: a scope source that section `login` describes, also covered by one other document. |
+| `review` | `focused_candidate` with no fallback reasons, one suggested section, and the always-required whole-document pass. |
+| `inputs` | The document with role `whole_document`, and the changed source with role `changed_source`. Advice, not the complete inventory. |
+| `downstream` | No export consumers, and `auth/README.md` as the one co-covering document. |
 | `guidance` | The effective digest, the references, and the command that prints the text. No authored prose. |
-| `counts` | The complete boundary: one selected file, no imports, and the raw input bytes. |
-| `workflow` | The built-in policy identifier and its five fixed steps. |
+| `counts` | The complete scope: three files, no imports, the raw input bytes, and no handoffs. |
+| `workflow` | The built-in policy `section-review-v2` and its five fixed steps. |
 
 An older example is regenerated, never migrated. Run `memoria review` again.
 
 ### Advisory sections
 
-A README can map one part of its prose to the sources it describes:
+Any tracked document can map one part of its prose to the sources it describes:
 
 ```markdown
 <!-- memoria:section id="persistence" files="handle.go service.go" -->
@@ -543,21 +663,23 @@ Save writes a local archive. Sync also uploads the archive.
 
 Both markers sit at column zero. The attribute order is fixed. Exactly one
 space separates two paths. The identifier matches
-`[A-Za-z][A-Za-z0-9_-]{0,63}` and stays unique inside one README. Each path is
-literal, relative to the README directory, and must name a selected regular
-source file that this README owns. The body must open with a Markdown heading.
+`[A-Za-z][A-Za-z0-9_-]{0,63}` and stays unique inside one document. Each path
+is literal, relative to the document's folder, and must name a selected
+regular source file in the document's scope: not a tracked document, not a
+handed-off file. The body must open with a Markdown heading.
 
 Sections do not nest. An export or an import can sit wholly inside a section.
 A section cannot sit inside or cross an export or an import. Marker text
 inside fenced or indented code is inert.
 
-A section is advice. It creates no ownership and no separate freshness. One
-invalid mapping withdraws the advice of the whole README, because partial
+A section is advice. It adds or removes no input and has no separate
+freshness. One invalid mapping withdraws the advice of the whole document,
+because partial
 advice cannot narrow a review. Memoria then reports `section_mapping_invalid`
 as a warning with the path, the line, and a precise reason. `lint` does not
 fail because of section advice alone. `review` selects the full baseline.
 
-The [specification](specification.md#461-map-readme-sections-to-sources) gives
+The [specification](specification.md#461-map-document-sections-to-sources) gives
 the complete grammar and every rejection rule.
 
 ### Review mode and fallback reasons
@@ -567,52 +689,115 @@ the complete grammar and every rejection rule.
 `focused_candidate` means technical eligibility only. It does not certify the
 previous review. Without explicit trust in that review, use the full baseline.
 
-`full_baseline` means all current owned sources, all current import bodies,
-the whole README, the effective guidance, and every active covered reason.
+`full_baseline` means all current scope sources, all current import bodies,
+the whole document, the effective guidance, and every active covered reason.
 `data.review.fallback_reasons` gives one entry for each cause.
 
 | Code | Cause |
 | --- | --- |
 | `unmapped_change` | No valid section describes a changed source. |
-| `path_set_changed` | A source entered or left the boundary. A rename appears as both. |
-| `baseline_missing` | The README has no previous review. |
+| `path_set_changed` | A source entered or left the scope. A rename appears as both. |
+| `baseline_missing` | The document has no previous review. |
 | `baseline_unavailable` | The reviewed bytes could not be verified. The message names the history reason. |
-| `mapping_invalid` | The README's section mappings are unusable. |
+| `mapping_invalid` | The document's section mappings are unusable. |
 | `mapping_changed` | The section associations changed since the last review. |
-| `ownership_changed` | A path now answers to a different README. |
+| `handoff_changed` | A handoff appeared or disappeared, so a subtree left or entered the scope. The identity is the subtree. |
+| `coverage_unrecorded` | A source entered the scope, and the last review of this document did not record its handed-off folders. The identity is the source path. |
+| `document_classification_changed` | A Markdown file gained its first marker or lost its last, so it left or joined the scope. |
 | `policy_changed` | The effective selection policy changed. |
 | `imports_changed` | An imported contract changed. |
 | `semantic_invalidation` | An explicit reason requires a semantic review. |
 | `guidance_changed` | The effective guidance changed since the last review. |
 
-`data.review.whole_readme_pass` is always `true`. A suggested reading list
-never replaces the whole-README pass.
+`data.review.whole_document_pass` is always `true`. A suggested reading list
+never replaces the whole-document pass.
+
+### Relationships and downstream
+
+Each entry in `data.changes` has a `relationship`:
+
+| `kind` | Meaning |
+| --- | --- |
+| `own_text` | The document's own text changed. |
+| `scope_source` | A source in the scope changed. `sections` names this document's valid sections that map it. |
+| `handoff` | A source entered or left the scope because a handoff changed. |
+| `coverage_unrecorded` | A source entered the scope, and the former coverage is not recorded. `unrecorded_reason` gives the reason. |
+| `import` | An imported export body changed. `provider` and `export_id` name it. |
+| `selection_policy` | The effective selection policy changed. |
+
+`also_covered_by_total` counts the other documents that cover the same source.
+`unrecorded_reason` is `null` except for `coverage_unrecorded`.
+
+### Coverage unrecorded
+
+`memoria ack` records the folders that the document's scope handed off. A
+later review uses that record to classify a source that entered the scope:
+inside a recorded folder, the result is `handoff_changed` with the shallowest
+such folder. Otherwise, it is `path_set_changed`.
+
+A record from lock format 2 (Memoria 0.6, or an earlier 0.7 build) has no
+such record. For it, Memoria tries to rebuild the recorded token from each
+subset of candidate folders. An exact match proves the former handoffs. The
+proof exists only if all of these conditions are true. Memoria examines them
+in this order, and the first one that fails is the reason:
+
+| Condition | `unrecorded_reason` when it fails |
+| --- | --- |
+| The record is the document's first review. | `revision_not_first` |
+| The review acknowledged no invalidation. | `acknowledged_invalidations` |
+| The previous document text is available. | `previous_text_unavailable` |
+| Each layout tried has at most 12 candidates. | `candidate_limit` |
+| One subset reproduces the recorded token digest. | `no_matching_reconstruction` |
+
+Each layout costs at most 4,096 token computations, so at most 8,192 for one
+document. The proof runs only for a record without evidence, and only when a
+source entered its scope.
+
+If the proof is not available, the review reports `coverage_unrecorded` for
+each added source, with this message: "`<path>` entered this document's
+scope. This document was last reviewed by a release that did not record
+handed-off folders, so Memoria cannot tell whether a handoff ended or the
+source is new (`<reason>`). Review the complete current scope. The next
+acknowledgement records the coverage." The human phrase is "entered the scope;
+former coverage not recorded (<reason>)". The mode is `full_baseline`, as for
+every fallback.
+
+`data.scope` holds `files`, `handoffs[] {subtree, target, via, line}`, and
+`handed_off_by[] {parent, via, line}`. `data.downstream` holds
+`consumers[] {export_id, consumer, consumer_kind, status,
+waits_for_this_document}` and `co_covering[] {document, document_kind,
+status}`. Each list holds at most 64 entries, with a `*_total` beside it. The
+human view shows 10 lines, then "and N more; `memoria graph` lists all".
+Downstream is shown for judgment. It is not bound into the token, and it is
+not a semantic-change detector.
 
 ### Suggested reads
 
-`data.inputs` lists identities, not the complete ownership inventory. Each
-entry has a `role`: `whole_readme`, `changed_source`, `section_context`, or
+`data.inputs` lists identities, not the complete scope inventory. Each
+entry has a `role`: `whole_document`, `changed_source`, `section_context`, or
 `current_import`. For the complete inventory, invoke `memoria status` or
 produce a full export.
 
 The line range in `data.review.sections[].lines` is a 1-based inclusive hint
-for the current README bytes. The complete README hash binds every byte.
+for the current document bytes. The complete document hash binds every byte.
 
 ### Full export
 
 ```sh
-memoria review <README.md> --full --format json
+memoria review <DOCUMENT> --full --format json
 ```
 
 `--full` produces the complete offline export instead of the manifest. The
-export contains the document, every owned file, imported exports, previous
+export contains the document under `data.content.document`, every scope file, imported exports, previous
 review, documentation guidance, and covered invalidations. It also identifies
 changed inputs, exports, consumers, and available diffs. Text content uses
 UTF-8, and other content uses base64.
 
 The export repeats the manifest under `data.requirements`. It adds
 `data.binding`, which holds the canonical context descriptors and the prior
-record. A reader can recompute the token from the file alone.
+record. The prior record in `data.binding.baseline` includes its
+`coverage_evidence`, because the baseline encoding binds it. A reader can
+recompute the token from the file alone.
 
 The guidance shape is `data.context.guidance`:
 
@@ -635,16 +820,51 @@ The guidance shape is `data.context.guidance`:
 ### Versions and transport
 
 Every CLI JSON envelope uses schema version 3. The manifest uses
-`kind: "review_manifest"` and `manifest_version: 1`. The full export uses
-`kind: "focused_review"` and `packet_version: 3`. The token contains 21 bytes
-with the form `mrv3.<16 hex>`.
+`kind: "review_manifest"` and `manifest_version: 2`. The full export uses
+`kind: "focused_review"` and `packet_version: 4`. `packet view` uses
+`view_version: 2`. The token contains 21 bytes with the form `mrv3.<16 hex>`.
 
-Memoria accepts the current versions only. An older envelope, packet, or token
-is refused with instructions to produce a new artifact. Memoria converts
-nothing and upgrades nothing. Old artifacts are ephemeral. Produce a new one.
+Memoria accepts the current versions only. A Memoria 0.6 artifact
+(`manifest_version: 1` or `packet_version: 3`) is refused with
+`packet_schema_invalid` and the text "…`manifest_version` is 1; this release
+accepts 2 only. Run `memoria review PATH --format json` again…". Memoria
+converts nothing and upgrades nothing. Review artifacts are disposable.
+Produce a new one.
+
+### Saved artifacts: `--save <DIR>`
+
+`memoria review <DOCUMENT> --save <DIR>` writes the JSON artifact into `DIR`.
+It works with or without `--full`, and it requires a document: without one it
+fails with `save_requires_document`, exit 2.
+
+The command validates the arguments, builds the snapshot, and encodes the
+artifact under the hard limits before it checks the destination, so a limit
+refusal writes nothing. `DIR` must exist and resolve to a directory
+(`save_destination_invalid`, exit 2). Its canonical path must not equal or lie
+under the canonical Git worktree root, including ignored folders and `.git`
+(`save_destination_in_project`, exit 2, with a `mktemp -d` hint). This guards
+against accidental self-invalidation; it is not a security boundary.
+
+The file name is `memoria-<manifest|full>-<slug>-<hex16>.json`. The slug
+replaces every byte outside `[A-Za-z0-9._-]` with `_`, capped at 96 bytes, and
+`hex16` is the token's hexadecimal part. An existing name takes a suffix `-2`
+to `-99`; after that the command fails with `save_name_exhausted`, exit 3.
+The file is created exclusively with mode 0600, never follows a symlink at the
+final name, and is synced before close. On a write error the file is removed
+and the command fails with `save_failed`, exit 4; `details.leftover` names a
+file that could not be removed. A crash can leave a truncated file, which
+`ack` rejects.
+
+The saved bytes are exactly the bytes that `--format json` prints for the same
+snapshot. `review` stays read-only for the project: no lock and no state.
+With `--save`, JSON output is a receipt: `{kind: "saved_review_artifact",
+path, artifact_kind, bytes, document, document_kind, review_revision, token,
+artifact_digest, mode, ack_command}`. Human output is the review view, then
+`Saved: <path>` and the `ack` command. A receipt passed to `ack` fails with
+`packet_schema_invalid`.
 
 Both artifacts acknowledge from a file or from stdin. Human output supports
-reading only. The [workflow](workflow.md#2-capture-the-manifest) stores the
+reading only. The [workflow](workflow.md#2-save-the-artifact) stores the
 artifact outside the project.
 
 ### Limits
@@ -657,7 +877,7 @@ artifact outside the project.
 | Array elements and nesting | 100,000 elements and 32 containers | Both artifacts |
 | Decoded content | 32 MiB | Full export |
 
-Raw inputs contain the README, selected files, and imported export bodies.
+Raw inputs contain the document, its scope files, and imported export bodies.
 A manifest does not remove the input-collection limits. It also does not imply
 constant-memory snapshot building.
 
@@ -668,7 +888,7 @@ produces an explicit limit error on the export. It never disappears through
 silent truncation.
 
 A manifest stays proportional to the number of changes, not to the size of the
-boundary. Required entries are never truncated.
+scope. Required entries are never truncated.
 
 `size.record_count` counts array elements across the entire full-export
 envelope and its diagnostics. The producer encodes the artifact before either
@@ -692,7 +912,7 @@ Without that match, the review marks the evidence unavailable and supplies curre
 A manifest reports the same fact as the `baseline_unavailable` fallback reason
 and as `data.baseline.evidence_status`.
 The state does not store old export bodies.
-The bounded lookup can recover matching export bodies from historical provider READMEs.
+The bounded lookup can recover matching export bodies from historical provider documents.
 A rejected acknowledgement can compare imports against the bytes in a supplied
 full export. A manifest carries no old bytes, so its conflict names the changed
 digest categories instead of exact hunks.
@@ -709,6 +929,7 @@ reading costs and their limits.
 The default human review shows the baseline, the changes, the review mode, the
 fallback reasons, the suggested reads, and the next command. It shows no file
 content and no hunks.
+`memoria review README.md --details` adds tokens, digests, and per-input sizes and hashes.
 `memoria review README.md --full` shows the detailed human export.
 `memoria explain README.md --full` shows the detailed human explanation with
 verified hunks.
@@ -719,15 +940,16 @@ The human view never relaxes the artifact limits.
 1. Save the full export outside the project:
 
    ```sh
-   memoria review README.md --full --format json > /tmp/review.json
+   dir=$(mktemp -d)
+   memoria review README.md --full --save "$dir" --format json
    ```
 
 2. Invoke the saved-export reader:
 
    ```sh
-   memoria packet view /tmp/review.json
-   memoria packet view /tmp/review.json --section guidance
-   memoria packet view /tmp/review.json --file src/example.rs --format json
+   memoria packet view "$dir"/memoria-full-README.md-*.json
+   memoria packet view "$dir"/memoria-full-README.md-*.json --section guidance
+   memoria packet view "$dir"/memoria-full-README.md-*.json --file src/example.rs --format json
    ```
 
 The reader requires no project discovery and makes no writes.
@@ -743,14 +965,15 @@ A missing path causes `packet_view_file_missing` with exit 2.
 | Selection | Contents |
 | --- | --- |
 | `summary` (default), `changes` | Changes, hunks, missing-evidence reasons, scope counts, and a guidance cue |
-| `guidance`, `content` | Complete guidance or current README, files, and imports |
+| `guidance`, `content` | Complete guidance or the current document, files, and imports |
 | `history`, `inventory` | Previous review and diffs, or the current manifest |
-| `--file PATH` | One current README or owned file from the export |
+| `--file PATH` | The current document or one scope file from the export |
 | `incremental` | Experimental P1 preparation, with explicit coverage and fallback reasons |
 
 `--file` and an explicit `--section` are mutually exclusive.
 Imports remain accessible through `content` or `incremental`.
-JSON views use envelope schema 3, `data.kind=packet_view`, and `data.view_version=1`.
+JSON views use envelope schema 3, `data.kind=packet_view`, and `data.view_version=2`.
+The document body is under the key `document`.
 They carry `canonical=false`, `snapshot_token`, and `source_packet_digest`.
 They cannot substitute for the canonical acknowledgement artifact.
 New view fields do not change the export schema or its decoder.
@@ -762,7 +985,7 @@ prior review. The review mode in the manifest governs the required scope. P1
 never reduces that scope.
 
 ```sh
-memoria packet view /tmp/review.json --section incremental --trust-prior-review --format json
+memoria packet view "$dir"/memoria-full-README.md-*.json --section incremental --trust-prior-review --format json
 ```
 
 Without that trust flag, preparation requires full review.
@@ -778,7 +1001,7 @@ documentation changes.
 
 Acknowledgement supplies a `historical_coverage` hint after a successful state save.
 The hint reports `verified`, `partial`, or `unavailable`, plus counts and budget status.
-Coverage includes the README, owned files, and imported export bodies at one commit.
+Coverage includes the document, its scope files, and imported export bodies at one commit.
 Only complete coverage supplies a new saved `git.base_commit`.
 Dirty acknowledgements remain valid with a null reference.
 
@@ -814,7 +1037,8 @@ It writes nothing, not even in an empty project.
 
 With `--apply`, the command creates the missing `memoria.toml` and `memoria.lock` files.
 It requires an existing root `README.md`, and it returns `root_readme_missing` with exit 1 before any write when that file is absent.
-It never creates README prose, exports, imports, or nested boundaries.
+It never creates README prose, exports, imports, or nested documents.
+The generated configuration declares `version = 3` and states the rule: each document covers its folder and below; link or import a document in a subfolder to hand that subfolder to it.
 
 Apply validates existing files first.
 An invalid existing configuration, README, or state prevents initialization.
@@ -827,22 +1051,22 @@ Initialization never overwrites a file because its name matches.
 The generated configuration holds an empty guidance list and useful comments.
 It imposes no writing standard on your project.
 
-### `memoria render [<README.md>] [--dry-run]`
+### `memoria render [<DOCUMENT>] [--dry-run]`
 
 The command replaces only declared import bodies with current provider export bytes.
 It preserves the other document bytes and does not change review state.
-Each README replacement is atomic.
+Each document replacement is atomic.
 A second invocation with identical inputs makes no writes.
 Invalid imports or cycles prevent the operation.
 
 After a partial write failure, `render_incomplete` identifies the remaining documents.
-The command does not treat several README replacements as one transaction.
+The command does not treat several document replacements as one transaction.
 The dry run describes the changes without applying them.
 
 ### `memoria invalidate <scope> --reason <text>`
 
-The scope is `all`, `doc:<README.md>`, or `subtree:<directory>`.
-The command captures the currently discovered READMEs in that scope.
+The scope is `all`, `doc:<DOCUMENT>`, or `subtree:<directory>`.
+The command captures the currently tracked documents in that scope; `subtree:` selects documents by folder.
 It records the reason without changing their text.
 An empty scope causes a usage error.
 The reason appears in status, the plan, and each affected review artifact.
@@ -850,12 +1074,18 @@ The reason appears in status, the plan, and each affected review artifact.
 ### `memoria ack`
 
 ```sh
-memoria ack <README.md> --packet <file|-> --token <token> \
+memoria ack <DOCUMENT> --packet <file|-> [--token <token>] \
   --reviewer <name> --result updated|no-update --note <text>
 ```
 
-`--packet` accepts a review manifest or a full export. Both bind the same
-snapshot and carry the same token.
+`--packet` accepts a review manifest or a full export, usually the file that
+`review --save` wrote. Both bind the same snapshot and carry the same token.
+
+Without `--token`, the token comes from the decoded, integrity-checked
+artifact. With `--token`, the value must equal the artifact token
+(`token_mismatch`, exit 2). Either way, the complete token is recomputed from
+the repository under the write lock. The report adds `token_source`:
+`artifact` or `argument`.
 
 The reviewer name permits 1–128 characters.
 An explicit `--reviewer` takes precedence over the optional `MEMORIA_REVIEWER` environment value.
@@ -869,7 +1099,7 @@ Managed agents must supply an explicit `--reviewer` label.
 After trim, the note permits 12–1000 Unicode characters and requires at least three whitespace-separated words.
 CR/LF are allowed, but tabs and other controls are forbidden.
 Normalization rejects generic notes: `done`, `reviewed`, `looks good`, `ok`, `okay`, `lgtm`, `fine`, `no changes`, `no change`, and `updated`.
-The note explains why this README is correct for this snapshot.
+The note explains why this document is correct for this snapshot.
 It is not an instruction, an override, or proof that the reviewer read every input.
 Reviewer and note validation precede artifact reads and state mutation.
 The `--packet -` argument selects stdin.
@@ -889,8 +1119,9 @@ Stage 3 never validates only `data.inputs`, the suggested sections, or the
 changed files. A small manifest narrows the reading list. It never narrows the
 validated state.
 
-The review context binds more than the input manifest. It binds the ownership
-boundaries, the effective selection policy and its selected path set, the
+The review context binds more than the input manifest. It binds the document
+kind and its sorted handoffs, the nested repositories in its covered folders,
+the effective selection policy and its scope path set, the
 section mapping associations, the effective guidance digest, and the
 transitive provider closure. A provider edit can invalidate a consumer token
 even when the imported export body stays equal. That edit does not make the
@@ -907,12 +1138,16 @@ reviewed bytes. A manifest names the changed digest categories under
 A deleted document in an otherwise valid project causes the same conflict.
 A later document revision causes `revision_conflict` with exit 3.
 A pending provider causes `dependencies_pending` with exit 3.
+Adding or removing a handoff, or a handoff target that appears, disappears, or
+stops being tracked, changes the context, so an outstanding artifact causes
+`snapshot_changed`.
 These conflicts leave the stored review unchanged.
 
 The final comparison reports changed inputs before provider readiness errors.
 Only covered invalidations clear for this document.
 Newer invalidations remain pending and cause `still_pending: true` in a successful acknowledgement.
-The state contains the latest review per README, rather than an append-only journal.
+The state contains the latest review per document, rather than an append-only journal.
+Acknowledging one document never clears another, even one that covers the same sources.
 
 Source evidence: [acknowledgement](../crates/memoria-application/src/usecases/ack.rs#L193), [render](../crates/memoria-application/src/usecases/render.rs#L114), and [invalidation](../crates/memoria-application/src/usecases/invalidate.rs#L50).
 
@@ -938,7 +1173,7 @@ memoria agent hook install|status|uninstall --target codex|claude [--dry-run]
 memoria agent hook run --target codex|claude --protocol 1 --configuration-root <directory>
 ```
 
-The binary embeds `skills/memoria/SKILL.md` at build time.
+The binary embeds the four files of `skills/memoria/` at build time: `SKILL.md`, `review-details.md`, `saved-exports.md`, and `integrations.md`. One body serves Claude Code and Codex.
 The default scope is `local`, inside the selected worktree.
 The local destination is `.agents/skills/memoria` for Codex or `.claude/skills/memoria` for Claude.
 Without `--target`, exactly one of `.agents` and `.claude` must exist.
@@ -952,7 +1187,9 @@ A path outside the worktree never implies a global installation.
 The dry run makes no changes.
 `status` never writes and exits 0 for any readable inspection.
 
-The package contains `SKILL.md` and `.memoria-install.json`, at record schema 2.
+The package contains those four files and `.memoria-install.json`, at record schema 2, with a hash for each file.
+A package is `current` only when its version, its file names, and every file's bytes match this executable.
+An upgrade replaces exactly the files that the previous record names, so a single-file 0.6 package upgrades cleanly.
 An older managed package returns `skill_upgrade_required` with exit 1, so replacement is explicit.
 An unmanaged package needs `--replace-existing`, which creates a verified sibling backup first.
 Locally edited managed content causes `skill_conflict` with exit 3.
@@ -1022,11 +1259,11 @@ Memoria records what it wrote in `.github/memoria-workflows/<filename>.json`. Bo
 | `unmanaged` | Preserves and fails | Preserves and fails | Preserves and fails |
 | `conflict` | Preserves and fails | Preserves and fails | Preserves and fails |
 
-`--version` accepts an exact stable version, 0.5.0 or later, with an optional leading `v`. `--action-ref` accepts a full 40-character commit SHA or an exact `vX.Y.Z` tag. `--runner` accepts `ubuntu-24.04`, `ubuntu-latest`, and `ubuntu-24.04-arm`. An upgrade keeps the recorded runner and a recorded commit pin unless you change them explicitly, and it refuses a downgrade.
+`--version` accepts an exact stable version, 0.7.0 or later, with an optional leading `v`: configuration version 3 needs Memoria 0.7.0. A recorded older pin stays readable, so `upgrade` can replace it. `--action-ref` accepts a full 40-character commit SHA or an exact `vX.Y.Z` tag. `--runner` accepts `ubuntu-24.04`, `ubuntu-latest`, and `ubuntu-24.04-arm`. An upgrade keeps the recorded runner and a recorded commit pin unless you change them explicitly, and it refuses a downgrade.
 
 The diagnostic codes are `github_not_installed`, `github_upgrade_required`, `github_prerequisites_missing`, `github_unmanaged`, `github_modified`, `github_ownership_conflict`, `github_destination_appeared`, `github_recovery_needed`, `github_recovery_pending`, `github_recovery_unavailable`, `github_busy`, `github_downgrade_refused`, `github_path_unsafe`, and `github_template_unsupported`. The preview also emits the warning `github_prerequisite_missing` and the hints `github_sibling_workflows` and `github_publication_unverified`.
 
-The workflow file and its ownership record are ordinary documentation inputs. A new workflow makes the owning README pending, so review follows the change. Memoria acknowledges nothing automatically.
+The workflow file and its ownership record are ordinary documentation inputs. A new workflow makes the documents whose scope contains it pending, so review follows the change. Memoria acknowledges nothing automatically.
 
 <details>
 <summary>Durable writes and recovery</summary>
@@ -1081,7 +1318,7 @@ Source evidence: [output delivery](../src/main.rs#L312) and [diagnostic types](.
 | --- | --- |
 | 0 | The command succeeded. New invalidations can still remain after acknowledgement. |
 | 1 | Project validation failed or required review work remains. |
-| 2 | Arguments, review text, token, or artifact validation failed. |
+| 2 | Arguments, review text, token, artifact validation, or a `--save` destination failed. |
 | 3 | A lock, snapshot, revision, or installation conflict prevents the operation. |
 | 4 | An I/O error, unsupported Git state, or corrupt state prevents success. |
 
@@ -1097,7 +1334,10 @@ root_readme_missing coverage_unowned markdown_invalid marker_malformed marker_ne
 marker_mismatch marker_unclosed export_invalid export_duplicate import_invalid
 import_missing_document import_missing_export import_self import_duplicate import_cycle
 imports_outdated navigation_disconnected missing_import_hint review_pending
-review_not_pending dependencies_pending document_not_found packet_too_large max_bytes_invalid
+review_not_pending dependencies_pending document_not_found document_invalid
+document_encoding_invalid section_mapping_invalid handoff_not_applied handoff_absent
+save_requires_document save_destination_invalid save_destination_in_project
+save_name_exhausted save_failed packet_too_large max_bytes_invalid
 summary_invalid token_invalid token_mismatch reviewer_invalid result_invalid note_invalid
 packet_unreadable packet_source_invalid packet_limit_exceeded packet_schema_invalid
 packet_integrity_failed packet_token_mismatch packet_content_mismatch
@@ -1121,9 +1361,10 @@ Hashes use XXH3-64 with the default secret, seed zero, and 16 lowercase hexadeci
 The `memoria.lock` frame checksum uses XXH3-128.
 Canonical byte encodings use fixed schemas and big-endian lengths.
 
-The canonical domains are `memoria.policy.v2`, `memoria.inputs.v2`, `memoria.guidance.v1`, `memoria-review-baseline-v1`, `memoria-review-context-v1`, `memoria-review-token-v3`, `memoria.packet.v3`, and `memoria.review-manifest.v1`.
+The canonical domains are `memoria.policy.v2`, `memoria.inputs.v2`, `memoria.guidance.v1`, `memoria-review-baseline-v2`, `memoria-review-context-v2`, `memoria-review-token-v3`, and the integrity domains `memoria.packet.v3` and `memoria.review-manifest.v1`.
 The selection tag is `git-worktree-v2`, and the repository ignore inventory is `repository-ignore-v1`.
-The selection version for section advice is `section-review-v1`.
+The policy encoding also holds the identifier `nearest-readme-v1`. It is a frozen hash-domain identifier: its name is historical, and renaming it would change every policy hash.
+The selection version is 2, with the section workflow policy `section-review-v2`.
 
 The v3 token combines three digests with four more encoded values:
 
@@ -1131,14 +1372,15 @@ The v3 token combines three digests with four more encoded values:
 | --- | --- |
 | `I` | The digest of the complete input manifest. |
 | `B` | The digest of the complete prior review record, or of its absence. |
-| `C` | The digest of the review context: ownership, selection, mapping, guidance, and the provider closure. |
+| `C` | The digest of the review context: document kind, handoffs, selection, mapping, guidance, and the provider closure. |
 | `T` | The encoded bytes: the domain string, the document path, the review revision, `I`, `B`, `C`, and the covered invalidations. |
 
 The token is `mrv3.` and the 16 hexadecimal digits of the hash of `T`.
 
-`C` binds the owner identity, the applicable ancestor and descendant
-boundaries, the nested-repository boundaries, the effective policy hash, the
-selected owned path set, the selection version, the mapping validity and its
+`C` binds the document identity and kind, its sorted handoffs
+`(subtree, target)`, the nested-repository boundaries in its covered folders,
+the effective policy hash, the scope path set, the selection version, the
+mapping validity and its
 sorted associations, the effective guidance digest, the target import
 identities with their current export hashes, the direct consumer edges, and
 the transitive provider closure. Each provider descriptor carries its input
@@ -1146,7 +1388,8 @@ digest, guidance digest, review revision, active invalidations, and resolved
 import edges.
 
 The provider closure is deliberately conservative. Unrelated source edits
-outside these boundaries do not change the token. Git HEAD, worktree dirty
+outside the scope do not change the token. Incoming handoffs and overlaps are
+not bound, because they do not change this document's inputs. Git HEAD, worktree dirty
 status, and the availability of historical blobs do not define review
 validity. Moving HEAD alone cannot invalidate an otherwise identical snapshot.
 
@@ -1181,7 +1424,7 @@ Source evidence: [Markdown codec](../crates/memoria-infrastructure/src/markdown.
 
 </details>
 
-The [specification](specification.md) records the approved 0.2.0 contract and earlier proposed decisions.
+The [specification](specification.md) records the approved contract, updated for 0.7.0.
 This reference describes the implementation in this checkout.
 
 ## Continue

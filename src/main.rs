@@ -15,10 +15,10 @@ use memoria_application::usecases;
 use memoria_application::usecases::prepare_review::Prepared;
 use memoria_infrastructure::config::TomlConfigurationReader;
 use memoria_infrastructure::{
-    AtomicFileWriter, CommandClientProbe, EnvAgentLocations, FsHookStore, FsPacketInput,
-    FsProjectFiles, FsSkillStore, FsWorkflowStore, GitCli, GixRepositoryIgnore, JsonPacketCodec,
-    LockFileCoordinator, LockStateInspector, LockStateStore, PulldownMarkdownCodec,
-    SelfStatusProcess, SystemClock, Xxh3Hasher,
+    AtomicFileWriter, CommandClientProbe, EnvAgentLocations, FsArtifactStore, FsHookStore,
+    FsPacketInput, FsProjectFiles, FsSkillStore, FsWorkflowStore, GitCli, GixRepositoryIgnore,
+    JsonPacketCodec, LockFileCoordinator, LockStateInspector, LockStateStore,
+    PulldownMarkdownCodec, SelfStatusProcess, SystemClock, Xxh3Hasher,
 };
 use presentation::cli::{
     AgentCommand, Cli, Command, Format, GithubCommand, HookCommand, IntegrationsCommand, Scope,
@@ -26,8 +26,23 @@ use presentation::cli::{
 };
 use presentation::{json, text};
 
-/// The canonical agent skill, embedded at build time.
-pub const SKILL: &str = include_str!("../skills/memoria/SKILL.md");
+/// The canonical agent skill package, embedded at build time. One body
+/// serves Claude Code and Codex; every file is flat inside the package.
+pub const SKILL_PACKAGE: &[(&str, &str)] = &[
+    ("SKILL.md", include_str!("../skills/memoria/SKILL.md")),
+    (
+        "review-details.md",
+        include_str!("../skills/memoria/review-details.md"),
+    ),
+    (
+        "saved-exports.md",
+        include_str!("../skills/memoria/saved-exports.md"),
+    ),
+    (
+        "integrations.md",
+        include_str!("../skills/memoria/integrations.md"),
+    ),
+];
 
 struct StderrProgress;
 
@@ -191,7 +206,8 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
     let writer = AtomicFileWriter::new(root.clone());
     let packets = JsonPacketCodec::new(&hasher);
     let packet_input = FsPacketInput;
-    let skills = FsSkillStore::new(root.clone(), SKILL, env!("CARGO_PKG_VERSION"));
+    let skills = FsSkillStore::new(root.clone(), SKILL_PACKAGE, env!("CARGO_PKG_VERSION"));
+    let artifacts = FsArtifactStore::new(invocation_dir(), root.clone());
     let locations = EnvAgentLocations::from_environment(Some(root.clone()), invocation_dir());
     let main_worktree = PathBuf::from(
         memoria_application::ports::GitRepository::main_worktree(&git)
@@ -230,6 +246,7 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
         locations: &locations,
         hooks: &hooks,
         workflows: &workflows,
+        artifacts: &artifacts,
         progress: &progress,
     };
 
@@ -309,17 +326,31 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
             document: None,
             max_bytes,
             full,
+            save,
+            details,
         } => {
+            if save.is_some() {
+                return Err(AppError::usage(
+                    "save_requires_document",
+                    "--save saves one document's review artifact. Name a document.",
+                ));
+            }
             if *full {
                 return Err(AppError::usage(
                     "full_requires_document",
-                    "--full requires a focused README",
+                    "--full requires one document. Name a document.",
                 ));
             }
             if max_bytes.is_some() {
                 return Err(AppError::usage(
                     "max_bytes_invalid",
-                    "--max-bytes applies only to one README's review. Name a README.",
+                    "--max-bytes applies only to one document's review. Name a document.",
+                ));
+            }
+            if *details {
+                return Err(AppError::usage(
+                    "details_requires_document",
+                    "--details adds operational detail to one document's review. Name a document.",
                 ));
             }
             let outcome = usecases::plan::run(&services)?;
@@ -330,6 +361,8 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
             document: Some(document),
             max_bytes,
             full,
+            save,
+            details,
         } => {
             let mut outcome =
                 usecases::prepare_review::run(&services, document, *max_bytes, *full)?;
@@ -364,11 +397,46 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
                         .map_err(encode_failure)?;
                     (
                         manifest.to_detail(),
-                        presentation::review::manifest(manifest),
+                        presentation::review::manifest(manifest, *details),
                         encoded,
                     )
                 }
             };
+            if let Some(destination) = save {
+                // The artifact is already encoded under the hard limits, so a
+                // limit refusal never reaches the destination.
+                let (kind, digest) = match &outcome.data {
+                    Prepared::Full(_) => (
+                        usecases::save_artifact::ArtifactKind::Full,
+                        artifact_digest_of(&encoded, "packet_digest"),
+                    ),
+                    Prepared::Manifest(_) => (
+                        usecases::save_artifact::ArtifactKind::Manifest,
+                        artifact_digest_of(&encoded, "artifact_digest"),
+                    ),
+                };
+                let receipt = usecases::save_artifact::save(
+                    &services,
+                    destination,
+                    kind,
+                    outcome.data.requirements(),
+                    &digest,
+                    &encoded,
+                )?;
+                let requirements = outcome.data.requirements();
+                let view = presentation::review::manifest(requirements, *details);
+                let human = format!(
+                    "{view}Saved: {}\nAcknowledge after your review: {}\n",
+                    receipt.path, receipt.ack_command
+                );
+                let data = receipt.to_detail();
+                return Ok(CommandOutput {
+                    data,
+                    human,
+                    diagnostics: outcome.diagnostics,
+                    raw_json: None,
+                });
+            }
             let raw = if cli.format == Format::Json {
                 Some(encoded)
             } else {
@@ -652,7 +720,7 @@ fn run_global_agent(
         .map(|git| git.root().to_path_buf());
     let skills = FsSkillStore::new(
         worktree.clone().unwrap_or_else(|| invocation.clone()),
-        SKILL,
+        SKILL_PACKAGE,
         env!("CARGO_PKG_VERSION"),
     );
     let locations = EnvAgentLocations::from_environment(worktree, invocation);
@@ -670,6 +738,22 @@ fn run_global_agent(
     };
     let result = usecases::agent::run_with(&skills, &locations, &progress, &request);
     ExitCode::from(deliver_result(&mut stdout, result))
+}
+
+/// The integrity digest inside an encoded artifact envelope, read back from
+/// the exact bytes that are saved.
+fn artifact_digest_of(encoded: &[u8], key: &str) -> String {
+    use memoria_infrastructure::json::{self as wire, Json, Limits};
+    match wire::parse(encoded, Limits::PACKET) {
+        Ok(Json::Object(envelope)) => match envelope.get("data") {
+            Some(Json::Object(data)) => match data.get(key) {
+                Some(Json::String(digest)) => digest.clone(),
+                _ => String::new(),
+            },
+            _ => String::new(),
+        },
+        _ => String::new(),
+    }
 }
 
 /// The directory an explicit `--path` or `--file` resolves against.

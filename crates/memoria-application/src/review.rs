@@ -1,6 +1,6 @@
 //! The small review manifest: what a reviewer must read, never the bytes.
 //!
-//! A manifest states requirements. It carries no README, source, import,
+//! A manifest states requirements. It carries no document, source, import,
 //! historical, or authored-guidance body. Ordinary file tools supply reading;
 //! Memoria supplies the snapshot binding and the attention guidance.
 //!
@@ -8,7 +8,7 @@
 //! acknowledgement validates. `ack` always recomputes the complete input and
 //! context digests from the repository.
 
-use memoria_domain::{DocumentId, Hash64};
+use memoria_domain::{DocumentId, DocumentKind, Hash64};
 
 use crate::error::{Detail, DetailMap};
 use crate::packet::ChangeEntry;
@@ -16,16 +16,20 @@ use crate::packet::ChangeEntry;
 /// The artifact kind of a small manifest.
 pub const MANIFEST_KIND: &str = "review_manifest";
 /// The manifest schema version.
-pub const MANIFEST_VERSION: u64 = 1;
+pub const MANIFEST_VERSION: u64 = 2;
+
+/// Most entries any bounded manifest list carries. Each bounded list has a
+/// `*_total` beside it with the complete count.
+pub const MAX_LIST_ENTRIES: usize = 64;
 
 /// The built-in workflow a reviewer follows. It is distinct from authored
 /// guidance and subordinate to task authority.
 pub const WORKFLOW_STEPS: [&str; 5] = [
     "Read current guidance and covered reasons.",
-    "Inspect suggested sections and changed sources.",
-    "Expand uncertain context or use full baseline.",
-    "Read the whole README.",
-    "Reconcile a fresh manifest after edits before acknowledgement.",
+    "Inspect the changes, their relationships, and suggested sections.",
+    "Expand uncertain context or use the full baseline.",
+    "Read the whole document.",
+    "Capture a fresh artifact after edits and reconcile before acknowledgement.",
 ];
 
 /// Whether focused reading is technically eligible.
@@ -77,19 +81,243 @@ pub struct FallbackReason {
 }
 
 /// Every fallback code this release emits.
-pub const FALLBACK_CODES: [&str; 11] = [
+pub const FALLBACK_CODES: [&str; 13] = [
     "unmapped_change",
     "path_set_changed",
     "baseline_missing",
     "baseline_unavailable",
     "mapping_invalid",
     "mapping_changed",
-    "ownership_changed",
+    "handoff_changed",
+    "coverage_unrecorded",
+    "document_classification_changed",
     "policy_changed",
     "imports_changed",
     "semantic_invalidation",
     "guidance_changed",
 ];
+
+/// How one change relates to the reviewed document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum RelationshipKind {
+    /// The document's own text.
+    OwnText,
+    /// A source in the document's scope.
+    ScopeSource,
+    /// A source that entered or left the scope because a handoff changed.
+    Handoff,
+    /// A source that entered the scope of a document whose last review did
+    /// not record its handed-off folders, when no exact proof exists.
+    CoverageUnrecorded,
+    /// An imported export body.
+    Import,
+    /// The effective selection policy.
+    SelectionPolicy,
+}
+
+impl RelationshipKind {
+    pub const ALL: [RelationshipKind; 6] = [
+        RelationshipKind::OwnText,
+        RelationshipKind::ScopeSource,
+        RelationshipKind::Handoff,
+        RelationshipKind::CoverageUnrecorded,
+        RelationshipKind::Import,
+        RelationshipKind::SelectionPolicy,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RelationshipKind::OwnText => "own_text",
+            RelationshipKind::ScopeSource => "scope_source",
+            RelationshipKind::Handoff => "handoff",
+            RelationshipKind::CoverageUnrecorded => "coverage_unrecorded",
+            RelationshipKind::Import => "import",
+            RelationshipKind::SelectionPolicy => "selection_policy",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<RelationshipKind> {
+        RelationshipKind::ALL
+            .into_iter()
+            .find(|kind| kind.as_str() == text)
+    }
+}
+
+/// Why the former coverage of a document without recorded evidence cannot
+/// be proven, in the order the legacy proof checks its conditions.
+pub const UNRECORDED_REASONS: [&str; 5] = [
+    "revision_not_first",
+    "acknowledged_invalidations",
+    "previous_text_unavailable",
+    "candidate_limit",
+    "no_matching_reconstruction",
+];
+
+/// The relationship of one change to the reviewed document. Shown for
+/// judgment; it is not a semantic-change detector.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Relationship {
+    pub kind: RelationshipKind,
+    /// For a scope source: this document's valid section IDs that map it.
+    pub sections: Vec<String>,
+    /// For a source: how many other documents cover it now.
+    pub also_covered_by_total: u64,
+    /// For an import: the provider and export.
+    pub provider: Option<String>,
+    pub export_id: Option<String>,
+    /// For `coverage_unrecorded`: one of `UNRECORDED_REASONS`.
+    pub unrecorded_reason: Option<String>,
+}
+
+impl Relationship {
+    pub fn of_kind(kind: RelationshipKind) -> Relationship {
+        Relationship {
+            kind,
+            sections: Vec::new(),
+            also_covered_by_total: 0,
+            provider: None,
+            export_id: None,
+            unrecorded_reason: None,
+        }
+    }
+
+    pub fn to_detail(&self) -> Detail {
+        DetailMap::default()
+            .text("kind", self.kind.as_str())
+            .with("sections", Detail::texts(self.sections.clone()))
+            .number("also_covered_by_total", self.also_covered_by_total)
+            .with("provider", Detail::option_text(self.provider.clone()))
+            .with("export_id", Detail::option_text(self.export_id.clone()))
+            .with(
+                "unrecorded_reason",
+                Detail::option_text(self.unrecorded_reason.clone()),
+            )
+            .build()
+    }
+}
+
+/// One outgoing handoff of the reviewed document.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScopeHandoff {
+    pub subtree: String,
+    pub target: String,
+    /// `link`, `import`, or `both`.
+    pub via: String,
+    pub line: u64,
+}
+
+/// One incoming handoff: a parent that hands this document's folder to it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IncomingHandoff {
+    pub parent: String,
+    pub via: String,
+    pub line: u64,
+}
+
+/// The reviewed document's scope: its size and the handoffs that shape it.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ScopeInfo {
+    pub files: u64,
+    /// At most `MAX_LIST_ENTRIES`.
+    pub handoffs: Vec<ScopeHandoff>,
+    pub handoffs_total: u64,
+    /// At most `MAX_LIST_ENTRIES`.
+    pub handed_off_by: Vec<IncomingHandoff>,
+    pub handed_off_by_total: u64,
+}
+
+impl ScopeInfo {
+    pub fn to_detail(&self) -> Detail {
+        DetailMap::default()
+            .number("files", self.files)
+            .with(
+                "handoffs",
+                Detail::list(self.handoffs.iter().map(|h| {
+                    DetailMap::default()
+                        .text("subtree", h.subtree.clone())
+                        .text("target", h.target.clone())
+                        .text("via", h.via.clone())
+                        .number("line", h.line)
+                        .build()
+                })),
+            )
+            .number("handoffs_total", self.handoffs_total)
+            .with(
+                "handed_off_by",
+                Detail::list(self.handed_off_by.iter().map(|h| {
+                    DetailMap::default()
+                        .text("parent", h.parent.clone())
+                        .text("via", h.via.clone())
+                        .number("line", h.line)
+                        .build()
+                })),
+            )
+            .number("handed_off_by_total", self.handed_off_by_total)
+            .build()
+    }
+}
+
+/// One direct consumer of an export of the reviewed document.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsumerInfo {
+    pub export_id: String,
+    pub consumer: String,
+    pub consumer_kind: String,
+    /// `current`, `pending`, `never_reviewed`, or `unknown`.
+    pub status: String,
+    /// Whether the consumer waits for this document's review.
+    pub waits_for_this_document: bool,
+}
+
+/// Another document whose scope contains a source that changed here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CoCovering {
+    pub document: String,
+    pub document_kind: String,
+    pub status: String,
+}
+
+/// Who else a change reaches. Advisory; never bound into the token.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Downstream {
+    /// At most `MAX_LIST_ENTRIES`.
+    pub consumers: Vec<ConsumerInfo>,
+    pub consumers_total: u64,
+    /// At most `MAX_LIST_ENTRIES`.
+    pub co_covering: Vec<CoCovering>,
+    pub co_covering_total: u64,
+}
+
+impl Downstream {
+    pub fn to_detail(&self) -> Detail {
+        DetailMap::default()
+            .with(
+                "consumers",
+                Detail::list(self.consumers.iter().map(|c| {
+                    DetailMap::default()
+                        .text("export_id", c.export_id.clone())
+                        .text("consumer", c.consumer.clone())
+                        .text("consumer_kind", c.consumer_kind.clone())
+                        .text("status", c.status.clone())
+                        .bool("waits_for_this_document", c.waits_for_this_document)
+                        .build()
+                })),
+            )
+            .number("consumers_total", self.consumers_total)
+            .with(
+                "co_covering",
+                Detail::list(self.co_covering.iter().map(|c| {
+                    DetailMap::default()
+                        .text("document", c.document.clone())
+                        .text("document_kind", c.document_kind.clone())
+                        .text("status", c.status.clone())
+                        .build()
+                })),
+            )
+            .number("co_covering_total", self.co_covering_total)
+            .build()
+    }
+}
 
 /// One suggested section, with 1-based inclusive line hints.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,7 +333,7 @@ pub struct SectionSuggestion {
 /// Why one suggested read is listed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum InputRole {
-    WholeReadme,
+    WholeDocument,
     ChangedSource,
     SectionContext,
     CurrentImport,
@@ -114,7 +342,7 @@ pub enum InputRole {
 impl InputRole {
     pub fn as_str(self) -> &'static str {
         match self {
-            InputRole::WholeReadme => "whole_readme",
+            InputRole::WholeDocument => "whole_document",
             InputRole::ChangedSource => "changed_source",
             InputRole::SectionContext => "section_context",
             InputRole::CurrentImport => "current_import",
@@ -123,7 +351,7 @@ impl InputRole {
 }
 
 /// One suggested read identity. This list is advice, never the complete
-/// ownership inventory that acknowledgement validates.
+/// scope inventory that acknowledgement validates.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputEntry {
     /// `document`, `file`, or `import`.
@@ -173,9 +401,12 @@ pub struct ReviewManifest {
     pub document: DocumentId,
     pub review_revision: u64,
     pub token: String,
+    pub scope: ScopeInfo,
     pub snapshot: SnapshotDigests,
     pub baseline: Option<BaselineInfo>,
     pub changes: Vec<ChangeEntry>,
+    /// One relationship per change, in the same order.
+    pub relationships: Vec<Relationship>,
     pub mode: ReviewMode,
     pub sections: Vec<SectionSuggestion>,
     pub fallback_reasons: Vec<FallbackReason>,
@@ -185,7 +416,8 @@ pub struct ReviewManifest {
     pub guidance_references: Vec<GuidanceReference>,
     /// `(id, exact reason)` sorted by id.
     pub covered_invalidations: Vec<(u64, String)>,
-    pub selected_files: u64,
+    pub downstream: Downstream,
+    pub scope_files: u64,
     pub imports: u64,
     pub raw_input_bytes: u64,
     /// Filled by the codec on encode; verified on decode.
@@ -193,6 +425,11 @@ pub struct ReviewManifest {
 }
 
 impl ReviewManifest {
+    /// The document's kind, derived from its path.
+    pub fn document_kind(&self) -> DocumentKind {
+        self.document.kind()
+    }
+
     /// Unique suggested sources across every suggested section.
     pub fn suggested_sources(&self) -> u64 {
         let mut sources: Vec<&str> = self
@@ -224,6 +461,8 @@ impl ReviewManifest {
             .text("kind", MANIFEST_KIND)
             .number("manifest_version", MANIFEST_VERSION)
             .text("document", self.document.as_str())
+            .text("document_kind", self.document_kind().as_str())
+            .with("scope", self.scope.to_detail())
             .number("review_revision", self.review_revision)
             .text("token", self.token.clone())
             .with(
@@ -255,7 +494,7 @@ impl ReviewManifest {
             )
             .with(
                 "changes",
-                Detail::list(self.changes.iter().map(|c| {
+                Detail::list(self.changes.iter().zip(&self.relationships).map(|(c, r)| {
                     DetailMap::default()
                         .text("kind", c.kind.clone())
                         .text("change", c.change.clone())
@@ -276,6 +515,7 @@ impl ReviewManifest {
                             "after_hash",
                             Detail::option_text(c.after_hash.map(|h| h.to_hex())),
                         )
+                        .with("relationship", r.to_detail())
                         .build()
                 })),
             )
@@ -300,9 +540,9 @@ impl ReviewManifest {
                                 .build()
                         })),
                     )
-                    // The whole-README pass is always required. A small
+                    // The whole-document pass is always required. A small
                     // reading list never replaces it.
-                    .bool("whole_readme_pass", true)
+                    .bool("whole_document_pass", true)
                     .with(
                         "fallback_reasons",
                         Detail::list(self.fallback_reasons.iter().map(|r| {
@@ -369,13 +609,15 @@ impl ReviewManifest {
                         .build()
                 })),
             )
+            .with("downstream", self.downstream.to_detail())
             .with(
                 "counts",
                 DetailMap::default()
-                    .number("selected_files", self.selected_files)
+                    .number("scope_files", self.scope_files)
                     .number("imports", self.imports)
                     .number("raw_input_bytes", self.raw_input_bytes)
                     .number("suggested_sources", self.suggested_sources())
+                    .number("handoffs", self.scope.handoffs_total)
                     .build(),
             )
             .with(

@@ -14,9 +14,9 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use memoria_domain::{
-    DirPath, DocumentId, ExportId, FileInput, GitContext, GuidanceDigest, Hash64, ImportInput,
-    InputManifest, Invalidation, InvalidationScope, ProjectPath, Reason, ReviewNote, ReviewRecord,
-    ReviewResult, ReviewState, ReviewerName, Timestamp,
+    CoverageEvidence, DirPath, DocumentId, ExportId, FileInput, GitContext, GuidanceDigest, Hash64,
+    ImportInput, InputManifest, Invalidation, InvalidationScope, ProjectPath, Reason, ReviewNote,
+    ReviewRecord, ReviewResult, ReviewState, ReviewerName, Timestamp,
 };
 use memoria_infrastructure::hash::xxh3_64;
 use memoria_infrastructure::json::{self, Json, Limits};
@@ -140,6 +140,8 @@ fn record_from(document: &DocumentId, value: &Json, guidance: GuidanceDigest) ->
             .iter()
             .map(number)
             .collect(),
+        // The measured state predates coverage evidence.
+        coverage: CoverageEvidence::Unrecorded,
     }
 }
 
@@ -178,6 +180,71 @@ pub fn tiny() -> ReviewState {
         reviews,
         invalidations: Vec::new(),
     }
+}
+
+/// The 0.7 `documents` vector: one README record and one opted-in
+/// `docs/guide.md` record whose files lie under `docs/`. It keeps the format
+/// 2 frame and row rule; only the document identity is wider.
+pub fn documents() -> ReviewState {
+    let mut state = tiny();
+    let root = DirPath::root().readme();
+    let record = state.reviews.get(&root).expect("the root review").clone();
+    let guide = DocumentId::parse("docs/guide.md").expect("a Markdown identity");
+    let files = vec![
+        FileInput {
+            path: ProjectPath::parse("docs/cli.md").unwrap(),
+            bytes: 4096,
+            hash: Hash64(0x0123_4567_89ab_cdef),
+        },
+        FileInput {
+            path: ProjectPath::parse("docs/releases/0.4.0.md").unwrap(),
+            bytes: 512,
+            hash: Hash64(0xfedc_ba98_7654_3210),
+        },
+    ];
+    let manifest = InputManifest::new(
+        guide.clone(),
+        record.manifest.policy_hash,
+        2048,
+        Hash64(0x1111_2222_3333_4444),
+        files,
+        Vec::new(),
+    )
+    .expect("a valid manifest");
+    state.reviews.insert(
+        guide,
+        ReviewRecord {
+            manifest,
+            revision: 1,
+            ..record
+        },
+    );
+    state
+}
+
+/// The format 3 `evidence` vector: the `documents` state with recorded
+/// coverage. The root README records nested handed-off folders, and
+/// `docs/guide.md` records that it handed nothing off.
+pub fn evidence() -> ReviewState {
+    let mut state = documents();
+    let root = DirPath::root().readme();
+    let guide = DocumentId::parse("docs/guide.md").expect("a Markdown identity");
+    let folder = |raw: &str| DirPath::parse(raw).expect("a folder");
+    state
+        .reviews
+        .get_mut(&root)
+        .expect("the root review")
+        .coverage = CoverageEvidence::Recorded(vec![
+        folder("crates"),
+        folder("crates/memoria-domain"),
+        folder("docs"),
+    ]);
+    state
+        .reviews
+        .get_mut(&guide)
+        .expect("the guide review")
+        .coverage = CoverageEvidence::Recorded(Vec::new());
+    state
 }
 
 /// The measured scaled fixtures: `n` copies of the base project under new
@@ -272,6 +339,7 @@ pub fn scaled(n: usize, varied: bool) -> ReviewState {
                 note: old.note.clone(),
                 git: old.git.clone(),
                 acknowledged_invalidations: old.acknowledged_invalidations.clone(),
+                coverage: old.coverage.clone(),
             };
             if varied {
                 record.note = ReviewNote::from_stored(format!(
