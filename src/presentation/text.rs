@@ -301,6 +301,57 @@ fn document_counts(counts: &memoria_application::usecases::status::DocumentCount
     )
 }
 
+/// The guidance assessment: which reviewed documents saw a different
+/// guidance text, and the decision the reader makes next.
+pub fn guidance_assessment(
+    report: &memoria_application::usecases::guidance::GuidanceAssessment,
+) -> String {
+    let mut out = String::new();
+    if report.groups.is_empty() {
+        out.push_str("No reviewed document has changed guidance.\n");
+        return out;
+    }
+    let _ = writeln!(
+        out,
+        "Guidance changed since review for {} document{}.",
+        report.changed_documents,
+        if report.changed_documents == 1 {
+            ""
+        } else {
+            "s"
+        }
+    );
+    for (index, group) in report.groups.iter().enumerate() {
+        let _ = writeln!(
+            out,
+            "\nChange {}: {} document{}, reviewed under guidance {}, now {}",
+            index + 1,
+            group.documents.len(),
+            if group.documents.len() == 1 { "" } else { "s" },
+            group.reviewed_digest,
+            group.current_digest
+        );
+        for document in &group.documents {
+            let _ = writeln!(out, "  {document}");
+        }
+        if group.sources.is_empty() {
+            out.push_str("  Current guidance: none\n");
+        } else {
+            let _ = writeln!(
+                out,
+                "  Current guidance sources: {}",
+                group.sources.join(", ")
+            );
+        }
+    }
+    let first = &report.groups[0].documents[0];
+    let _ = writeln!(
+        out,
+        "\nDecide which documents this change affects. Memoria records nothing until you act.\n  1. Read the current guidance: memoria guidance {first}\n  2. Compare it with its history: git log -p -- memoria.toml and the guidance files above\n  3. For each affected document or folder: memoria invalidate doc:<DOCUMENT> --reason \"<what changed>\" (or subtree:<DIRECTORY>), then review it\nDocuments you leave alone stay listed here until their next review. Do not acknowledge them to clear this list."
+    );
+    out
+}
+
 pub fn summary(report: &memoria_application::usecases::status::StatusSummary) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "{}", document_counts(&report.counts));
@@ -610,11 +661,8 @@ pub fn plan(report: &ReviewPlan) -> String {
             if text_of(task, "render_required") == "true" {
                 line.push_str("  (run `memoria render` first)");
             }
-            if text_of(task, "guidance_present") == "true" {
-                line.push_str("; guidance present");
-            }
             if text_of(task, "guidance_changed") == "true" {
-                line.push_str("; guidance changed");
+                line.push_str(" · guidance changed since its review");
             }
             let _ = writeln!(out, "{line}");
         }
@@ -627,16 +675,18 @@ pub fn plan(report: &ReviewPlan) -> String {
             texts_of(waiting, "waiting_on").join(", ")
         );
     }
-    if !report.tasks.is_empty() {
-        let _ = writeln!(out, "{}", report.guidance_first);
-        if let Some(next) = &report.next_ready
-            && let Some(task) = report
-                .tasks
-                .iter()
-                .find(|task| text_of(task, "document") == *next)
-        {
-            let _ = writeln!(out, "Guidance: {}", text_of(task, "guidance_command"));
-        }
+    if report.guidance_changed_documents > 0 {
+        let _ = writeln!(
+            out,
+            "Guidance changed since review for {} document{}. Assess it: {}",
+            report.guidance_changed_documents,
+            if report.guidance_changed_documents == 1 {
+                ""
+            } else {
+                "s"
+            },
+            memoria_application::usecases::plan::GUIDANCE_ASSESSMENT_COMMAND
+        );
     }
     match &report.next_action {
         Some((kind, next)) => {

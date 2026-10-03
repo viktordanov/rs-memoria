@@ -196,9 +196,11 @@ fn scope_and_consumers_are_reported_for_the_reviewed_document() {
         text.contains("export overview → README.md (waits for this review)"),
         "{text}"
     );
+    // The pointer to detail appears only when the view cut a hunk.
+    assert!(!text.contains("--details"), "{text}");
     assert!(
-        text.ends_with("Details: memoria review docs/guide.md --details\n"),
-        "{text}"
+        text.contains("      +"),
+        "the changed source shows its hunk: {text}"
     );
     // The root's own scope lists its handoffs.
     project.ack_ok("docs/guide.md");

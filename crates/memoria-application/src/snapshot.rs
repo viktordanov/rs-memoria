@@ -1651,6 +1651,20 @@ fn handoff_hints(
                 "no_document_in_directory" => format!(
                     "{target_dir}/ has no README.md, so this folder link hands nothing off; this document still covers that folder"
                 ),
+                "not_selected"
+                    if collected
+                        .decisions
+                        .get(&reference.target)
+                        .and_then(|decision| decision.exclusion.as_ref())
+                        .is_some_and(|exclusion| {
+                            matches!(exclusion, memoria_domain::Exclusion::Reserved(kind) if kind == "guidance-file")
+                        }) =>
+                {
+                    format!(
+                        "{} is a project guidance file, so it is review context and never a tracked document; this document still covers {}/",
+                        reference.target, target_dir
+                    )
+                }
                 "not_selected" => format!(
                     "{} is not a selected file, so it cannot be a tracked document; this document still covers {}/",
                     reference.target, target_dir

@@ -4,7 +4,7 @@
 
 Configuration version 3 needs Memoria 0.7.0 or later, so the workflow must pin version 0.7.0 or later. `--version` refuses an older value.
 
-CAUTION: A pinned version must be published before the generated job can install it. An install from an unreleased executable writes its own version into the workflow, and that reference cannot resolve until the maintainer publishes it. An older published release cannot check a project on configuration version 3: it fails with `configuration_invalid`.
+CAUTION: A pinned version must be published before the generated job can install it. An install from an unreleased executable writes its own version into the workflow, and that reference cannot resolve until the maintainer publishes it. A release older than 0.7.0 cannot check a project on configuration version 3: it fails with `configuration_invalid`.
 
 ## Contents
 
@@ -52,7 +52,7 @@ The default destination is `.github/workflows/memoria.yml`. A custom `--path` mu
 The workflow body comes from one embedded template. The `--version` and
 `--action-ref` values decide the two references. They default to the version
 of the executable that writes the file. The example that follows shows the
-0.7.0 references, which resolve only after the maintainer publishes 0.7.0:
+0.8.0 references, which require the published 0.8.0 release:
 
 ```yaml
 name: Memoria documentation
@@ -69,9 +69,9 @@ jobs:
           persist-credentials: false
       - name: Set up Memoria
         id: memoria
-        uses: viktordanov/rs-memoria@v0.7.0
+        uses: viktordanov/rs-memoria@v0.8.0
         with:
-          version: '0.7.0'
+          version: '0.8.0'
       - run: memoria --version
       - run: memoria check
 ```
@@ -112,7 +112,7 @@ The advisory lock serializes Memoria writers only. It does not stop an arbitrary
 Two pins are separate. The `version` input selects the Memoria executable. The Action reference selects the Action code.
 
 ```sh
-memoria integrations github install --version 0.7.0 --action-ref v0.7.0 --runner ubuntu-24.04
+memoria integrations github install --version 0.8.0 --action-ref v0.8.0 --runner ubuntu-24.04
 ```
 
 | Option | Default | Accepted values |
@@ -128,15 +128,15 @@ GitHub recommends a full commit SHA for an Action reference. The generated workf
 If you give `--runner ubuntu-24.04-arm`, the job runs on ARM64 and the Action selects the ARM64 archive automatically. You do not select an architecture yourself.
 
 Memoria does not contact GitHub during a preview or an apply. The preview reports that it does not establish whether release assets exist.
-A recorded older pin, such as 0.5.0 or 0.6.0, stays readable: `memoria integrations github upgrade --version 0.7.0 --action-ref v0.7.0 --apply` replaces it after 0.7.0 is published.
+A recorded older pin, such as 0.5.0 or 0.6.0, stays readable: `memoria integrations github upgrade --version 0.8.0 --action-ref v0.8.0 --apply` replaces it after 0.8.0 is published.
 
 ## 6. The setup Action
 
 ```yaml
-# This reference selects the v0.7.0 release after it is published.
-- uses: viktordanov/rs-memoria@v0.7.0
+# This reference selects the v0.8.0 release after it is published.
+- uses: viktordanov/rs-memoria@v0.8.0
   with:
-    version: '0.7.0'
+    version: '0.8.0'
     sha256: ''   # optional, for the runner's own architecture
 ```
 

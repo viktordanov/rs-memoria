@@ -939,21 +939,50 @@ fn held_lock_reports_busy_and_post_commit_edits_are_detected() {
     std::fs::create_dir_all(lock_path.parent().unwrap()).unwrap();
     let guard =
         memoria_infrastructure::fs::lock_file(&lock_path).unwrap_or_else(|_| panic!("lock"));
-    let output = ack_with(&project, "src/execution/README.md", &packet, &token);
+    // A zero wait restores the immediate refusal.
+    let no_wait = |args: &[&str]| {
+        project
+            .command(&project.root, args)
+            .env("MEMORIA_LOCK_WAIT_MS", "0")
+            .output()
+            .unwrap()
+    };
+    let output = no_wait(&[
+        "ack",
+        "src/execution/README.md",
+        "--packet",
+        packet.to_str().unwrap(),
+        "--token",
+        &token,
+        "--reviewer",
+        "fixture",
+        "--result",
+        "no-update",
+        "--note",
+        NOTE,
+        "--format",
+        "json",
+    ]);
     assert_eq!(output.status.code(), Some(3));
     assert_eq!(
         diagnostic_codes(&parse_json(&output.stdout)),
         vec!["state_busy"]
     );
-    let (code, inv) = project.json(&[
+    let inv = no_wait(&[
         "invalidate",
         "all",
         "--reason",
         "Lock contention test reason.",
+        "--format",
+        "json",
     ]);
-    assert_eq!(code, 3);
-    assert_eq!(diagnostic_codes(&inv), vec!["state_busy"]);
+    assert_eq!(inv.status.code(), Some(3));
+    assert_eq!(
+        diagnostic_codes(&parse_json(&inv.stdout)),
+        vec!["state_busy"]
+    );
     drop(guard);
+    // The refused artifact stays valid: the same command succeeds.
     let output = ack_with(&project, "src/execution/README.md", &packet, &token);
     assert_eq!(output.status.code(), Some(0));
     // An edit after commit is simply a later change that `check` reports.

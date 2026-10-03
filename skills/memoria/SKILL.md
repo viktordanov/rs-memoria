@@ -27,28 +27,35 @@ Start read-only. Activation of this skill grants no permission to edit, acknowle
 
 ## Select
 
+If a coordinator assigned you a document, skip this section and go to Capture. Then follow [Parallel reviews](#parallel-reviews).
+
 1. Run `memoria review --format json`.
 2. If `data.next_action.kind` is `render`, run `memoria render <DOCUMENT>` for that document. Then go back to step 1.
-3. If `data.next_action` is null and `data.tasks` is empty, run `memoria check`, report the result, and stop. Never acknowledge an empty plan.
+3. If `data.next_action` is null and `data.tasks` is empty, go to Finish, which runs `memoria check`. Never acknowledge an empty plan.
 4. If `data.next_action` is null and tasks remain, the remaining documents wait for pending providers. Review those providers first.
 5. Otherwise, take `data.next_action.document` as the document to review.
 
 ## Capture
 
 1. Create a directory outside the project: `dir=$(mktemp -d)`.
-2. Run `memoria review <DOCUMENT> --save "$dir" --format json`. The receipt names the saved file in `data.path`.
+2. Run `memoria review <DOCUMENT> --save "$dir"`. It prints the review view, then `Saved:` with the file path and the exact `ack` command.
 3. Run `memoria guidance <DOCUMENT>` and read the current text.
 
 `--save` refuses any directory inside the Git worktree, because a saved artifact there could become a review input.
+With `--format json`, the receipt names the saved file in `data.path` instead.
 
 ## Inspect
 
-1. Read the saved artifact: `data.changes` with each `relationship`, `data.review`, `data.inputs`, `data.scope`, `data.downstream`, and `data.covered_invalidations`.
-2. Follow `data.review.mode`. For `full_baseline`, read the complete current scope. For `focused_candidate`, read [review-details.md](review-details.md) first.
-3. Read the whole document. This pass is always required.
-4. Treat co-covering documents and export consumers as prompts for judgment. They are not proof that a change matters.
-5. Before you add or remove a link to a document in a subfolder, run `memoria status --explain <PATH>` for a file in that subfolder. The link moves coverage.
-6. If the document is wrong, edit its authored text. Never edit a generated import body. Run `memoria render` instead.
+1. Read the review view: why the review is needed, each change with its relationship and its verified hunk, the semantic review requests, co-covering documents, and downstream consumers.
+2. If a hunk was cut, run `memoria review <DOCUMENT> --details` for all computed hunks. The evidence budget can omit hunks without a reason, even with `--details`. A `No hunk` line means Git lost the reviewed bytes. Read that whole input.
+3. Follow the mode under `How to read`. For `full baseline`, read the complete current scope. For `focused candidate`, read [review-details.md](review-details.md) first.
+4. Read the whole document. This pass is always required.
+5. Treat co-covering documents and export consumers as prompts for judgment. They are not proof that a change matters.
+6. Before you add or remove a link to a document in a subfolder, run `memoria status --explain <PATH>` for a file in that subfolder. The link moves coverage.
+7. If the document is wrong, edit its authored text. Never edit a generated import body. Run `memoria render` instead.
+
+The saved JSON artifact holds the same facts without hunks: `data.changes`, `data.review`, `data.inputs`, `data.scope`, `data.downstream`, and `data.covered_invalidations`.
+`memoria explain <DOCUMENT>` answers a different question: why a document is current, pending, or waiting.
 
 ## Reconcile
 
@@ -61,13 +68,51 @@ Start read-only. Activation of this skill grants no permission to edit, acknowle
 1. Run `memoria ack <DOCUMENT> --packet <saved file> --reviewer <explicit label> --result <updated|no-update> --note "<why the document is correct now>"`.
 2. Use an explicit reviewer label. Do not inherit an unknown `MEMORIA_REVIEWER` value.
 3. Write a note that states what you verified. Generic notes such as `looks good` are refused.
-4. Go back to Select.
+4. Go back to Select. An assigned reviewer stops here and reports the result to the coordinator.
 
 The token comes from the saved artifact. Pass `--token` only to check it against a value you kept.
 
+If `ack` reports `state_busy`, run the same `ack` again. The artifact stays valid. For `snapshot_changed`, `guidance_changed`, or `revision_conflict`, go back to Capture and reconcile.
+
 ## Finish
 
-Finish only after `memoria check` passes. If it fails, read its diagnostics, fix the cause, and go back to Select.
+1. If the plan from `memoria review --format json` has a non-null `data.guidance_assessment`, assess the guidance change. Follow [Guidance assessment](#guidance-assessment).
+2. Run `memoria check`.
+3. If it fails, read its diagnostics, fix the cause, and go back to Select.
+4. Report the result, including your guidance decision.
+
+## Guidance assessment
+
+A guidance change does not make documents pending. You decide which documents it affects.
+
+1. Run `memoria guidance --changed`. It groups the documents by the guidance that their last review saw.
+2. Read the current guidance with `memoria guidance <DOCUMENT>`, and its history with `git log -p` on the listed sources.
+3. If the task authorizes review requests, run `memoria invalidate doc:<DOCUMENT>` or `subtree:<DIRECTORY>` with a reason for each affected scope. Then review those documents.
+4. Otherwise, report the groups and your assessment to the user. Ask before you invalidate.
+
+Never acknowledge a document only to clear this list. The assessment writes nothing, so unaffected documents stay listed until their next review.
+
+## Parallel reviews
+
+Several reviewers can work in one checkout. An artifact binds only its own document, so another reviewer's acknowledgement of a different document does not make it stale.
+
+As a coordinator:
+
+1. Run `memoria review --format json`. Give each reviewer a different document from `data.tasks` with `ready: true`.
+2. Keep documents with `waiting_on` for a later round. Run `memoria render` when the plan asks for it.
+3. After the reviewers finish, run Select again for newly ready documents. Then run Finish once.
+
+As an assigned reviewer:
+
+1. Capture, Inspect, Reconcile, and Record your own document only.
+2. Do not run Select or Finish, and do not take other documents.
+3. If `review` reports `dependencies_pending`, return the document to the coordinator.
+
+In a separate Git worktree, capture the artifact after your last edit, with `--save` outside every worktree. Do not run `memoria ack` there. After the merge, run `memoria ack` in the main checkout with that artifact. If it reports `snapshot_changed`, capture again in the main checkout.
+
+## Output
+
+Commands print results, warnings, and errors. Advisory hints appear only in `memoria lint` and with `--verbose`. Run `memoria lint` before you change links or imports. JSON output carries every diagnostic.
 
 ## When to load the other files
 

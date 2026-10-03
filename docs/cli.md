@@ -48,6 +48,7 @@ Neither command changes files.
 | --- | --- |
 | `--root <directory>` | The directory must equal the Git worktree root. |
 | `--format human\|json` | Human text is the default. JSON produces one envelope on stdout. |
+| `--verbose` | Also print advisory hints and mutation progress notes on stderr. JSON output is the same with or without it. |
 | `--help`, `--version` | These arguments produce plain text. |
 
 Commands discover the worktree root from the current directory.
@@ -273,8 +274,16 @@ memoria completions fish > ~/.config/fish/completions/memoria.fish
 
 ### `memoria explain <DOCUMENT>`
 
-This read-only command explains whole-file freshness for a current, pending, waiting, or never-reviewed document.
+This read-only command explains why one document is current, pending, waiting, or never reviewed.
+Use it for any document, including a current one, which `memoria review <DOCUMENT>` refuses with `review_not_pending`.
 It reports changed paths, hashes, lengths, policy, guidance, imports, invalidations, and locally verified Git hunks.
+
+The default human view gives the state, the scope, the semantic review requests, each change with its hunk or its `No hunk (<code>)` reason, and one next step for that state.
+A current document gets "no review needed", never a review command.
+A document that waits for a provider gets that provider first.
+A document whose import is older than its provider's export gets `memoria render <DOCUMENT>` only, the same first step that the plan uses.
+The render can restore bytes that a review already covered, so the view then asks you to run `memoria explain` again instead of predicting a review.
+`--full` adds the manifests, the policy, and every evidence field.
 It does not acquire a write lock, fetch Git objects, or acknowledge a review.
 `status --explain <path>` remains the separate source-selection explanation.
 
@@ -357,7 +366,7 @@ Its `data` object holds `documents`, `readmes`, `opted_in_documents`, `handoffs`
 Waiting can overlap current, pending, or never-reviewed status.
 These counters are not disjoint categories.
 
-### `memoria guidance [<DOCUMENT>]`
+### `memoria guidance [<DOCUMENT>] [--changed]`
 
 Without a path, the command shows the effective guidance of the root README.
 It also lists each scope that adds guidance, with the command that inspects that scope.
@@ -371,6 +380,26 @@ Its `data` object holds `document`, `digest`, `entries`, `sources`, `scopes`, `r
 Each entry holds `scope`, `source`, `kind`, and `text`.
 The empty scope string is the repository root.
 Entry kinds are exactly `inline` and `file`.
+
+#### Guidance assessment: `--changed`
+
+`memoria guidance --changed` lists the reviewed documents whose effective guidance differs from the guidance that their last review saw.
+It groups them by the pair of digests: the digest at review time and the current digest.
+Each group lists its documents and its current guidance sources.
+The command is read-only. It records no assessment and makes no document pending.
+
+`--changed` cannot be combined with a document path. That combination is a usage error with exit 2.
+
+The JSON `data` object holds `kind` (`guidance_assessment`), `changed_documents`, and `groups`.
+Each group holds `reviewed_digest`, `current_digest`, `documents`, and `sources`.
+With no change, `groups` is empty and the human view prints "No reviewed document has changed guidance."
+
+The review plan reports the same count once.
+Its JSON `data.guidance_assessment` is `null`, or `{"changed_documents": n, "command": "memoria guidance --changed"}`.
+`memoria check` keeps its advisory `guidance_changed` hint in JSON and never fails for it.
+
+To act on the assessment, request the review of each affected scope with `memoria invalidate`.
+A document left alone stays listed until its next acknowledgement records the current guidance digest.
 
 ### `memoria state inspect [--file <path>]`
 
@@ -426,9 +455,15 @@ The human view is change-first:
 7. "Downstream": export consumers, at most 10 lines.
 8. "How to read": the mode and its reasons, suggested sections, the reads, the whole-document pass, and the guidance command.
 9. "Next": read and edit, save a fresh artifact, and acknowledge.
-10. The line "Details: memoria review DOCUMENT --details".
+10. Only when a hunk was cut: the line "Complete hunks: memoria review DOCUMENT --details".
 
-`--details` adds the token, the digests, per-input sizes and hashes, and counts to the human view.
+Under each change line in item 4, the human view shows the verified Git hunk for that input, with the same evidence rules as `memoria explain`.
+It shows at most 40 hunk lines for one change and 160 lines in total.
+If Git no longer holds the reviewed bytes, one `No hunk (<code>): <reason>` line replaces the hunk.
+An added input shows no hunk line.
+The hunks are human context only. The manifest, the JSON output, and the saved artifact carry no hunk.
+
+`--details` adds the token, the digests, per-input sizes and hashes, and counts to the human view, and shows all computed hunks without display truncation. If evidence computation exceeds its budget, hunks can be omitted without a reason, even with `--details`.
 
 ### A complete manifest
 
@@ -927,8 +962,7 @@ The [method and results](development/review-context.md) report the observed
 reading costs and their limits.
 
 The default human review shows the baseline, the changes, the review mode, the
-fallback reasons, the suggested reads, and the next command. It shows no file
-content and no hunks.
+fallback reasons, the suggested reads, and the next command. It shows bounded verified hunks, but no complete source bodies.
 `memoria review README.md --details` adds tokens, digests, and per-input sizes and hashes.
 `memoria review README.md --full` shows the detailed human export.
 `memoria explain README.md --full` shows the detailed human explanation with
@@ -1066,6 +1100,7 @@ The dry run describes the changes without applying them.
 ### `memoria invalidate <scope> --reason <text>`
 
 The scope is `all`, `doc:<DOCUMENT>`, or `subtree:<directory>`.
+Use it to act on a [guidance assessment](#guidance-assessment---changed) or on a decision that no file diff shows.
 The command captures the currently tracked documents in that scope; `subtree:` selects documents by folder.
 It records the reason without changing their text.
 An empty scope causes a usage error.
@@ -1292,7 +1327,7 @@ Every JSON response uses this envelope:
 {"schema_version": 3, "command": "status", "ok": true, "data": {}, "diagnostics": []}
 ```
 
-This release moves every envelope to schema version 3 in one cutover.
+Release 0.8 keeps the existing envelope schema version 3.
 The native hook runner is the one exception.
 It speaks native hook JSON on stdin and stdout, and it does not accept `--format`.
 Its protocol version is separate and stays unchanged.
@@ -1302,7 +1337,17 @@ Optional `path`, `line`, and `column` fields identify a location.
 Severity is `error`, `warning`, or `hint`.
 The application sorts diagnostics by path, location, and code.
 Human diagnostics go to stderr.
-Mutation progress also goes to stderr before writes.
+
+The default human output prints every error and every warning.
+It prints a hint only in these cases:
+
+- The command is `memoria lint`, which exists to report hints.
+- The command has `--verbose`.
+
+A hint about the document that `review` or `explain` names follows the same rule, because link advice does not change what that review must read.
+
+Mutation progress notes (`memoria: ack: …`, `memoria: invalidate: …`, and the others) go to stderr only with `--verbose`, in both formats.
+JSON responses always carry every diagnostic, with or without `--verbose`.
 
 Argument errors honor an explicit JSON format request.
 They return `ok: false`, `data: null`, and a `usage_error` diagnostic with exit 2.
@@ -1321,6 +1366,15 @@ Source evidence: [output delivery](../src/main.rs#L312) and [diagnostic types](.
 | 2 | Arguments, review text, token, artifact validation, or a `--save` destination failed. |
 | 3 | A lock, snapshot, revision, or installation conflict prevents the operation. |
 | 4 | An I/O error, unsupported Git state, or corrupt state prevents success. |
+
+#### The write lock and `state_busy`
+
+`ack`, `invalidate`, `render`, and `init --apply` take one write lock for each worktree.
+If another of these commands holds it, the command waits up to 10 seconds, then reports `state_busy` with exit 3.
+The request stays valid: run the same command again, with the same artifact.
+`MEMORIA_LOCK_WAIT_MS` sets the wait in whole milliseconds, from `0` to `600000`.
+`0` reports `state_busy` at once.
+Another value is `lock_wait_invalid` with exit 2, and only these four commands read the setting.
 
 <details>
 <summary>Diagnostic identifiers</summary>
@@ -1346,7 +1400,7 @@ invalidation_reason_mismatch scope_invalid scope_empty reason_invalid state_busy
 state_conflict state_corrupt state_unreadable state_missing state_legacy state_ambiguous
 state_limit_exceeded state_unsupported_schema state_unsupported_codec
 state_inspection_limit_exceeded git_unavailable git_unsupported root_mismatch root_invalid
-io_error render_incomplete target_required target_ambiguous home_unset worktree_required
+io_error lock_wait_invalid render_incomplete target_required target_ambiguous home_unset worktree_required
 path_not_absolute path_outside_worktree claude_config_dir_relative skill_conflict
 skill_not_installed skill_upgrade_required skill_replace_required hook_client_unsupported
 hook_conflict hook_unmanaged hook_configuration_ambiguous hook_configuration_invalid
@@ -1424,7 +1478,7 @@ Source evidence: [Markdown codec](../crates/memoria-infrastructure/src/markdown.
 
 </details>
 
-The [specification](specification.md) records the approved contract, updated for 0.7.0.
+The [specification](specification.md) records the approved contract, updated for 0.8.0.
 This reference describes the implementation in this checkout.
 
 ## Continue

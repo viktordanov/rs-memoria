@@ -130,6 +130,23 @@ pub fn run(
     max_bytes: Option<u64>,
     full: bool,
 ) -> Result<Outcome<Prepared>, AppError> {
+    run_with_evidence(services, raw_document, max_bytes, full, false).map(|(outcome, _)| outcome)
+}
+
+/// [`run`], plus the change evidence for the human review view when
+/// `evidence` is set.
+///
+/// The evidence comes from the same snapshot that produced the artifact, so
+/// the hunks a reviewer reads match the token. It is display context only:
+/// it never enters the artifact, and an evidence limit leaves it empty
+/// instead of failing the review.
+pub fn run_with_evidence(
+    services: &Services<'_>,
+    raw_document: &str,
+    max_bytes: Option<u64>,
+    full: bool,
+    evidence: bool,
+) -> Result<(Outcome<Prepared>, Vec<crate::error::Detail>), AppError> {
     let document = parse_document(raw_document)?;
     let limit = resolve_limit(max_bytes)?;
     let snapshot = snapshot::build(services)?;
@@ -164,7 +181,17 @@ pub fn run(
     } else {
         Prepared::Manifest(Box::new(requirements))
     };
-    Ok(Outcome::new(prepared, snapshot.non_error_diagnostics()))
+    let evidence = if evidence {
+        super::explain::change_evidence(services, &snapshot, &document)
+            .map(|found| found.evidence)
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    Ok((
+        Outcome::new(prepared, snapshot.non_error_diagnostics()),
+        evidence,
+    ))
 }
 
 /// A bounded size refusal: counts, no token, and no partial manifest.

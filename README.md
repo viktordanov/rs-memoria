@@ -46,6 +46,8 @@ Memoria reads three structures and runs one cycle:
 
 Every `README.md` is a tracked document. Any other Markdown file becomes one when it carries a Memoria marker: an export, an import, or a section. A link alone never tracks a file.
 
+The [concept guide](docs/concepts.md) explains each of these ideas with an example and its limits.
+
 ### Scope and handoffs
 
 A small example shows the whole rule:
@@ -150,7 +152,7 @@ memoria guidance README.md
 memoria review README.md
 ```
 
-The review view starts with what changed since the last review and how each change relates to the document. Then it lists what you still have to read, and why. You read those paths with `cat`, `sed`, your editor — whatever you already use. Memoria does not try to become your file viewer.
+The review view starts with what changed since the last review and how each change relates to the document, with available verified hunks under changed inputs. The evidence budget can omit hunks without a reason, even with `--details`. Then the view lists what you still have to read, and why. You read those paths with `cat`, `sed`, your editor — whatever you already use. Memoria does not try to become your file viewer.
 
 Compare the document with what you read, and update the prose where it no longer matches. Then run `memoria lint`, save a **fresh** artifact outside the repository, and acknowledge that exact snapshot:
 
@@ -211,7 +213,11 @@ Documents can also share small, stable explanations. A provider marks an export,
 
 Sometimes the reason for another review is not a file diff at all. `memoria invalidate` records an explicit request — a changed policy, a new architecture decision — and carries your reason into every review it affects.
 
-To see why a document needs review, run `memoria explain README.md`. It starts with changed paths, available hunks, and reasons for missing evidence. Hunks require historical bytes that match the last acknowledged inputs. Use `--full` for hashes and detailed context. To compare saved review records, use `memoria state diff before.lock after.lock`; that comparison does not establish current freshness.
+To see why any document is current, pending, or waiting, run `memoria explain README.md`. It lists the changed paths with available hunks and reasons for missing evidence, and it works for current documents too. Hunks require historical bytes that match the last acknowledged inputs. Use `--full` for hashes and detailed context. To compare saved review records, use `memoria state diff before.lock after.lock`; that comparison does not establish current freshness.
+
+Commands print their result, every warning, and every error. Advisory hints, such as a link that hands nothing off, appear only in `memoria lint` and with `--verbose`. JSON output always carries every diagnostic.
+
+Several reviewers can work in one checkout at once. Each artifact binds only its own document, so one acknowledgement never forces another reviewer to start again unless it changed something that reviewer read. The [workflow guide](docs/workflow.md#review-documents-in-parallel) shows how to split the work, and how to bring reviews back from separate Git worktrees.
 
 For repeated reviews, you can set `MEMORIA_REVIEWER` to your chosen label. An explicit `--reviewer` always wins, and a successful acknowledgement confirms the label it used. The label records attribution, not authentication or authority. Agents should pass their label explicitly.
 
@@ -236,9 +242,10 @@ memoria guidance
 memoria guidance src/README.md
 ```
 
-Guidance is advisory. It never selects files and never makes a document stale on its own. When you change it, `memoria status` and `memoria check` tell you which reviewed documents saw the older wording, and `check` still passes. If the change really does need fresh eyes, say so explicitly:
+Guidance is advisory. It never selects files and never makes a document stale on its own. When you change it, `memoria review` reports one assessment item, and `check` still passes. `memoria guidance --changed` lists the reviewed documents that saw the older wording. If the change really does need fresh eyes, say so explicitly:
 
 ```sh
+memoria guidance --changed
 memoria invalidate subtree:src --reason 'The workflow explanation has new requirements'
 ```
 
@@ -256,11 +263,11 @@ Usage: memoria [OPTIONS] <COMMAND>
 
 Commands:
   completions   Print a shell completion script without project discovery or installation
-  explain       Explain one document's whole-file freshness with verified local Git evidence
+  explain       Explain why one document is current, pending, or waiting, with verified local Git evidence
   packet        Read exact sections from a saved full export without project discovery
   init          Validate root setup inputs, or create missing configuration and state with --apply
   status        Show coverage, input size, and review state
-  guidance      Show the project documentation guidance that applies to a document
+  guidance      Show the guidance for one document, or list documents whose guidance changed since review
   state         Inspect or compare committed state without changing it
   lint          Check structure, configuration, markers, and link hints
   review        Show the ordered review plan, or the review requirements for one document
@@ -276,6 +283,7 @@ Commands:
 Options:
       --root <DIRECTORY>  Project root. Must be the Git worktree root. Defaults to discovery from the current directory
       --format <FORMAT>   Output format [default: human] [possible values: human, json]
+      --verbose           Also print advisory hints and progress notes. JSON always carries every diagnostic
   -h, --help              Print help
   -V, --version           Print version
 ```
@@ -300,6 +308,7 @@ The first command is a preview. It works in any project, even one Memoria has ne
 
 | If you want to… | Read… |
 | --- | --- |
+| Learn the ideas behind scopes, handoffs, and imports | [Concepts](docs/concepts.md) |
 | Complete a documentation review | [Review workflow](docs/workflow.md) |
 | Look up a command or failure | [Command reference](docs/cli.md) |
 | Understand the committed state file | [Committed state](docs/state.md) |
@@ -308,7 +317,7 @@ The first command is a preview. It works in any project, even one Memoria has ne
 | Run Memoria in GitHub Actions | [GitHub Actions](docs/github-actions.md) |
 | See release changes and earlier upgrade notes | [Changelog](CHANGELOG.md) |
 
-Start with the workflow if you are new. The command reference is the lookup guide, the [specification](docs/specification.md) preserves the product rules and their rationale, and the [agent skill](skills/memoria/SKILL.md) is the procedure an assistant follows.
+Start with the concepts, then the workflow, if you are new. The command reference is the lookup guide, the [specification](docs/specification.md) preserves the product rules and their rationale, and the [agent skill](skills/memoria/SKILL.md) is the procedure an assistant follows.
 
 ## Self-hosting and development
 

@@ -4,6 +4,11 @@
 //! The command is read-only. It works for current documents, needs no review
 //! artifact, and changes no state. Guidance informs judgment. It never
 //! selects files and never decides byte-based freshness.
+//!
+//! `memoria guidance --changed` is the guidance assessment: it lists the
+//! reviewed documents whose effective guidance differs from the guidance
+//! their last review saw. It records nothing. The reviewer decides which
+//! documents the change affects and requests their review explicitly.
 
 use memoria_domain::DocumentId;
 
@@ -137,6 +142,110 @@ pub fn run(
     }
     Ok(Outcome::new(
         report_for(&snapshot, &document),
+        snapshot.non_error_diagnostics(),
+    ))
+}
+
+/// Reviewed documents that saw the same guidance change: the same digest at
+/// review time and the same digest now.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GuidanceChangeGroup {
+    pub reviewed_digest: String,
+    pub current_digest: String,
+    pub documents: Vec<String>,
+    /// The current guidance sources of these documents, in applied order.
+    pub sources: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GuidanceAssessment {
+    pub changed_documents: u64,
+    pub groups: Vec<GuidanceChangeGroup>,
+}
+
+impl GuidanceAssessment {
+    pub fn to_detail(&self) -> Detail {
+        DetailMap::default()
+            .text("kind", "guidance_assessment")
+            .number("changed_documents", self.changed_documents)
+            .with(
+                "groups",
+                Detail::list(self.groups.iter().map(|group| {
+                    DetailMap::default()
+                        .text("reviewed_digest", group.reviewed_digest.clone())
+                        .text("current_digest", group.current_digest.clone())
+                        .with("documents", Detail::texts(group.documents.clone()))
+                        .with("sources", Detail::texts(group.sources.clone()))
+                        .build()
+                })),
+            )
+            .build()
+    }
+}
+
+/// Group the reviewed documents whose guidance changed since their review.
+pub fn assessment_for(snapshot: &Snapshot) -> GuidanceAssessment {
+    let mut groups: Vec<GuidanceChangeGroup> = Vec::new();
+    let mut changed = 0;
+    for document in &snapshot.collected.documents {
+        if snapshot.guidance_changed(document) != Some(true) {
+            continue;
+        }
+        let Some(record) = snapshot.state.reviews.get(document) else {
+            continue;
+        };
+        changed += 1;
+        let effective = snapshot.guidance_of(document);
+        let reviewed = record.guidance.to_hex();
+        let current = effective.digest.to_hex();
+        let index = match groups
+            .iter()
+            .position(|g| g.reviewed_digest == reviewed && g.current_digest == current)
+        {
+            Some(index) => index,
+            None => {
+                groups.push(GuidanceChangeGroup {
+                    reviewed_digest: reviewed,
+                    current_digest: current,
+                    documents: Vec::new(),
+                    sources: Vec::new(),
+                });
+                groups.len() - 1
+            }
+        };
+        let group = &mut groups[index];
+        group.documents.push(document.as_str().to_string());
+        for entry in &effective.entries {
+            if !group.sources.contains(&entry.source) {
+                group.sources.push(entry.source.clone());
+            }
+        }
+    }
+    for group in &mut groups {
+        group.documents.sort();
+    }
+    groups.sort_by(|a, b| {
+        b.documents
+            .len()
+            .cmp(&a.documents.len())
+            .then_with(|| a.documents.cmp(&b.documents))
+    });
+    GuidanceAssessment {
+        changed_documents: changed,
+        groups,
+    }
+}
+
+pub fn run_changed(services: &Services<'_>) -> Result<Outcome<GuidanceAssessment>, AppError> {
+    let snapshot = snapshot::build(services)?;
+    // A structural error can hide guidance, so a partial assessment would
+    // understate the change. Report the errors instead.
+    let errors = snapshot.structural_errors();
+    if !errors.is_empty() {
+        return Err(AppError::many(ExitClass::Validation, errors));
+    }
+    Ok(Outcome::new(
+        assessment_for(&snapshot),
         snapshot.non_error_diagnostics(),
     ))
 }

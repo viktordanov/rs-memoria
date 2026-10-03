@@ -310,14 +310,14 @@ fn large_nested_markdown_and_fanout_views_keep_boundaries_and_import_evidence() 
             "{shape}: {} bytes",
             human.stdout.len()
         );
-        // The default view names the changed input and carries no hunk.
+        // The default view names the changed input and shows its bounded hunk.
         assert!(
             stdout(&human).contains(&format!("{prefix}input000.{extension}")),
             "{shape}: {}",
             stdout(&human)
         );
-        assert!(!stdout(&human).contains("@@"), "{}", stdout(&human));
-        // Hunks stay one explicit command away.
+        assert!(stdout(&human).contains("@@"), "{}", stdout(&human));
+        // The complete evidence stays one explicit command away.
         let explain = p.run(&["explain", doc, "--full"]);
         assert_eq!(explain.status.code(), Some(0));
         assert!(stdout(&explain).contains("@@"), "{}", stdout(&explain));

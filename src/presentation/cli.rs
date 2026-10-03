@@ -17,6 +17,9 @@ pub struct Cli {
     /// Output format.
     #[arg(long, global = true, value_enum, default_value_t = Format::Human)]
     pub format: Format,
+    /// Also print advisory hints and progress notes. JSON always carries every diagnostic.
+    #[arg(long, global = true)]
+    pub verbose: bool,
     #[command(subcommand)]
     pub command: Command,
 }
@@ -25,7 +28,7 @@ pub struct Cli {
 pub enum Command {
     /// Print a shell completion script without project discovery or installation.
     Completions { shell: CompletionShell },
-    /// Explain one document's whole-file freshness with verified local Git evidence.
+    /// Explain why one document is current, pending, or waiting, with verified local Git evidence.
     Explain {
         /// Project-relative document path: a README.md or an opted-in Markdown file.
         #[arg(value_name = "DOCUMENT")]
@@ -53,11 +56,14 @@ pub enum Command {
         #[arg(long)]
         summary: bool,
     },
-    /// Show the project documentation guidance that applies to a document.
+    /// Show the guidance for one document, or list documents whose guidance changed since review.
     Guidance {
         /// Project-relative document path. Defaults to the root README.
         #[arg(value_name = "DOCUMENT")]
         document: Option<String>,
+        /// List the reviewed documents whose guidance changed since their review. Records nothing.
+        #[arg(long, conflicts_with = "document")]
+        changed: bool,
     },
     /// Inspect or compare committed state without changing it.
     State {

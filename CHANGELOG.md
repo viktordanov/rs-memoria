@@ -4,6 +4,8 @@ This file records user-visible changes in Memoria. The project maintainer owns r
 
 Contents:
 
+- [0.8.0](#080---2026-10-04)
+- [Migration to 0.8.0](#migration-to-080)
 - [0.7.0](#070---2026-09-29)
 - [Migration to 0.7.0](#migration-to-070)
 - [0.6.0](#060---2026-09-16)
@@ -13,6 +15,62 @@ Contents:
 - [0.4.0](#040---2026-09-10)
 - [0.3.0](#030---2026-09-09)
 - [0.2.0](#020).
+
+## 0.8.0 - 2026-10-04
+
+CAUTION: This release changes default human output. If a script reads hints or progress lines from stderr, follow [Migration to 0.8.0](#migration-to-080) first. JSON envelopes, diagnostic codes, exit statuses, saved artifacts, tokens, and `memoria.lock` do not change.
+
+No state, configuration, token, or saved-artifact migration is needed from 0.7.0.
+
+### Quiet default output
+
+Commands print their result, every warning, and every error. Advisory hints no longer repeat across routine commands. In the AI core evidence project, `memoria review` with an empty plan printed 1,653 stderr bytes in 50 hint lines. It now prints none.
+
+- A hint prints only in `memoria lint` and with the new global `--verbose`, also for `review <DOCUMENT>` and `explain <DOCUMENT>`.
+- Mutation progress notes (`memoria: ack: …` and the others) print only with `--verbose`.
+- JSON responses still carry every diagnostic.
+- The plan no longer adds "guidance present" to every line or repeats the guidance sentence.
+- A link to a project guidance file now says that the file is guidance, not that it is "not a selected file". The reason code stays `not_selected`.
+
+### One review entry point
+
+`memoria review <DOCUMENT>` now shows the verified Git hunk under each changed input: at most 40 lines for one change and 160 in total. `--details` shows all computed hunks without the display truncation. If evidence computation exceeds its budget, hunks can be omitted without a reason, even with `--details` (OBS001). A `No hunk (<code>)` line gives the reason when Git no longer holds the reviewed bytes. The manifest, the JSON output, and the saved artifact do not change.
+
+`memoria explain <DOCUMENT>` keeps its own purpose: why any document is current, pending, or waiting. Its default view shows one readable line for each change with its hunk, and a next step for the state. For a current document it says that no review is needed, and no longer suggests `memoria review`. When an import is older than its provider's export, it names `memoria render <DOCUMENT>` and asks you to explain the document again, because the render can leave it current.
+
+### Guidance assessment
+
+`memoria guidance --changed` lists the reviewed documents whose guidance changed since their review, grouped by the guidance that each review saw. It writes nothing. The review plan reports the change once, in one line and in `data.guidance_assessment`. `memoria check` keeps its `guidance_changed` hint in JSON and still passes. The agent `Stop` hook message now names `memoria guidance --changed`.
+
+You choose the affected documents and request their review with `memoria invalidate`. Memoria records no "assessed" decision, so a document that you leave alone stays listed until its next review.
+
+### Parallel reviews
+
+- A write command now waits up to 10 seconds for another write command to release the lock, then reports `state_busy` (exit 3). In a test with nine reviewers who acknowledged at the same moment, 0.7 refused eight of them. 0.8 recorded all nine.
+- `MEMORIA_LOCK_WAIT_MS` sets the wait (0 to 600000 milliseconds). An invalid value is `lock_wait_invalid` (exit 2) for `ack`, `invalidate`, `render`, and `init`.
+- The `state_busy` message says to run the same command again with the same artifact.
+- The [workflow guide](docs/workflow.md#review-documents-in-parallel) and the agent skill describe coordinators, assigned reviewers, and the worktree procedure: capture in the worktree, merge, then acknowledge in the main checkout.
+
+### Documentation
+
+- New [concept guide](docs/concepts.md): tracked documents, directory scope, handoffs, imports and review order, and review and acknowledgement, each with an example and its limits.
+- The agent skill captures with the human `--save` view, reads hunks there, assesses guidance before it finishes, and has rules for parallel reviewers.
+
+A preview tree-snapshot test previously failed when Git background maintenance created a lock file (OBS002). CI disables automatic maintenance for this test environment.
+
+## Migration to 0.8.0
+
+| If you relied on | Do this |
+| --- | --- |
+| Hints in the human stderr of `status`, `check`, `review`, `explain`, `graph`, and the other routine commands | Add `--verbose`, run `memoria lint`, or read `diagnostics` from `--format json`. |
+| `memoria: <command>: …` progress lines on stderr | Add `--verbose`, or read the stdout result or the JSON data. |
+| The `guidance_changed` hint in human `check` output | Run `memoria guidance --changed`, or read `data.guidance_assessment` from `memoria review --format json`. |
+| `memoria explain <DOCUMENT> --full` for hunks during a review | Read them in `memoria review <DOCUMENT>`. `explain` still works. |
+| An immediate `state_busy` | Set `MEMORIA_LOCK_WAIT_MS=0`. |
+| The last line `Details: memoria review … --details` | Run `--details` directly. The line now appears only when a hunk was cut. |
+| An installed agent skill | Run `memoria agent upgrade`. The skill reports `outdated` because its bytes changed. |
+
+No state migration is needed. Existing artifacts stay valid.
 
 ## 0.7.0 - 2026-09-29
 

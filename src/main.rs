@@ -44,12 +44,33 @@ pub const SKILL_PACKAGE: &[(&str, &str)] = &[
     ),
 ];
 
-struct StderrProgress;
+/// Mutation progress notes. They repeat the result that stdout reports, so
+/// they print only on request.
+struct StderrProgress {
+    verbose: bool,
+}
 
 impl Progress for StderrProgress {
     fn note(&self, message: &str) {
-        eprintln!("memoria: {message}");
+        if self.verbose {
+            eprintln!("memoria: {message}");
+        }
     }
+}
+
+/// The diagnostics the default human view prints.
+///
+/// Errors and warnings always print. A hint is optional advice, so it prints
+/// only when the reader asked for advice: with `--verbose`, or from `lint`,
+/// which exists to report hints. JSON output never uses this filter.
+fn human_diagnostics(cli: &Cli, diagnostics: &[Diagnostic]) -> Vec<Diagnostic> {
+    use memoria_application::error::Severity;
+    let show_hints = cli.verbose || matches!(cli.command, Command::Lint);
+    diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.severity != Severity::Hint || show_hints)
+        .cloned()
+        .collect()
 }
 
 struct CommandOutput {
@@ -202,7 +223,15 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
         memoria_application::ports::GitRepository::private_path(&git, "memoria/write.lock")
             .map_err(|e| AppError::io("git_unavailable", e.to_string()))?,
     );
-    let locks = LockFileCoordinator::with_boundary(root.clone(), lock_path, git_dir.clone());
+    // Only commands that take the write lock read the wait setting, so a
+    // malformed value never breaks a read-only command or the hook runner.
+    let wait = if takes_write_lock(&cli.command) {
+        lock_wait(std::env::var_os("MEMORIA_LOCK_WAIT_MS"))?
+    } else {
+        std::time::Duration::ZERO
+    };
+    let locks = LockFileCoordinator::with_boundary(root.clone(), lock_path, git_dir.clone())
+        .with_wait(wait);
     let writer = AtomicFileWriter::new(root.clone());
     let packets = JsonPacketCodec::new(&hasher);
     let packet_input = FsPacketInput;
@@ -227,7 +256,9 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
     // private coordination files stay under the same Git metadata directory
     // that bounds every other private Memoria path.
     let workflows = FsWorkflowStore::new(root.clone(), git_dir.clone(), env!("CARGO_PKG_VERSION"));
-    let progress = StderrProgress;
+    let progress = StderrProgress {
+        verbose: cli.verbose,
+    };
     let services = Services {
         files: &files,
         git: &git,
@@ -302,7 +333,15 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
             let (data, human) = (outcome.data.to_detail(), text::status(&outcome.data));
             Ok(output(outcome, data, human))
         }
-        Command::Guidance { document } => {
+        Command::Guidance { changed: true, .. } => {
+            let outcome = usecases::guidance::run_changed(&services)?;
+            let (data, human) = (
+                outcome.data.to_detail(),
+                text::guidance_assessment(&outcome.data),
+            );
+            Ok(output(outcome, data, human))
+        }
+        Command::Guidance { document, .. } => {
             let outcome = usecases::guidance::run(&services, document.as_deref())?;
             let (data, human) = (outcome.data.to_detail(), text::guidance(&outcome.data));
             Ok(output(outcome, data, human))
@@ -364,8 +403,14 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
             save,
             details,
         } => {
-            let mut outcome =
-                usecases::prepare_review::run(&services, document, *max_bytes, *full)?;
+            // Hunks are human context only; JSON keeps the artifact unchanged.
+            let (mut outcome, evidence) = usecases::prepare_review::run_with_evidence(
+                &services,
+                document,
+                *max_bytes,
+                *full,
+                cli.format == Format::Human,
+            )?;
             let encode_failure = |failure| match failure {
                 memoria_application::ports::PacketFailure::Invalid { code, message } => {
                     AppError::validation(code, message)
@@ -397,7 +442,7 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
                         .map_err(encode_failure)?;
                     (
                         manifest.to_detail(),
-                        presentation::review::manifest(manifest, *details),
+                        presentation::review::manifest(manifest, *details, &evidence),
                         encoded,
                     )
                 }
@@ -424,7 +469,7 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
                     &encoded,
                 )?;
                 let requirements = outcome.data.requirements();
-                let view = presentation::review::manifest(requirements, *details);
+                let view = presentation::review::manifest(requirements, *details, &evidence);
                 let human = format!(
                     "{view}Saved: {}\nAcknowledge after your review: {}\n",
                     receipt.path, receipt.ack_command
@@ -555,6 +600,43 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
     }
 }
 
+/// The default time a state mutation waits for another one to finish.
+const DEFAULT_LOCK_WAIT_MS: u64 = 10_000;
+/// The longest wait `MEMORIA_LOCK_WAIT_MS` accepts.
+const MAX_LOCK_WAIT_MS: u64 = 600_000;
+
+/// Whether the command can take the project write lock.
+fn takes_write_lock(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::Ack(_)
+            | Command::Invalidate { .. }
+            | Command::Render { .. }
+            | Command::Init { .. }
+    )
+}
+
+/// Parse the opt-in `MEMORIA_LOCK_WAIT_MS` setting: whole milliseconds from
+/// 0 to 600000. Zero restores the immediate `state_busy` failure.
+fn lock_wait(value: Option<std::ffi::OsString>) -> Result<std::time::Duration, AppError> {
+    let Some(value) = value else {
+        return Ok(std::time::Duration::from_millis(DEFAULT_LOCK_WAIT_MS));
+    };
+    value
+        .to_str()
+        .and_then(|text| text.trim().parse::<u64>().ok())
+        .filter(|ms| *ms <= MAX_LOCK_WAIT_MS)
+        .map(std::time::Duration::from_millis)
+        .ok_or_else(|| {
+            AppError::usage(
+                "lock_wait_invalid",
+                format!(
+                    "MEMORIA_LOCK_WAIT_MS must be whole milliseconds from 0 to {MAX_LOCK_WAIT_MS}"
+                ),
+            )
+        })
+}
+
 /// Translate the GitHub workflow grammar into one application request.
 fn github_args(command: &GithubCommand) -> usecases::github_workflow::WorkflowArgs {
     use usecases::github_workflow::WorkflowArgs;
@@ -667,7 +749,7 @@ fn run_global_agent(
                         eprint!(
                             "{}",
                             presentation::human::render_diagnostics(
-                                &outcome.diagnostics,
+                                &human_diagnostics(cli, &outcome.diagnostics),
                                 presentation::human::HumanOptions::stderr()
                             )
                         );
@@ -724,7 +806,9 @@ fn run_global_agent(
         env!("CARGO_PKG_VERSION"),
     );
     let locations = EnvAgentLocations::from_environment(worktree, invocation);
-    let progress = StderrProgress;
+    let progress = StderrProgress {
+        verbose: cli.verbose,
+    };
     let request = usecases::agent::AgentArgs {
         operation,
         target: args.target.map(|t| match t {
@@ -1217,7 +1301,7 @@ fn main() -> ExitCode {
                     eprint!(
                         "{}",
                         presentation::human::render_diagnostics(
-                            &result.diagnostics,
+                            &human_diagnostics(&cli, &result.diagnostics),
                             presentation::human::HumanOptions::stderr()
                         )
                     );
@@ -1236,7 +1320,7 @@ fn main() -> ExitCode {
                     eprint!(
                         "{}",
                         presentation::human::render_diagnostics(
-                            &error.diagnostics,
+                            &human_diagnostics(&cli, &error.diagnostics),
                             presentation::human::HumanOptions::stderr()
                         )
                     );

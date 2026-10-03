@@ -16,7 +16,13 @@ pub struct ReviewPlan {
     /// The next executable step: `("render", document)` when the ready
     /// document still has outdated imports, otherwise `("review", document)`.
     pub next_action: Option<(String, String)>,
+    /// Reviewed documents whose effective guidance changed since their
+    /// review. A separate assessment item, never a pending review.
+    pub guidance_changed_documents: u64,
 }
+
+/// The command that assesses a guidance change.
+pub const GUIDANCE_ASSESSMENT_COMMAND: &str = "memoria guidance --changed";
 
 impl ReviewPlan {
     pub fn to_detail(&self) -> Detail {
@@ -37,6 +43,17 @@ impl ReviewPlan {
                         .text("kind", kind.clone())
                         .text("document", document.clone())
                         .build(),
+                },
+            )
+            .with(
+                "guidance_assessment",
+                if self.guidance_changed_documents == 0 {
+                    Detail::Null
+                } else {
+                    DetailMap::default()
+                        .number("changed_documents", self.guidance_changed_documents)
+                        .text("command", GUIDANCE_ASSESSMENT_COMMAND)
+                        .build()
                 },
             )
             .build()
@@ -131,6 +148,7 @@ pub fn plan_from(snapshot: &Snapshot) -> ReviewPlan {
                 .to_string(),
         next_ready,
         next_action,
+        guidance_changed_documents: super::status::guidance_counts(snapshot).changed_documents,
     }
 }
 

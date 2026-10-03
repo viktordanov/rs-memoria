@@ -190,6 +190,7 @@ impl Project {
             .env_remove("GIT_CONFIG_PARAMETERS")
             .env_remove("CLAUDE_CONFIG_DIR")
             .env_remove("CODEX_HOME")
+            .env_remove("MEMORIA_LOCK_WAIT_MS")
             .stdin(Stdio::null());
         cmd
     }

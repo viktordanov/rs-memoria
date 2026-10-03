@@ -84,7 +84,13 @@ It does not prevent an editor or Git from changing files.
 The operating system releases the lock after the process exits.
 The lock file remains on disk.
 
-Source evidence: [state.rs:326](src/state.rs#L326), [fs.rs:202](src/fs.rs#L202), and [fs.rs:337](src/fs.rs#L337).
+Each lock attempt is nonblocking.
+`LockFileCoordinator::with_wait` gives the project write lock a wait budget, and a busy lock is retried every 25 to 200 milliseconds until that budget ends.
+So reviewers who acknowledge at the same moment take turns instead of failing.
+The executable sets the budget from `MEMORIA_LOCK_WAIT_MS`, 10 seconds by default.
+Without a budget, the coordinator reports a busy lock at once.
+
+Source evidence: [state.rs:326](src/state.rs#L326), [fs.rs:202](src/fs.rs#L202), [fs.rs:337](src/fs.rs#L337), and [fs.rs:538](src/fs.rs#L538).
 
 ## Formats and artifact limits
 

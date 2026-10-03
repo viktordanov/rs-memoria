@@ -844,11 +844,19 @@ fn nothing_is_acknowledged_automatically() {
 #[test]
 fn an_apply_reports_its_writes_before_it_performs_them() {
     let project = initialized();
-    let output = project.run(&["integrations", "github", "install", "--apply"]);
+    let output = project.run(&["integrations", "github", "install", "--apply", "--verbose"]);
     assert_eq!(output.status.code(), Some(0));
     let notes = stderr(&output);
     assert!(notes.contains("integrations github install"), "{notes}");
     assert!(notes.contains(WORKFLOW), "{notes}");
+}
+
+#[test]
+fn an_apply_prints_progress_only_on_request() {
+    let project = initialized();
+    let output = project.run(&["integrations", "github", "install", "--apply"]);
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(stderr(&output), "");
 }
 
 #[test]

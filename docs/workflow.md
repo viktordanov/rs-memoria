@@ -16,6 +16,7 @@ Project guidance provides review context, not permission or authority over the u
 If guidance conflicts with the task, obtain an owner decision.
 
 If the project has no `memoria.toml`, [prepare the project](#prepare-a-project-for-its-first-review).
+If a term on this page is new to you, read the [concept guide](concepts.md) first.
 
 Examine the current state:
 
@@ -41,6 +42,8 @@ The plan chooses the order from those dependencies.
 - [Review one document](#review-one-document)
 - [Scopes, handoffs, and shared reviews](#scopes-handoffs-and-shared-reviews)
 - [Why an old artifact cannot approve new inputs](#why-an-old-artifact-cannot-approve-new-inputs)
+- [Review documents in parallel](#review-documents-in-parallel)
+- [Assess a guidance change](#assess-a-guidance-change)
 - [Prepare a project or request a review](#prepare-a-project-for-its-first-review)
 - [Upgrade a project to Memoria 0.7](#upgrade-a-project-to-memoria-07)
 - [Resolve a rejection and check CI](#resolve-a-rejected-acknowledgement)
@@ -120,7 +123,7 @@ memoria render "$memoria_document"
 
 This command changes only the declared import bodies.
 It does not record a review result.
-The changed document still requires review.
+Run `memoria explain` again to see whether the rendered document requires review.
 
 If the plan is empty, go to [finish the review cycle](#5-finish-the-review-cycle).
 Never acknowledge an empty plan.
@@ -162,12 +165,16 @@ Read the artifact fields in this order:
 4. Read `data.review.mode` and `data.review.fallback_reasons` for the required reading.
 5. Read `data.inputs` and `data.review.sections` for the suggested reads.
 
-The human view shows the same facts, change first:
+The human view shows the same facts, change first.
+Under each changed input, it shows the verified hunk from Git: the exact lines between the reviewed bytes and the current bytes.
 
 ```sh
 memoria review "$memoria_document"
 memoria guidance "$memoria_document"
 ```
+
+The default view shows at most 40 hunk lines for each change and 160 lines in total.
+If it cuts a hunk, its last line names `memoria review "$memoria_document" --details`, which shows all computed hunks in full. The evidence budget can omit hunks without a reason, even with `--details`.
 
 If `data.review.mode` is `full_baseline`, read all current scope sources, all current import bodies, the whole document, the effective guidance, and every active covered reason.
 
@@ -182,8 +189,9 @@ The whole-document pass is always required, in both modes.
 Use them as prompts for judgment.
 They are not proof that a change matters.
 
-For verified hunks, run `memoria explain "$memoria_document" --full`.
-Unavailable evidence does not mean that the input stayed unchanged.
+If Git no longer holds the reviewed bytes, the view says `No hunk` with the reason code.
+Unavailable evidence does not mean that the input stayed unchanged: read the whole input.
+`memoria explain "$memoria_document"` answers a different question: why a document is current, pending, or waiting.
 
 Before documentation edits, load the skills that the guidance requires.
 If a required skill is unavailable, stop documentation edits and report the missing skill by name.
@@ -247,11 +255,13 @@ Navigation warnings and hints do not make it fail.
 
 1. Run `memoria review`.
 2. If another task remains, process it from [select the next action](#1-select-the-next-action).
-3. After the plan is empty, run `memoria lint`.
-4. Run `memoria check`.
+3. If the plan reports a guidance change, [assess it](#assess-a-guidance-change).
+4. After the plan is empty, run `memoria lint`.
+5. Run `memoria check`.
 
 A successful check returns exit 0.
-A changed-guidance count in the check output is a hint, not a failure.
+A guidance change never makes the check fail.
+The plan reports it once, as its own assessment item.
 
 ## Scopes, handoffs, and shared reviews
 
@@ -324,6 +334,50 @@ The write lock covers the state transition and the final comparison.
 A conflict at either comparison prevents the state save.
 Source evidence: [review requirements](../crates/memoria-application/src/usecases/requirements.rs), [acknowledgement](../crates/memoria-application/src/usecases/ack.rs), and [state save](../crates/memoria-infrastructure/src/state.rs).
 
+## Review documents in parallel
+
+Several reviewers can work at the same time in one checkout.
+Each artifact binds only its own document: its inputs, its previous review, and its context.
+Another reviewer's acknowledgement of a different document does not change that binding.
+
+The work splits into two roles:
+
+| Role | Does |
+| --- | --- |
+| Coordinator | Runs `memoria review --format json`. Gives each reviewer a different document from `data.tasks` with `ready: true`. Runs `render`, the guidance assessment, and the final `check`. |
+| Reviewer | Saves the artifact for its own document, reviews it, and runs `memoria ack`. It does not select other work and does not run the final check. |
+
+A reviewer follows these rules:
+
+1. Review only the assigned document.
+2. If `ack` reports `state_busy`, run the same `ack` again. The artifact stays valid.
+3. If `ack` reports `snapshot_changed`, `guidance_changed`, or `revision_conflict`, save a fresh artifact and reconcile.
+4. If `review` reports `dependencies_pending`, return the document to the coordinator.
+
+Real dependencies still stop work.
+A changed source that two documents cover refuses both older artifacts.
+A consumer cannot start until its provider is acknowledged and its import is rendered.
+Two reviewers of one document get `revision_conflict` for the second acknowledgement, so no record is lost.
+
+`memoria ack` waits up to 10 seconds when another write command, such as another acknowledgement, holds the write lock.
+`MEMORIA_LOCK_WAIT_MS` changes that wait, and `0` restores the immediate `state_busy`.
+
+### Separate Git worktrees
+
+A linked worktree has its own copy of `memoria.lock`.
+Two copies cannot be merged, because the file is binary.
+Acknowledge in the main checkout only:
+
+1. In the worktree, edit and commit the documentation and sources.
+2. After the last edit, run `memoria review <DOCUMENT> --save <DIR>` with a directory outside every worktree. Do not run `memoria ack` there.
+3. Merge the branch into the main checkout.
+4. In the main checkout, run `memoria ack <DOCUMENT> --packet <FILE>` with that artifact.
+
+The acknowledgement recomputes the token in the main checkout.
+It succeeds only when the merged inputs, the previous review, and the context equal what the reviewer saw.
+If another merge changed any of them, it reports `snapshot_changed` or `revision_conflict`.
+Then save a fresh artifact in the main checkout and reconcile.
+
 ## Prepare a project for its first review
 
 You choose what your document tree represents.
@@ -386,8 +440,31 @@ memoria guidance src/README.md
 
 Guidance lives in `memoria.toml` under `[documentation]`.
 A `README.memoria.toml` sidecar adds local guidance for documents in its folder and below.
-When you change the wording, `memoria status` and `memoria check` report how many reviewed documents saw the older text.
-If the change needs fresh eyes, request the review explicitly.
+When you change the wording, the plan reports one assessment item.
+The next section explains that decision.
+
+## Assess a guidance change
+
+A guidance change does not make a document pending.
+The text that a reviewer applied changed, but the reviewed inputs did not.
+Only you can decide which documents the new text affects.
+
+`memoria review` reports the change in one line:
+
+```text
+Guidance changed since review for 26 documents. Assess it: memoria guidance --changed
+```
+
+Assess it in four steps:
+
+1. Run `memoria guidance --changed`. It groups the documents by the guidance that their last review saw.
+2. Read the current text with `memoria guidance <DOCUMENT>`.
+3. Compare the text with its history, for example `git log -p -- memoria.toml`.
+4. For each affected document or folder, run `memoria invalidate doc:<DOCUMENT>` or `subtree:<DIRECTORY>` with the reason. Then review those documents.
+
+The assessment writes nothing.
+A document that you leave alone stays in the list until its next review, because Memoria records no "assessed" decision.
+Do not acknowledge a document only to clear this list: an acknowledgement states that you reviewed it against the current guidance.
 
 ## Request a review after a decision or policy change
 
@@ -440,6 +517,7 @@ These errors leave the previous saved review in place:
 | `revision_conflict` | Another acknowledgement advanced the document revision. | Save a fresh artifact. |
 | `dependencies_pending` | A provider prevents this review. | Process the provider from the plan. |
 | `guidance_changed` | The documentation guidance changed after the review. | Read the new guidance, then save a fresh artifact. |
+| `state_busy` | Another command kept the write lock for the whole wait. | Run the same command again. Keep the artifact. |
 | `packet_integrity_failed` | The artifact differs from its integrity digest. | Save the artifact again through the CLI. |
 | `packet_schema_invalid` | The file is an old or foreign artifact, or a save receipt. | Pass the saved artifact from this release. |
 | `note_invalid` | The note does not satisfy the text rules. | Write a specific note with at least three words. |

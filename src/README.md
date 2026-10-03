@@ -37,11 +37,11 @@ Usage: memoria [OPTIONS] <COMMAND>
 
 Commands:
   completions   Print a shell completion script without project discovery or installation
-  explain       Explain one document's whole-file freshness with verified local Git evidence
+  explain       Explain why one document is current, pending, or waiting, with verified local Git evidence
   packet        Read exact sections from a saved full export without project discovery
   init          Validate root setup inputs, or create missing configuration and state with --apply
   status        Show coverage, input size, and review state
-  guidance      Show the project documentation guidance that applies to a document
+  guidance      Show the guidance for one document, or list documents whose guidance changed since review
   state         Inspect or compare committed state without changing it
   lint          Check structure, configuration, markers, and link hints
   review        Show the ordered review plan, or the review requirements for one document
@@ -57,6 +57,7 @@ Commands:
 Options:
       --root <DIRECTORY>  Project root. Must be the Git worktree root. Defaults to discovery from the current directory
       --format <FORMAT>   Output format [default: human] [possible values: human, json]
+      --verbose           Also print advisory hints and progress notes. JSON always carries every diagnostic
   -h, --help              Print help
   -V, --version           Print version
 ```
@@ -72,6 +73,8 @@ Completions, saved export views, and explicit state comparisons dispatch before 
 The CLI resolves the optional reviewer environment default only for acknowledgement.
 An explicit reviewer label takes precedence, and success output confirms that label.
 The write lock comes from the Git port, at the worktree-private path, so the committed state file is never the process lock.
+Only the write commands (`ack`, `invalidate`, `render`, and `init`) read `MEMORIA_LOCK_WAIT_MS`, the time that the lock adapter waits for another writer.
+A malformed value is a usage error for those commands and never breaks a read-only command or the hook runner.
 The application function returns structured data and diagnostics.
 The presentation code describes those values without recalculating review decisions.
 
@@ -94,8 +97,9 @@ The saved bytes are the bytes that `--format json` prints for the same snapshot.
 With `--save`, the JSON output is a receipt that names the saved file, and the human output adds the saved path and the `ack` command.
 
 The default human view in `presentation/review.rs` is change-first.
-It shows the header, the scope and its handoffs, the baseline, what changed with each relationship, semantic requests, co-covering documents, export consumers, how to read, and three next steps.
-`--details` adds tokens, digests, per-input sizes and hashes, and counts.
+It shows the header, the scope and its handoffs, the baseline, what changed with each relationship and its verified hunk, semantic requests, co-covering documents, export consumers, how to read, and three next steps.
+The hunks come from the same snapshot as the artifact, and only the human view shows them, bounded to 40 lines for one change and 160 in total.
+`--details` adds tokens, digests, per-input sizes and hashes, and counts, and shows all computed hunks. The evidence budget can omit hunks without a reason, even with `--details`.
 
 Source evidence: [main.rs](main.rs) and [presentation/review.rs](presentation/review.rs).
 <!-- /memoria:section -->
@@ -108,6 +112,9 @@ The runner starts one three-second deadline at entry and bounds its input, its d
 One supervisor owns every process it starts, so an expired deadline terminates them before the runner returns.
 Its grammar has no format option, so an explicit `--format` value is a usage error.
 Human diagnostics go to stderr.
+`human_diagnostics` decides which ones print: every error and warning, and a hint only for `lint` or with `--verbose`.
+Mutation progress notes print only with `--verbose`.
+JSON output never uses that filter.
 The human renderer uses terminal width with an 80-column fallback and preserves structured evidence.
 It groups navigation warnings and import hints without changing individual JSON diagnostics.
 The final response goes to stdout.

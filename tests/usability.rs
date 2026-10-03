@@ -387,9 +387,11 @@ fn human_plan_carries_existing_guidance_and_render_order() {
     project.run(&["init", "--apply"]);
     let (_, plan) = project.json(&["review"]);
     let human = project.run(&["review"]);
-    assert!(stdout(&human).contains(get_str(&plan, &["data", "guidance_first"])));
+    // The plan keeps its machine guidance fields; the human plan leaves the
+    // per-document guidance command to the review view of that document.
+    assert!(!get_str(&plan, &["data", "guidance_first"]).is_empty());
+    assert!(!stdout(&human).contains("guidance present"));
     let next = get_str(&plan, &["data", "next_ready"]);
-    assert!(stdout(&human).contains(&format!("Guidance: memoria guidance {next}")));
     let kind = get_str(&plan, &["data", "next_action", "kind"]);
     assert!(stdout(&human).contains(&format!("Next: memoria {kind} {next}")));
     project.baseline();

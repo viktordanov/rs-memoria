@@ -30,13 +30,17 @@ use crate::ports::{LockFailure, Services, WriteGuard};
 use crate::snapshot::Snapshot;
 
 /// Acquire the project write lock or fail with `state_busy`.
+///
+/// The coordinator already waited for its budget before it reports a busy
+/// lock. The request itself is still valid, so the message says to repeat it
+/// unchanged: a review artifact does not need a fresh capture.
 pub(crate) fn acquire_lock<'a>(
     services: &Services<'a>,
 ) -> Result<Box<dyn WriteGuard + 'a>, AppError> {
     services.locks.lock().map_err(|failure| match failure {
         LockFailure::Busy => AppError::conflict(
             "state_busy",
-            "another Memoria mutation holds the write lock; retry shortly",
+            "another Memoria mutation still holds the write lock after the wait; repeat the same command. A review artifact stays valid, so do not capture a new one for this error",
         ),
         LockFailure::Io(err) => AppError::io("io_error", err.to_string()),
     })

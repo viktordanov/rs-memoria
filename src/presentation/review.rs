@@ -9,6 +9,94 @@ use std::fmt::Write as _;
 
 /// Most lines a bounded human list shows before it points at `memoria graph`.
 const MAX_HUMAN_LINES: usize = 10;
+/// Most hunk lines the default view shows for one change.
+const MAX_HUNK_LINES: usize = 40;
+/// Most hunk lines the default view shows in total.
+const MAX_TOTAL_HUNK_LINES: usize = 160;
+
+/// Remaining hunk lines in one bounded view.
+pub struct HunkBudget {
+    remaining: usize,
+    unbounded: bool,
+    /// Whether any hunk was cut.
+    pub cut: bool,
+}
+
+impl HunkBudget {
+    pub fn new(unbounded: bool) -> HunkBudget {
+        HunkBudget {
+            remaining: MAX_TOTAL_HUNK_LINES,
+            unbounded,
+            cut: false,
+        }
+    }
+}
+
+fn text_field<'a>(item: &'a Detail, key: &str) -> Option<&'a str> {
+    match item.get(key) {
+        Some(Detail::Text(text)) => Some(text.as_str()),
+        _ => None,
+    }
+}
+
+/// Write the verified hunk for one changed input under its change line.
+///
+/// The hunk is the exact text between the reviewed bytes and the current
+/// bytes. When Git no longer holds the reviewed bytes, one line gives the
+/// reason code and the reason, so the reader knows to read the whole input.
+/// The review view skips `added_file`, because its change line already says
+/// that the input is new; `explain` names it.
+fn hunk(
+    out: &mut String,
+    identity: &str,
+    evidence: &[Detail],
+    budget: &mut HunkBudget,
+    name_added: bool,
+) {
+    let Some(item) = evidence
+        .iter()
+        .find(|item| text_field(item, "identity") == Some(identity))
+    else {
+        return;
+    };
+    let status = text_field(item, "status");
+    if let (Some("available"), Some(text)) = (status, text_field(item, "text"))
+        && !text.is_empty()
+    {
+        let lines: Vec<&str> = text.lines().collect();
+        let limit = if budget.unbounded {
+            lines.len()
+        } else {
+            lines.len().min(MAX_HUNK_LINES).min(budget.remaining)
+        };
+        for line in &lines[..limit] {
+            let _ = writeln!(out, "      {line}");
+        }
+        if !budget.unbounded {
+            budget.remaining -= limit;
+        }
+        if limit < lines.len() {
+            budget.cut = true;
+            let _ = writeln!(out, "      … {} more hunk lines", lines.len() - limit);
+        }
+    }
+    let Some(code) = text_field(item, "reason_code") else {
+        return;
+    };
+    if code == "added_file" && !name_added {
+        return;
+    }
+    let label = if status == Some("available") {
+        "Note"
+    } else {
+        "No hunk"
+    };
+    let _ = writeln!(
+        out,
+        "      {label} ({code}): {}",
+        text_field(item, "reason").unwrap_or("")
+    );
+}
 
 fn folder(subtree: &str) -> String {
     if subtree.is_empty() {
@@ -88,7 +176,10 @@ fn relationship_phrase(change: &str, relationship: &Relationship, handoffs: &[St
 /// what to read, and the next three steps. It carries no file content.
 ///
 /// `details` adds tokens, digests, per-input sizes and hashes, and counts.
-pub fn manifest(m: &ReviewManifest, details: bool) -> String {
+/// `evidence` holds the verified hunks from the snapshot that produced the
+/// artifact. The default view bounds them; `details` shows them complete.
+pub fn manifest(m: &ReviewManifest, details: bool, evidence: &[Detail]) -> String {
+    let mut budget = HunkBudget::new(details);
     let mut out = String::new();
     // 1. Header.
     let state = match &m.baseline {
@@ -190,6 +281,7 @@ pub fn manifest(m: &ReviewManifest, details: bool) -> String {
                 change.change,
                 relationship_phrase(&change.change, relationship, &targets)
             );
+            hunk(&mut out, &change.identity, evidence, &mut budget, false);
         }
     }
     // 5. Semantic review requests.
@@ -297,7 +389,7 @@ pub fn manifest(m: &ReviewManifest, details: bool) -> String {
         "  Guidance: memoria guidance {}{}",
         m.document,
         match m.guidance_changed_since_review {
-            Some(true) => " (changed since the last review)",
+            Some(true) => " (changed since the last review; apply the current text)",
             _ => "",
         }
     );
@@ -348,20 +440,36 @@ pub fn manifest(m: &ReviewManifest, details: bool) -> String {
         "Next:\n  1. Read the whole document and the listed inputs; edit {doc} if it is wrong.\n  2. After any edit, save a fresh artifact: dir=$(mktemp -d); memoria review {doc} --save \"$dir\"\n  3. Record the result: memoria ack {doc} --packet <saved file> --reviewer <you> --result <updated|no-update> --note \"<why>\"",
         doc = m.document
     );
-    // 10. Details pointer.
-    if !details {
-        let _ = writeln!(out, "Details: memoria review {} --details", m.document);
+    // 10. Details pointer, only when this view left something out.
+    if budget.cut {
+        let _ = writeln!(
+            out,
+            "Complete hunks: memoria review {} --details",
+            m.document
+        );
     }
     out
 }
 
+/// The default freshness explanation: state, scope, each change with its
+/// verified hunk, and the one next step that fits the state.
 pub fn explain(p: &ExplainReport) -> String {
-    let mut out = format!("Freshness: {}\n", p.document);
-    for key in ["status", "ready", "waiting_on", "active_invalidations"] {
-        if let Some(value) = p.state.get(key) {
-            super::human::detail(&mut out, &Detail::map().with(key, value.clone()).build(), 0);
-        }
+    let status = text_field(&p.state, "status").unwrap_or("unknown");
+    let waiting: Vec<String> = match p.state.get("waiting_on") {
+        Some(Detail::List(items)) => items
+            .iter()
+            .filter_map(|item| match item {
+                Detail::Text(text) => Some(text.clone()),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    let mut out = format!("Freshness: {} — {status}", p.document);
+    if !waiting.is_empty() {
+        let _ = write!(out, ", waits for {}", waiting.join(", "));
     }
+    out.push('\n');
     let count = |key| match p.current_manifest.get(key) {
         Some(Detail::List(items)) => items.len(),
         _ => 0,
@@ -398,30 +506,64 @@ pub fn explain(p: &ExplainReport) -> String {
         let _ = write!(scope, "; hands off {}", handoffs.join(", "));
     }
     let _ = writeln!(out, "{scope}");
-    out.push_str("Changes:\n");
-    super::human::detail(&mut out, &Detail::List(p.changes.clone()), 1);
-    out.push_str("Verified historical evidence:\n");
-    for evidence in &p.evidence {
-        let mut item = Detail::map();
-        for key in [
-            "identity",
-            "status",
-            "reason_code",
-            "reason",
-            "baseline_verified",
-            "base_commit",
-            "text",
-        ] {
-            if let Some(value) = evidence.get(key) {
-                item = item.with(key, value.clone());
-            }
+    if let Some(Detail::List(requests)) = p.state.get("active_invalidations")
+        && !requests.is_empty()
+    {
+        out.push_str("Semantic review requests:\n");
+        for request in requests {
+            let id = match request.get("id") {
+                Some(Detail::Number(id)) => id.to_string(),
+                _ => "?".to_string(),
+            };
+            let _ = writeln!(
+                out,
+                "  [{id}] {}",
+                text_field(request, "reason").unwrap_or("")
+            );
         }
-        super::human::detail(&mut out, &item.build(), 1);
     }
-    let _ = writeln!(
-        out,
-        "Guidance: memoria guidance {}\nReview when ready: memoria review {}\nFull explanation: memoria explain {} --full",
-        p.document, p.document, p.document
-    );
+    if p.changes.is_empty() {
+        if status == "never_reviewed" {
+            out.push_str("Changes: no earlier review to compare with (no_previous_review)\n");
+        } else {
+            out.push_str("Changes: none since the last review\n");
+        }
+    } else {
+        out.push_str("Changes since the last review:\n");
+        let mut budget = HunkBudget::new(false);
+        for change in &p.changes {
+            let identity = text_field(change, "identity").unwrap_or("");
+            let _ = writeln!(
+                out,
+                "  {:<8} {identity}",
+                text_field(change, "change").unwrap_or("")
+            );
+            hunk(&mut out, identity, &p.evidence, &mut budget, true);
+        }
+    }
+    let next = if !waiting.is_empty() && status == "current" {
+        format!(
+            "Next: no review needed now. It waits for {}: review that first, then explain this document again.",
+            waiting.join(", ")
+        )
+    } else if !waiting.is_empty() {
+        format!(
+            "Next: review {} first; this document waits for it.",
+            waiting.join(", ")
+        )
+    } else if p.render_required {
+        // A render can restore bytes that were already reviewed, so the
+        // state after it is unknown here: name only the render.
+        format!(
+            "Next: memoria render {doc}. Then run memoria explain {doc} again, because the render can leave it current.",
+            doc = p.document
+        )
+    } else if status == "current" {
+        "Next: no review needed; the document matches its last review.".to_string()
+    } else {
+        format!("Next: memoria review {}", p.document)
+    };
+    let _ = writeln!(out, "{next}");
+    let _ = writeln!(out, "Exact evidence: memoria explain {} --full", p.document);
     out
 }

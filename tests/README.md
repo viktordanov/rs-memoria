@@ -90,6 +90,8 @@ An invalidation requests a review with an explicit reason, even without a file c
 | [sections.rs](sections.rs) | Advisory mappings, review mode, fallback reasons, and snapshot safety |
 | [configuration.rs](configuration.rs) | Supported settings and explicit configuration errors |
 | [packets.rs](packets.rs) | Artifact transport, limits, integrity, replay, and concurrency |
+| [parallel.rs](parallel.rs) | Independent reviewers in one checkout: simultaneous acknowledgements, shared sources, import waiting, competing reviewers, the lock wait, and worktree integration |
+| [quiet_output.rs](quiet_output.rs) | Default human output on stdout and stderr together: hints and progress only on request, review hunks, `explain` next steps, and the guidance assessment |
 | [edges.rs](edges.rs) | Discovery, paths, configuration, and corrupt state |
 | [portability.rs](portability.rs) | Host rules against repository policy, and clean clones |
 | [guidance.rs](guidance.rs) | Setup preview, guidance visibility, and advisory behavior |
@@ -104,6 +106,10 @@ An invalidation requests a review with an explicit reason, even without a file c
 The repair suites contain multiple cases and supporting controls.
 Their source headers identify the related defect numbers.
 The tests describe specific cases, not a proof of all possible filesystem behavior.
+
+The parallel cases start real Memoria processes at the same time.
+Each reviewer captures its artifact before anyone acknowledges, as parallel reviewers do.
+The worktree cases capture in a linked worktree and acknowledge in the main checkout after a merge.
 
 Some cases rebuild an interrupted state instead of stopping a real process.
 They write the exact transaction record that each durable boundary leaves, then invoke the public command.
@@ -138,6 +144,7 @@ Without it a test passes only on a machine that happens to have the real client 
 Each fixture runs with an isolated home and XDG configuration directory.
 Every Git invocation also runs with empty system and global configuration files.
 The harness clears inherited Git parameters, so a host signing rule cannot change a seed commit.
+It also clears `MEMORIA_LOCK_WAIT_MS`, so a host wait setting cannot change a lock test.
 Tests that exercise host ignore rules override those locations explicitly.
 
 Some corruption tests construct invalid state deliberately.

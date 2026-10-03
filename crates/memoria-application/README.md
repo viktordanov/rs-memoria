@@ -78,6 +78,10 @@ entries with totals.
 carries requirements and no bodies. `--full` adds every reviewed byte and the
 canonical binding descriptors. Both carry the same token, because both
 describe one stable snapshot.
+For the human view, `run_with_evidence` also returns the verified hunks of
+the changed inputs, from the same snapshot that produced the token. The hunks
+never enter the artifact, and an evidence limit leaves them empty instead of
+failing the review.
 
 `save_artifact.rs` writes an encoded artifact through the `ArtifactStore`
 port. It refuses a destination inside the Git worktree before the write, and
@@ -116,6 +120,11 @@ The acknowledgement path has five stages:
 Stage 3 never validates only the suggested reads, the suggested sections, or
 the changed files. A small artifact narrows the reading list. It never narrows
 the validated state.
+
+Stage 3 starts with the write lock. If another write command holds it, the
+lock adapter retries for its wait budget. A lock that stays busy causes
+`state_busy` with exit 3, and its message says to repeat the same command,
+because the artifact stays valid.
 
 Changed inputs cause `snapshot_changed` with exit 3. A full export supplies
 exact per-input differences, because it carries the reviewed bytes. A manifest
@@ -170,13 +179,19 @@ The read-only commands include `status`, `guidance`, `state_inspect`, `state_dif
 An `init` preview is read-only too; only `init --apply` writes.
 
 `explain` uses the stable snapshot without a readiness gate, so current and waiting documents also produce evidence.
-The shared evidence helper compares Git bytes with the saved length and hash before a hunk.
+Its report also says whether an import is older than its provider's export, so the human next step names `render` before review, in the same order as the plan.
+The shared evidence helper `explain::change_evidence` compares Git bytes with the saved length and hash before a hunk.
+The review view uses the same helper, so `review` and `explain` show the same hunk for the same change.
 Full exports retain their existing evidence contract through that helper.
 `state_diff` compares explicit snapshots through `StateInspector` and matches logical records by identity.
 Neither command writes source contents or hunks into lock state.
 
 `guidance` reports a configuration error for a document that exists.
 It returns the errors with the partial report instead of hiding them.
+`guidance::run_changed` is the guidance assessment.
+It lists the reviewed documents whose guidance digest differs from their record, grouped by the old and the new digest.
+It writes nothing, and the plan reports the same count as `guidance_assessment`.
+A guidance change never becomes a pending cause.
 `agent hooks install` validates the root configuration before its first write.
 If that configuration is invalid, the command fails and changes nothing.
 

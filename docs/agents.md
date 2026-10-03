@@ -113,7 +113,7 @@ For Claude, current documentation places local settings at the main checkout. Fr
 
 ## 6. Hook lifecycle
 
-Install requires valid version 2 project configuration. Status and uninstall stay available without valid configuration or state.
+Install requires valid version 3 project configuration. Status and uninstall stay available without valid configuration or state.
 
 Install probes the client version first, without starting an agent session. A missing or older client returns `hook_client_unsupported` with exit 1, before any write. The compatibility floor is Codex 0.153.0 and Claude Code 2.1.259.
 
@@ -163,7 +163,7 @@ It accepts at most 64 KiB of event JSON. It resolves the event working directory
 | --- | --- |
 | Current project without advisories | `{}`, exit 0. |
 | Pending, never-reviewed, waiting, or open invalidation work | One `systemMessage` with counts and `memoria review`. |
-| Guidance changed without due reviews | One `systemMessage` with `memoria guidance`. |
+| Guidance changed without due reviews | One `systemMessage` with `memoria guidance --changed`. |
 | Invalid configuration or corrupt state | One `systemMessage` that names the diagnostic code. |
 | Deadline or output limit | One `systemMessage` that gives `memoria status` as the manual action. |
 

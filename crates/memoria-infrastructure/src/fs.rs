@@ -5,7 +5,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use memoria_application::ports::{
     AdapterError, AtomicWriter, Clock, FileKind, LockFailure, ProjectFiles, WriteCoordinator,
@@ -338,18 +338,24 @@ impl AtomicWriter for AtomicFileWriter<'_> {
     }
 }
 
-/// Exclusive, nonblocking advisory lock on a worktree-private path.
+/// Exclusive advisory lock on a worktree-private path.
 ///
 /// The committed `memoria.lock` never acts as the process lock. The write
 /// lock lives under Git metadata, at the path
 /// `git rev-parse --git-path memoria/write.lock` resolves, so linked
 /// worktrees receive separate locks and read-only commands create nothing
 /// inside the worktree.
+///
+/// Each attempt is nonblocking. A busy lock is retried until the wait budget
+/// ends, so reviewers who acknowledge at the same moment take turns instead
+/// of failing. The budget is zero unless the caller sets one.
 pub struct LockFileCoordinator {
     root: PathBuf,
     lock_path: PathBuf,
     /// The directory the lock must stay under, with no symlink between.
     boundary: PathBuf,
+    /// How long a busy lock is retried before `Busy` is reported.
+    wait: Duration,
 }
 
 impl LockFileCoordinator {
@@ -366,6 +372,7 @@ impl LockFileCoordinator {
             root,
             lock_path,
             boundary,
+            wait: Duration::ZERO,
         }
     }
 
@@ -379,7 +386,13 @@ impl LockFileCoordinator {
             root,
             lock_path,
             boundary,
+            wait: Duration::ZERO,
         }
+    }
+
+    /// Retry a busy lock for up to `wait` before reporting `Busy`.
+    pub fn with_wait(self, wait: Duration) -> LockFileCoordinator {
+        LockFileCoordinator { wait, ..self }
     }
 
     pub fn lock_path(&self) -> &Path {
@@ -526,8 +539,22 @@ impl WriteCoordinator for LockFileCoordinator {
         check_state_dir(&self.root).map_err(LockFailure::Io)?;
         // The Git metadata directory is the containment boundary: no
         // component below it may be substituted.
-        let guard = lock_file_within(&self.lock_path, &self.boundary)?;
-        Ok(Box::new(guard))
+        let deadline = Instant::now() + self.wait;
+        let mut pause = Duration::from_millis(25);
+        loop {
+            match lock_file_within(&self.lock_path, &self.boundary) {
+                Ok(guard) => return Ok(Box::new(guard)),
+                Err(LockFailure::Busy) => {
+                    let now = Instant::now();
+                    if now >= deadline {
+                        return Err(LockFailure::Busy);
+                    }
+                    std::thread::sleep(pause.min(deadline - now));
+                    pause = (pause * 2).min(Duration::from_millis(200));
+                }
+                Err(other) => return Err(other),
+            }
+        }
     }
 }
 

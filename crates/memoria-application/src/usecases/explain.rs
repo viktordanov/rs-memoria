@@ -21,6 +21,10 @@ pub struct ExplainReport {
     pub evidence: Vec<Detail>,
     pub before_manifest: Detail,
     pub current_manifest: Detail,
+    /// Whether an import block is older than its provider's export, so
+    /// `memoria render` must run before a review. Human view only; the JSON
+    /// projection reports the same fact through its diagnostics.
+    pub render_required: bool,
 }
 
 impl ExplainReport {
@@ -114,6 +118,121 @@ pub fn run(
             ),
         );
     }
+    let ChangeEvidence {
+        changes,
+        evidence,
+        decoded,
+    } = change_evidence(services, &snapshot, &document)?;
+    let policy = &snapshot.policies[&document];
+    let rule = |bytes: &[u8]| {
+        let encoding = crate::packet::ContentEncoding::for_bytes(bytes);
+        DetailMap::default()
+            .text("encoding", encoding.as_str())
+            .with("body", crate::packet::body_detail(encoding, bytes))
+            .build()
+    };
+    let policy = DetailMap::default()
+        .with(
+            "before_hash",
+            Detail::option_text(previous.map(|r| r.manifest.policy_hash.to_hex())),
+        )
+        .text("current_hash", manifest.policy_hash.to_hex())
+        .with(
+            "changed",
+            previous
+                .map(|r| Detail::Bool(r.manifest.policy_hash != manifest.policy_hash))
+                .unwrap_or(Detail::Null),
+        )
+        .text("prior_scopes_unavailable_reason", "not_stored")
+        .with(
+            "git_scopes",
+            Detail::list(policy.git_scopes.iter().map(|scope| {
+                DetailMap::default()
+                    .text("identity", &scope.identity)
+                    .with(
+                        "patterns",
+                        Detail::list(scope.patterns.iter().map(|b| rule(b))),
+                    )
+                    .build()
+            })),
+        )
+        .with(
+            "memoria_scopes",
+            Detail::list(policy.memoria_scopes.iter().map(|scope| {
+                DetailMap::default()
+                    .text("scope", scope.scope.as_str())
+                    .with("ignore", Detail::texts(scope.ignore.clone()))
+                    .with("include", Detail::texts(scope.include.clone()))
+                    .build()
+            })),
+        )
+        .build();
+    let guidance = super::guidance::report_for(&snapshot, &document);
+    let guidance = DetailMap::default()
+        .with(
+            "previous_digest",
+            Detail::option_text(guidance.reviewed_digest),
+        )
+        .text("current_digest", guidance.digest)
+        .bool("present", !guidance.entries.is_empty())
+        .with(
+            "changed",
+            guidance
+                .changed_since_review
+                .map(Detail::Bool)
+                .unwrap_or(Detail::Null),
+        )
+        .with("sources", Detail::texts(guidance.sources))
+        .bool("advisory", true)
+        .text("previous_prose_unavailable_reason", "not_stored")
+        .text("command", format!("memoria guidance {document}"))
+        .build();
+    let report = ExplainReport {
+        document: document.to_string(),
+        document_kind: document.kind().as_str().to_string(),
+        scope: super::requirements::scope_info(&snapshot, &document).to_detail(),
+        state,
+        changes: changes.iter().map(|c| c.to_detail()).collect(),
+        policy,
+        guidance,
+        evidence,
+        before_manifest: previous
+            .map(|r| manifest_detail(&r.manifest))
+            .unwrap_or(Detail::Null),
+        current_manifest: manifest_detail(manifest),
+        render_required: !snapshot.outdated_imports_of(&document).is_empty(),
+    };
+    let detail = report.to_detail();
+    let diagnostics = snapshot.non_error_diagnostics();
+    let envelope = services
+        .packets
+        .envelope_size("explain", true, &detail, &diagnostics);
+    limit(decoded, envelope.records, envelope.serialized_bytes)?;
+    Ok(Outcome::new(report, diagnostics))
+}
+
+/// The changes since a document's last review, with verified historical
+/// evidence (a unified hunk when Git still holds the reviewed bytes).
+pub struct ChangeEvidence {
+    pub changes: Vec<super::ChangeRecord>,
+    /// One item per change, in change order, plus a leading
+    /// `no_previous_review` item for a document without a record.
+    pub evidence: Vec<Detail>,
+    /// Decoded evidence bytes, charged against the explanation limits.
+    pub decoded: u64,
+}
+
+/// Collect [`ChangeEvidence`] for one document of an existing snapshot.
+///
+/// `explain` and the human review view share it, so both show the same hunk
+/// for the same change.
+pub fn change_evidence(
+    services: &Services<'_>,
+    snapshot: &snapshot::Snapshot,
+    document: &memoria_domain::DocumentId,
+) -> Result<ChangeEvidence, AppError> {
+    let manifest = &snapshot.manifests[document];
+    let previous = snapshot.state.reviews.get(document);
     let changes = previous
         .map(|record| diff_changes(&record.manifest.diff(manifest)))
         .unwrap_or_default();
@@ -197,7 +316,7 @@ pub fn run(
                         )
                         .unwrap_or(&[])
                 } else if change.kind == "document" {
-                    snapshot.document_bytes(&document)
+                    snapshot.document_bytes(document)
                 } else {
                     snapshot
                         .collected
@@ -273,91 +392,11 @@ pub fn run(
         evidence.push(item.build());
         limit(decoded, evidence.len() as u64, 0)?;
     }
-    let policy = &snapshot.policies[&document];
-    let rule = |bytes: &[u8]| {
-        let encoding = crate::packet::ContentEncoding::for_bytes(bytes);
-        DetailMap::default()
-            .text("encoding", encoding.as_str())
-            .with("body", crate::packet::body_detail(encoding, bytes))
-            .build()
-    };
-    let policy = DetailMap::default()
-        .with(
-            "before_hash",
-            Detail::option_text(previous.map(|r| r.manifest.policy_hash.to_hex())),
-        )
-        .text("current_hash", manifest.policy_hash.to_hex())
-        .with(
-            "changed",
-            previous
-                .map(|r| Detail::Bool(r.manifest.policy_hash != manifest.policy_hash))
-                .unwrap_or(Detail::Null),
-        )
-        .text("prior_scopes_unavailable_reason", "not_stored")
-        .with(
-            "git_scopes",
-            Detail::list(policy.git_scopes.iter().map(|scope| {
-                DetailMap::default()
-                    .text("identity", &scope.identity)
-                    .with(
-                        "patterns",
-                        Detail::list(scope.patterns.iter().map(|b| rule(b))),
-                    )
-                    .build()
-            })),
-        )
-        .with(
-            "memoria_scopes",
-            Detail::list(policy.memoria_scopes.iter().map(|scope| {
-                DetailMap::default()
-                    .text("scope", scope.scope.as_str())
-                    .with("ignore", Detail::texts(scope.ignore.clone()))
-                    .with("include", Detail::texts(scope.include.clone()))
-                    .build()
-            })),
-        )
-        .build();
-    let guidance = super::guidance::report_for(&snapshot, &document);
-    let guidance = DetailMap::default()
-        .with(
-            "previous_digest",
-            Detail::option_text(guidance.reviewed_digest),
-        )
-        .text("current_digest", guidance.digest)
-        .bool("present", !guidance.entries.is_empty())
-        .with(
-            "changed",
-            guidance
-                .changed_since_review
-                .map(Detail::Bool)
-                .unwrap_or(Detail::Null),
-        )
-        .with("sources", Detail::texts(guidance.sources))
-        .bool("advisory", true)
-        .text("previous_prose_unavailable_reason", "not_stored")
-        .text("command", format!("memoria guidance {document}"))
-        .build();
-    let report = ExplainReport {
-        document: document.to_string(),
-        document_kind: document.kind().as_str().to_string(),
-        scope: super::requirements::scope_info(&snapshot, &document).to_detail(),
-        state,
-        changes: changes.iter().map(|c| c.to_detail()).collect(),
-        policy,
-        guidance,
+    Ok(ChangeEvidence {
+        changes,
         evidence,
-        before_manifest: previous
-            .map(|r| manifest_detail(&r.manifest))
-            .unwrap_or(Detail::Null),
-        current_manifest: manifest_detail(manifest),
-    };
-    let detail = report.to_detail();
-    let diagnostics = snapshot.non_error_diagnostics();
-    let envelope = services
-        .packets
-        .envelope_size("explain", true, &detail, &diagnostics);
-    limit(decoded, envelope.records, envelope.serialized_bytes)?;
-    Ok(Outcome::new(report, diagnostics))
+        decoded,
+    })
 }
 
 #[cfg(test)]

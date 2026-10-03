@@ -2,7 +2,7 @@
 
 ## Specification status
 
-**Status:** Approved contract, updated for release 0.7.0: directory scope with explicit handoffs. The implementation follows it.
+**Status:** Approved contract, updated for release 0.8.0: directory scope, explicit handoffs, actionable output, and bounded writer waiting. The implementation follows it.
 
 **Purpose:** Memoria tracks documentation freshness across machines.
 
@@ -410,8 +410,11 @@ Do not hash review timestamps, documentation guidance, host ignore rules, or the
 Otherwise, recording a review or changing review guidance could trigger unrelated source-based reviews.
 
 Each review stores the guidance digest that its reviewer saw.
-Status, the review plan, and `check` report a changed digest as an advisory.
-The advisory persists until a real review acknowledges the new guidance.
+A changed digest is one assessment item, not a pending cause.
+The review plan reports it once, `memoria guidance --changed` lists the affected documents, and `status` counts them.
+`check` keeps the advisory in its JSON diagnostics and does not fail.
+The reviewer decides which documents the change affects and requests their review with an explicit invalidation.
+The item persists until a real review acknowledges the new guidance.
 No command manufactures a review record to dismiss it.
 
 The guidance digest uses XXH3-64 with seed 0 and the canonical domain `memoria.guidance.v1`.
@@ -775,6 +778,8 @@ CI must fail for unresolved required reviews, coverage errors, invalid imports, 
 It must provide the affected paths and the reason.
 
 Optional lint hints must remain separate from failures.
+Default human output of other commands omits advisory hints, also for the document that `review` or `explain` names.
+`--verbose` and JSON output keep every hint.
 CI checks matching inputs and valid structure. It does not certify semantic correctness.
 
 Document pre-commit hook setup. Automatic hook installation is outside the initial scope.
