@@ -15,8 +15,9 @@ use crate::packet::ChangeEntry;
 
 /// The artifact kind of a small manifest.
 pub const MANIFEST_KIND: &str = "review_manifest";
-/// The manifest schema version.
-pub const MANIFEST_VERSION: u64 = 2;
+/// The manifest schema version. Version 3 adds section guides: the guide of
+/// each suggested section, and `section` guidance references.
+pub const MANIFEST_VERSION: u64 = 3;
 
 /// Most entries any bounded manifest list carries. Each bounded list has a
 /// `*_total` beside it with the complete count.
@@ -328,6 +329,8 @@ pub struct SectionSuggestion {
     pub last_line: usize,
     /// Sorted root-relative sources.
     pub sources: Vec<String>,
+    /// The resolved section guide this section names, if any.
+    pub guidance: Option<String>,
 }
 
 /// Why one suggested read is listed.
@@ -381,8 +384,12 @@ pub struct GuidanceReference {
     pub scope: String,
     pub source: String,
     pub kind: String,
-    /// Zero-based index inside its declaring inline or file list.
+    /// Zero-based index inside its declaring inline or file list, or, for a
+    /// section guide, inside the document's section guide entries.
     pub entry_index: u64,
+    /// For a section guide: the ids of the sections that name it, in
+    /// authored order. `None` for project guidance.
+    pub sections: Option<Vec<String>>,
 }
 
 /// The digests a v3 token binds, as displayed.
@@ -537,6 +544,7 @@ impl ReviewManifest {
                                     ]),
                                 )
                                 .with("sources", Detail::texts(s.sources.clone()))
+                                .with("guidance", Detail::option_text(s.guidance.clone()))
                                 .build()
                         })),
                     )
@@ -582,12 +590,16 @@ impl ReviewManifest {
                     .with(
                         "references",
                         Detail::list(self.guidance_references.iter().map(|r| {
-                            DetailMap::default()
+                            let mut reference = DetailMap::default()
                                 .text("scope", r.scope.clone())
                                 .text("source", r.source.clone())
                                 .text("kind", r.kind.clone())
-                                .number("entry_index", r.entry_index)
-                                .build()
+                                .number("entry_index", r.entry_index);
+                            if let Some(sections) = &r.sections {
+                                reference =
+                                    reference.with("sections", Detail::texts(sections.clone()));
+                            }
+                            reference.build()
                         })),
                     )
                     .with(

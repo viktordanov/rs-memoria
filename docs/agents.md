@@ -17,7 +17,7 @@
 
 The two integrations do different work:
 
-- The **skill** teaches an agent the review procedure. It is a package of four Markdown files that the agent reads: `SKILL.md` with the five review stages, and three reference files that it loads only when it needs them (`review-details.md`, `saved-exports.md`, and `integrations.md`). One body serves Codex and Claude.
+- The **skill** teaches an agent the review procedure. It is a package of five Markdown files that the agent reads: `SKILL.md` with the five review stages, and four reference files that it loads only when it needs them (`review-details.md`, `saved-exports.md`, `integrations.md`, and `section-guidance.md`). One body serves Codex and Claude.
 - The **hook** reports the current documentation state at the end of an agent turn. It is one command entry in the client's configuration.
 
 Both are optional. Memoria works completely without them.
@@ -63,7 +63,7 @@ This table gives the result of each operation against each state:
 | `upgrade` | `skill_not_installed`, exit 1. | Exits 0 without writes. | Replaces verified managed content. | `skill_conflict`, exit 3. |
 | `uninstall` | Exits 0 with `no_change`. | Removes owned content, restores a user backup. | Applies the same removal. | `skill_conflict`, exit 3. |
 
-A package is `current` only when its recorded version, its file names, and the bytes of all four files match this executable. An edited reference file, or an unknown file inside the package, makes it `modified`. An upgrade from a single-file 0.6 package replaces exactly the files its record names, and then writes all four.
+A package is `current` only when its recorded version, its file names, and the bytes of all five files match this executable. An edited reference file, or an unknown file inside the package, makes it `modified`. An upgrade from a single-file 0.6 package replaces exactly the files its record names, and then writes all five.
 
 `--replace-existing` applies only to an unmanaged directory during install. It creates a verified sibling backup first. It never overwrites another target's managed package, edited managed content, a symlink, or a special file.
 

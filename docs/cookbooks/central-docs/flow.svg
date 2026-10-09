@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="846" height="360" viewBox="0 0 846 360" role="img" aria-labelledby="title desc">
+<title id="title">A summary change travels from the code to the docs page through one import</title>
+<desc id="desc">Six steps in two columns. 1, login.rs changes and src/auth/README.md is pending while docs/guide.md stays current. 2, the README edits its exported summary, and the guide waits with input changed. 3, the README is acknowledged and the guide is pending, render first. 4, memoria render copies the summary into the import body. 5, the guide is reviewed with imports_changed. 6, the guide is acknowledged and current. If the summary stays the same, the flow stops after step 1.</desc>
+<style>.bg{fill:#f4f0e6}.ink{fill:#24211b}.muted{fill:#8a8170}.accent{fill:#c2410c}.line{stroke:#24211b}.line-muted{stroke:#8a8170}.line-accent{stroke:#c2410c}@media (prefers-color-scheme: dark){.bg{fill:#13120f}.ink{fill:#e8e3d4}.muted{fill:#7f7867}.accent{fill:#f59e0b}.line{stroke:#e8e3d4}.line-muted{stroke:#7f7867}.line-accent{stroke:#f59e0b}}.line,.line-muted,.line-accent{stroke-width:1.5;fill:none;stroke-linecap:square}text{font-family:ui-monospace,"SFMono-Regular","JetBrains Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;font-size:15px;white-space:pre}</style>
+<defs><pattern id="d1-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/></pattern><pattern id="d2-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/><rect x="2" y="2" width="2" height="2" class="accent"/></pattern><pattern id="d3-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/><rect x="2" y="0" width="2" height="2" class="accent"/><rect x="2" y="2" width="2" height="2" class="accent"/></pattern><pattern id="d1-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/></pattern><pattern id="d2-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/><rect x="2" y="2" width="2" height="2" class="muted"/></pattern><pattern id="d3-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/><rect x="2" y="0" width="2" height="2" class="muted"/><rect x="2" y="2" width="2" height="2" class="muted"/></pattern><pattern id="d1-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/></pattern><pattern id="d2-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/><rect x="2" y="2" width="2" height="2" class="ink"/></pattern><pattern id="d3-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/><rect x="2" y="0" width="2" height="2" class="ink"/><rect x="2" y="2" width="2" height="2" class="ink"/></pattern></defs>
+<rect class="bg" width="846" height="360" rx="8"/>
+<rect x="27" y="37" width="9" height="16" fill="url(#d1-accent)"/>
+<rect x="36" y="37" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="45" y="37" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="54" y="37" width="9" height="16" class="accent"/>
+<rect x="369" y="37" width="9" height="16" class="accent"/>
+<rect x="378" y="37" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="387" y="37" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="396" y="37" width="9" height="16" fill="url(#d1-accent)"/>
+<rect x="117" y="91" width="36" height="16" fill="url(#d3-ink)"/>
+<rect x="531" y="91" width="36" height="16" fill="url(#d1-ink)"/>
+<path class="line" d="M472.5 171L477 171M472.5 171L468 171M481.5 171L486 171M481.5 171L477 171M481.5 225L486 225M481.5 225L477 225M490.5 225L495 225M490.5 225L486 225"/>
+<polygon points="495,171 486,166.5 486,175.5" class="accent"/>
+<polygon points="504,225 495,220.5 495,229.5" class="accent"/>
+<text class="ink" x="81 90 99" y="48.96">HOW</text>
+<text class="ink" x="117 126 135" y="48.96">ONE</text>
+<text class="ink" x="153 162 171 180 189 198 207" y="48.96">SUMMARY</text>
+<text class="ink" x="225 234 243 252 261 270" y="48.96">CHANGE</text>
+<text class="ink" x="288 297 306 315 324 333 342" y="48.96">TRAVELS</text>
+<text class="ink" x="117 126 135 144 153 162 171 180 189 198 207 216 225 234 243 252 261 270" y="84.96">src/auth/README.md</text>
+<text class="ink" x="531 540 549 558 567 576 585 594 603 612 621 630 639" y="84.96">docs/guide.md</text>
+<text class="muted" x="171 180 189 198 207 216" y="102.96">covers</text>
+<text class="muted" x="234 243 252 261 270 279 288 297 306" y="102.96">src/auth/</text>
+<text class="muted" x="585 594 603 612 621 630" y="102.96">covers</text>
+<text class="muted" x="648 657" y="102.96">no</text>
+<text class="muted" x="675 684 693 702 711 720" y="102.96">source</text>
+<text class="ink" x="18" y="138.96">1</text>
+<text class="ink" x="36 45 54 63" y="138.96">code</text>
+<text class="accent" x="117 126 135 144 153 162 171" y="138.96">pending</text>
+<text class="accent" x="531 540 549 558 567 576 585" y="138.96">current</text>
+<text class="muted" x="117 126 135 144 153 162 171 180 189" y="156.96">login.rs:</text>
+<text class="muted" x="207 216" y="156.96">30</text>
+<text class="muted" x="234" y="156.96">→</text>
+<text class="muted" x="252 261" y="156.96">15</text>
+<text class="ink" x="18" y="174.96">2</text>
+<text class="ink" x="36 45 54 63" y="174.96">edit</text>
+<text class="accent" x="117 126 135 144 153 162 171" y="174.96">pending</text>
+<text class="ink" x="324 333 342 351 360 369 378" y="174.96">summary</text>
+<text class="ink" x="396 405 414 423 432 441 450" y="174.96">changed</text>
+<text class="accent" x="531 540 549 558 567 576 585" y="174.96">waiting</text>
+<text class="muted" x="117 126 135 144 153 162 171" y="192.96">export:</text>
+<text class="muted" x="189 198" y="192.96">15</text>
+<text class="muted" x="216 225 234 243 252 261 270" y="192.96">minutes</text>
+<text class="muted" x="531 540 549 558 567" y="192.96">input</text>
+<text class="muted" x="585 594 603 612 621 630 639 648" y="192.96">changed:</text>
+<text class="muted" x="666 675 684 693 702 711 720 729" y="192.96">#summary</text>
+<text class="ink" x="18" y="210.96">3</text>
+<text class="ink" x="36 45 54" y="210.96">ack</text>
+<text class="accent" x="117 126 135 144 153 162 171" y="210.96">current</text>
+<text class="accent" x="531 540 549 558 567 576 585" y="210.96">pending</text>
+<text class="muted" x="621 630 639 648 657 666" y="210.96">render</text>
+<text class="muted" x="684 693 702 711 720" y="210.96">first</text>
+<text class="ink" x="18" y="228.96">4</text>
+<text class="ink" x="36 45 54 63 72 81" y="228.96">render</text>
+<text class="ink" x="324 333 342 351" y="228.96">copy</text>
+<text class="ink" x="369 378 387" y="228.96">the</text>
+<text class="ink" x="405 414 423 432 441 450 459" y="228.96">summary</text>
+<text class="muted" x="531 540 549 558 567 576" y="228.96">import</text>
+<text class="muted" x="594 603 612 621 630" y="228.96">body:</text>
+<text class="muted" x="648 657" y="228.96">15</text>
+<text class="muted" x="675 684 693 702 711 720 729" y="228.96">minutes</text>
+<text class="ink" x="18" y="246.96">5</text>
+<text class="ink" x="36 45 54 63 72 81" y="246.96">review</text>
+<text class="accent" x="531 540 549 558 567 576 585" y="246.96">pending</text>
+<text class="muted" x="621 630 639 648 657 666 675 684 693 702 711 720 729 738 747" y="246.96">imports_changed</text>
+<text class="ink" x="18" y="264.96">6</text>
+<text class="ink" x="36 45 54" y="264.96">ack</text>
+<text class="accent" x="531 540 549 558 567 576 585" y="264.96">current</text>
+<text class="ink" x="18 27" y="300.96">If</text>
+<text class="ink" x="45 54 63" y="300.96">the</text>
+<text class="ink" x="81 90 99 108 117 126" y="300.96">README</text>
+<text class="ink" x="144 153 162 171 180 189" y="300.96">review</text>
+<text class="ink" x="207 216 225 234 243" y="300.96">keeps</text>
+<text class="ink" x="261 270 279" y="300.96">the</text>
+<text class="ink" x="297 306 315 324 333 342 351" y="300.96">summary</text>
+<text class="ink" x="369 378 387" y="300.96">the</text>
+<text class="ink" x="405 414 423 432 441" y="300.96">same,</text>
+<text class="ink" x="459 468 477" y="300.96">the</text>
+<text class="ink" x="495 504 513 522" y="300.96">flow</text>
+<text class="ink" x="540 549 558 567 576" y="300.96">stops</text>
+<text class="ink" x="594 603" y="300.96">at</text>
+<text class="ink" x="621 630 639 648" y="300.96">step</text>
+<text class="ink" x="666" y="300.96">1</text>
+<text class="ink" x="684 693 702 711" y="300.96">with</text>
+<text class="accent" x="738 747 756 765 774 783 792 801 810" y="300.96">no-update</text>
+<text class="ink" x="18 27 36" y="318.96">The</text>
+<text class="ink" x="54 63 72 81 90" y="318.96">guide</text>
+<text class="ink" x="108 117 126 135" y="318.96">then</text>
+<text class="ink" x="153 162 171 180 189" y="318.96">stays</text>
+<text class="accent" x="216 225 234 243 252 261 270" y="318.96">current</text>
+</svg>

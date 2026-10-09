@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="990" height="486" viewBox="0 0 990 486" role="img" aria-labelledby="title desc">
+<title id="title">Only a changed summary carries a code change to the root README</title>
+<desc id="desc">Two panels. A refactor in services/api makes only services/api/README.md pending. Its review ends with no-update, the export does not change, and the root README stays current. A behavior change makes services/api/README.md pending, the reviewer edits its exported summary, then memoria render updates the root import, and the root README gets its own review with imports_changed.</desc>
+<style>.bg{fill:#f4f0e6}.ink{fill:#24211b}.muted{fill:#8a8170}.accent{fill:#c2410c}.line{stroke:#24211b}.line-muted{stroke:#8a8170}.line-accent{stroke:#c2410c}@media (prefers-color-scheme: dark){.bg{fill:#13120f}.ink{fill:#e8e3d4}.muted{fill:#7f7867}.accent{fill:#f59e0b}.line{stroke:#e8e3d4}.line-muted{stroke:#7f7867}.line-accent{stroke:#f59e0b}}.line,.line-muted,.line-accent{stroke-width:1.5;fill:none;stroke-linecap:square}text{font-family:ui-monospace,"SFMono-Regular","JetBrains Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;font-size:15px;white-space:pre}</style>
+<defs><pattern id="d1-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/></pattern><pattern id="d2-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/><rect x="2" y="2" width="2" height="2" class="accent"/></pattern><pattern id="d3-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/><rect x="2" y="0" width="2" height="2" class="accent"/><rect x="2" y="2" width="2" height="2" class="accent"/></pattern><pattern id="d1-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/></pattern><pattern id="d2-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/><rect x="2" y="2" width="2" height="2" class="muted"/></pattern><pattern id="d3-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/><rect x="2" y="0" width="2" height="2" class="muted"/><rect x="2" y="2" width="2" height="2" class="muted"/></pattern><pattern id="d1-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/></pattern><pattern id="d2-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/><rect x="2" y="2" width="2" height="2" class="ink"/></pattern><pattern id="d3-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/><rect x="2" y="0" width="2" height="2" class="ink"/><rect x="2" y="2" width="2" height="2" class="ink"/></pattern></defs>
+<rect class="bg" width="990" height="486" rx="8"/>
+<rect x="27" y="37" width="9" height="16" fill="url(#d1-accent)"/>
+<rect x="36" y="37" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="45" y="37" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="54" y="37" width="9" height="16" class="accent"/>
+<rect x="351" y="37" width="9" height="16" class="accent"/>
+<rect x="360" y="37" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="369" y="37" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="378" y="37" width="9" height="16" fill="url(#d1-accent)"/>
+<rect x="252" y="163" width="36" height="16" fill="url(#d3-ink)"/>
+<rect x="738" y="163" width="36" height="16" fill="url(#d3-ink)"/>
+<rect x="621" y="235" width="36" height="16" fill="url(#d3-ink)"/>
+<rect x="135" y="289" width="36" height="16" fill="url(#d1-ink)"/>
+<rect x="18" y="433" width="36" height="16" fill="url(#d3-ink)"/>
+<rect x="279" y="433" width="36" height="16" fill="url(#d1-ink)"/>
+<path class="line" d="M22.5 81L27 81M22.5 81L22.5 90M31.5 81L36 81M31.5 81L27 81M373.5 81L378 81M373.5 81L369 81M382.5 81L387 81M382.5 81L378 81M391.5 81L396 81M391.5 81L387 81M400.5 81L405 81M400.5 81L396 81M409.5 81L414 81M409.5 81L405 81M418.5 81L423 81M418.5 81L414 81M427.5 81L432 81M427.5 81L423 81M436.5 81L441 81M436.5 81L432 81M445.5 81L450 81M445.5 81L441 81M454.5 81L459 81M454.5 81L450 81M463.5 81L468 81M463.5 81L459 81M472.5 81L477 81M472.5 81L468 81M481.5 81L477 81M481.5 81L481.5 90M508.5 81L513 81M508.5 81L508.5 90M517.5 81L522 81M517.5 81L513 81M895.5 81L900 81M895.5 81L891 81M904.5 81L909 81M904.5 81L900 81M913.5 81L918 81M913.5 81L909 81M922.5 81L927 81M922.5 81L918 81M931.5 81L936 81M931.5 81L927 81M940.5 81L945 81M940.5 81L936 81M949.5 81L954 81M949.5 81L945 81M958.5 81L963 81M958.5 81L954 81M967.5 81L963 81M967.5 81L967.5 90M22.5 99L22.5 90M22.5 99L22.5 108M481.5 99L481.5 90M481.5 99L481.5 108M508.5 99L508.5 90M508.5 99L508.5 108M967.5 99L967.5 90M967.5 99L967.5 108M22.5 117L22.5 108M22.5 117L22.5 126M481.5 117L481.5 108M481.5 117L481.5 126M508.5 117L508.5 108M508.5 117L508.5 126M967.5 117L967.5 108M967.5 117L967.5 126M22.5 135L22.5 126M22.5 135L22.5 144M67.5 135L67.5 126M67.5 135L67.5 144M481.5 135L481.5 126M481.5 135L481.5 144M508.5 135L508.5 126M508.5 135L508.5 144M553.5 135L553.5 126M553.5 135L553.5 144M967.5 135L967.5 126M967.5 135L967.5 144M22.5 153L22.5 144M22.5 153L22.5 162M481.5 153L481.5 144M481.5 153L481.5 162M508.5 153L508.5 144M508.5 153L508.5 162M967.5 153L967.5 144M967.5 153L967.5 162M22.5 171L22.5 162M22.5 171L22.5 180M481.5 171L481.5 162M481.5 171L481.5 180M508.5 171L508.5 162M508.5 171L508.5 180M967.5 171L967.5 162M967.5 171L967.5 180M22.5 189L22.5 180M22.5 189L22.5 198M67.5 189L67.5 180M67.5 189L67.5 198M481.5 189L481.5 180M481.5 189L481.5 198M508.5 189L508.5 180M508.5 189L508.5 198M553.5 189L553.5 180M553.5 189L553.5 198M967.5 189L967.5 180M967.5 189L967.5 198M22.5 207L22.5 198M22.5 207L22.5 216M67.5 207L67.5 198M67.5 207L67.5 216M481.5 207L481.5 198M481.5 207L481.5 216M508.5 207L508.5 198M508.5 207L508.5 216M553.5 207L553.5 198M553.5 207L553.5 216M967.5 207L967.5 198M967.5 207L967.5 216M22.5 225L22.5 216M22.5 225L22.5 234M481.5 225L481.5 216M481.5 225L481.5 234M508.5 225L508.5 216M508.5 225L508.5 234M967.5 225L967.5 216M967.5 225L967.5 234M22.5 243L22.5 234M22.5 243L22.5 252M481.5 243L481.5 234M481.5 243L481.5 252M508.5 243L508.5 234M508.5 243L508.5 252M967.5 243L967.5 234M967.5 243L967.5 252M22.5 261L22.5 252M22.5 261L22.5 270M67.5 261L67.5 252M67.5 261L67.5 270M481.5 261L481.5 252M481.5 261L481.5 270M508.5 261L508.5 252M508.5 261L508.5 270M553.5 261L553.5 252M553.5 261L553.5 270M967.5 261L967.5 252M967.5 261L967.5 270M22.5 279L22.5 270M22.5 279L22.5 288M481.5 279L481.5 270M481.5 279L481.5 288M508.5 279L508.5 270M508.5 279L508.5 288M967.5 279L967.5 270M967.5 279L967.5 288M22.5 297L22.5 288M22.5 297L22.5 306M481.5 297L481.5 288M481.5 297L481.5 306M508.5 297L508.5 288M508.5 297L508.5 306M967.5 297L967.5 288M967.5 297L967.5 306M22.5 315L22.5 306M22.5 315L22.5 324M481.5 315L481.5 306M481.5 315L481.5 324M508.5 315L508.5 306M508.5 315L508.5 324M553.5 315L553.5 306M553.5 315L553.5 324M967.5 315L967.5 306M967.5 315L967.5 324M22.5 333L22.5 324M22.5 333L22.5 342M481.5 333L481.5 324M481.5 333L481.5 342M508.5 333L508.5 324M508.5 333L508.5 342M967.5 333L967.5 324M967.5 333L967.5 342M22.5 351L22.5 342M22.5 351L22.5 360M481.5 351L481.5 342M481.5 351L481.5 360M508.5 351L508.5 342M508.5 351L508.5 360M967.5 351L967.5 342M967.5 351L967.5 360M22.5 369L22.5 360M22.5 369L22.5 378M481.5 369L481.5 360M481.5 369L481.5 378M508.5 369L508.5 360M508.5 369L508.5 378M967.5 369L967.5 360M967.5 369L967.5 378M22.5 387L22.5 378M22.5 387L22.5 396M481.5 387L481.5 378M481.5 387L481.5 396M508.5 387L508.5 378M508.5 387L508.5 396M967.5 387L967.5 378M967.5 387L967.5 396M22.5 405L22.5 396M22.5 405L27 405M31.5 405L36 405M31.5 405L27 405M40.5 405L45 405M40.5 405L36 405M49.5 405L54 405M49.5 405L45 405M58.5 405L63 405M58.5 405L54 405M67.5 405L72 405M67.5 405L63 405M76.5 405L81 405M76.5 405L72 405M85.5 405L90 405M85.5 405L81 405M94.5 405L99 405M94.5 405L90 405M103.5 405L108 405M103.5 405L99 405M112.5 405L117 405M112.5 405L108 405M121.5 405L126 405M121.5 405L117 405M130.5 405L135 405M130.5 405L126 405M139.5 405L144 405M139.5 405L135 405M148.5 405L153 405M148.5 405L144 405M157.5 405L162 405M157.5 405L153 405M166.5 405L171 405M166.5 405L162 405M175.5 405L180 405M175.5 405L171 405M184.5 405L189 405M184.5 405L180 405M193.5 405L198 405M193.5 405L189 405M202.5 405L207 405M202.5 405L198 405M211.5 405L216 405M211.5 405L207 405M220.5 405L225 405M220.5 405L216 405M229.5 405L234 405M229.5 405L225 405M238.5 405L243 405M238.5 405L234 405M247.5 405L252 405M247.5 405L243 405M256.5 405L261 405M256.5 405L252 405M265.5 405L270 405M265.5 405L261 405M274.5 405L279 405M274.5 405L270 405M283.5 405L288 405M283.5 405L279 405M292.5 405L297 405M292.5 405L288 405M301.5 405L306 405M301.5 405L297 405M310.5 405L315 405M310.5 405L306 405M319.5 405L324 405M319.5 405L315 405M328.5 405L333 405M328.5 405L324 405M337.5 405L342 405M337.5 405L333 405M346.5 405L351 405M346.5 405L342 405M355.5 405L360 405M355.5 405L351 405M364.5 405L369 405M364.5 405L360 405M373.5 405L378 405M373.5 405L369 405M382.5 405L387 405M382.5 405L378 405M391.5 405L396 405M391.5 405L387 405M400.5 405L405 405M400.5 405L396 405M409.5 405L414 405M409.5 405L405 405M418.5 405L423 405M418.5 405L414 405M427.5 405L432 405M427.5 405L423 405M436.5 405L441 405M436.5 405L432 405M445.5 405L450 405M445.5 405L441 405M454.5 405L459 405M454.5 405L450 405M463.5 405L468 405M463.5 405L459 405M472.5 405L477 405M472.5 405L468 405M481.5 405L481.5 396M481.5 405L477 405M508.5 405L508.5 396M508.5 405L513 405M517.5 405L522 405M517.5 405L513 405M526.5 405L531 405M526.5 405L522 405M535.5 405L540 405M535.5 405L531 405M544.5 405L549 405M544.5 405L540 405M553.5 405L558 405M553.5 405L549 405M562.5 405L567 405M562.5 405L558 405M571.5 405L576 405M571.5 405L567 405M580.5 405L585 405M580.5 405L576 405M589.5 405L594 405M589.5 405L585 405M598.5 405L603 405M598.5 405L594 405M607.5 405L612 405M607.5 405L603 405M616.5 405L621 405M616.5 405L612 405M625.5 405L630 405M625.5 405L621 405M634.5 405L639 405M634.5 405L630 405M643.5 405L648 405M643.5 405L639 405M652.5 405L657 405M652.5 405L648 405M661.5 405L666 405M661.5 405L657 405M670.5 405L675 405M670.5 405L666 405M679.5 405L684 405M679.5 405L675 405M688.5 405L693 405M688.5 405L684 405M697.5 405L702 405M697.5 405L693 405M706.5 405L711 405M706.5 405L702 405M715.5 405L720 405M715.5 405L711 405M724.5 405L729 405M724.5 405L720 405M733.5 405L738 405M733.5 405L729 405M742.5 405L747 405M742.5 405L738 405M751.5 405L756 405M751.5 405L747 405M760.5 405L765 405M760.5 405L756 405M769.5 405L774 405M769.5 405L765 405M778.5 405L783 405M778.5 405L774 405M787.5 405L792 405M787.5 405L783 405M796.5 405L801 405M796.5 405L792 405M805.5 405L810 405M805.5 405L801 405M814.5 405L819 405M814.5 405L810 405M823.5 405L828 405M823.5 405L819 405M832.5 405L837 405M832.5 405L828 405M841.5 405L846 405M841.5 405L837 405M850.5 405L855 405M850.5 405L846 405M859.5 405L864 405M859.5 405L855 405M868.5 405L873 405M868.5 405L864 405M877.5 405L882 405M877.5 405L873 405M886.5 405L891 405M886.5 405L882 405M895.5 405L900 405M895.5 405L891 405M904.5 405L909 405M904.5 405L900 405M913.5 405L918 405M913.5 405L909 405M922.5 405L927 405M922.5 405L918 405M931.5 405L936 405M931.5 405L927 405M940.5 405L945 405M940.5 405L936 405M949.5 405L954 405M949.5 405L945 405M958.5 405L963 405M958.5 405L954 405M967.5 405L967.5 396M967.5 405L963 405"/>
+<polygon points="67.5,157.5 63,148.5 72,148.5" class="accent"/>
+<polygon points="553.5,157.5 549,148.5 558,148.5" class="accent"/>
+<polygon points="67.5,229.5 63,220.5 72,220.5" class="accent"/>
+<polygon points="553.5,229.5 549,220.5 558,220.5" class="accent"/>
+<polygon points="553.5,283.5 549,274.5 558,274.5" class="accent"/>
+<polygon points="553.5,337.5 549,328.5 558,328.5" class="accent"/>
+<text class="ink" x="81 90 99 108" y="48.96">WHAT</text>
+<text class="ink" x="126 135 144" y="48.96">ONE</text>
+<text class="ink" x="162 171 180 189" y="48.96">CODE</text>
+<text class="ink" x="207 216 225 234 243 252" y="48.96">CHANGE</text>
+<text class="ink" x="270 279 288 297 306 315 324" y="48.96">REACHES</text>
+<text class="ink" x="45" y="84.96">A</text>
+<text class="ink" x="63 72 81 90 99 108 117 126" y="84.96">REFACTOR</text>
+<text class="ink" x="144" y="84.96">·</text>
+<text class="ink" x="162 171 180" y="84.96">THE</text>
+<text class="ink" x="198 207 216 225 234 243 252" y="84.96">SUMMARY</text>
+<text class="ink" x="270 279 288 297 306" y="84.96">STAYS</text>
+<text class="ink" x="324 333 342 351" y="84.96">TRUE</text>
+<text class="ink" x="531" y="84.96">A</text>
+<text class="ink" x="549 558 567 576 585 594 603 612" y="84.96">BEHAVIOR</text>
+<text class="ink" x="630 639 648 657 666 675" y="84.96">CHANGE</text>
+<text class="ink" x="693" y="84.96">·</text>
+<text class="ink" x="711 720 729" y="84.96">THE</text>
+<text class="ink" x="747 756 765 774 783 792 801" y="84.96">SUMMARY</text>
+<text class="ink" x="819 828 837 846 855 864 873" y="84.96">CHANGES</text>
+<text class="ink" x="36 45 54 63 72 81 90 99 108 117 126 135 144 153 162 171 180 189 198 207 216 225 234 243 252 261" y="120.96">services/api/src/orders.rs</text>
+<text class="muted" x="297 306 315 324 333 342 351 360" y="120.96">internal</text>
+<text class="muted" x="378 387 396 405 414 423" y="120.96">rename</text>
+<text class="ink" x="522 531 540 549 558 567 576 585 594 603 612 621 630 639 648 657 666 675 684 693 702 711 720 729 738 747" y="120.96">services/api/src/orders.rs</text>
+<text class="muted" x="783 792 801 810 819 828" y="120.96">writes</text>
+<text class="muted" x="846 855 864 873 882 891 900 909 918 927" y="120.96">orders.log</text>
+<text class="ink" x="36 45 54 63 72 81 90 99 108 117 126 135 144 153 162 171 180 189 198 207 216 225" y="174.96">services/api/README.md</text>
+<text class="accent" x="306 315 324 333 342 351 360" y="174.96">pending</text>
+<text class="ink" x="522 531 540 549 558 567 576 585 594 603 612 621 630 639 648 657 666 675 684 693 702 711" y="174.96">services/api/README.md</text>
+<text class="accent" x="792 801 810 819 828 837 846" y="174.96">pending</text>
+<text class="ink" x="90 99 108 117 126 135 144 153 162" y="192.96">README.md</text>
+<text class="ink" x="180 189 198 207 216" y="192.96">waits</text>
+<text class="ink" x="234 243 252" y="192.96">and</text>
+<text class="ink" x="270 279 288 297 306" y="192.96">stays</text>
+<text class="accent" x="333 342 351 360 369 378 387" y="192.96">current</text>
+<text class="ink" x="576 585 594 603 612 621 630 639 648" y="192.96">README.md</text>
+<text class="ink" x="666 675 684 693 702" y="192.96">waits</text>
+<text class="ink" x="720 729 738" y="192.96">and</text>
+<text class="ink" x="756 765 774 783 792" y="192.96">stays</text>
+<text class="accent" x="819 828 837 846 855 864 873" y="192.96">current</text>
+<text class="ink" x="90 99 108 117 126 135 144" y="210.96">review,</text>
+<text class="ink" x="162 171 180 189" y="210.96">then</text>
+<text class="ink" x="207 216 225" y="210.96">ack</text>
+<text class="accent" x="252 261 270 279 288 297 306 315 324" y="210.96">no-update</text>
+<text class="ink" x="576 585 594 603" y="210.96">edit</text>
+<text class="ink" x="621 630 639" y="210.96">the</text>
+<text class="accent" x="666 675 684 693 702 711 720" y="210.96">summary</text>
+<text class="ink" x="747 756 765" y="210.96">and</text>
+<text class="ink" x="783 792 801" y="210.96">ack</text>
+<text class="accent" x="828 837 846 855 864 873 882" y="210.96">updated</text>
+<text class="ink" x="36 45 54 63 72 81 90 99 108 117 126 135 144 153 162 171 180 189 198 207 216 225" y="246.96">services/api/README.md</text>
+<text class="accent" x="261 270 279 288 297 306 315" y="246.96">current</text>
+<text class="ink" x="522 531 540 549 558 567 576 585 594" y="246.96">README.md</text>
+<text class="accent" x="675 684 693 702 711 720 729" y="246.96">pending</text>
+<text class="muted" x="765 774 783 792 801 810" y="246.96">import</text>
+<text class="muted" x="828 837 846 855 864 873 882 891" y="246.96">outdated</text>
+<text class="muted" x="99 108 117" y="264.96">the</text>
+<text class="muted" x="135 144 153 162 171 180" y="264.96">export</text>
+<text class="muted" x="198 207 216" y="264.96">did</text>
+<text class="muted" x="234 243 252" y="264.96">not</text>
+<text class="muted" x="270 279 288 297 306 315" y="264.96">change</text>
+<text class="ink" x="576 585 594 603 612 621 630" y="264.96">memoria</text>
+<text class="accent" x="657 666 675 684 693 702" y="264.96">render</text>
+<text class="ink" x="729 738 747 756 765 774" y="264.96">copies</text>
+<text class="ink" x="792 801 810" y="264.96">the</text>
+<text class="ink" x="828 837 846" y="264.96">new</text>
+<text class="ink" x="864 873 882 891 900 909 918" y="264.96">summary</text>
+<text class="ink" x="63" y="282.96">×</text>
+<text class="ink" x="36 45 54 63 72 81 90 99 108" y="300.96">README.md</text>
+<text class="accent" x="189 198 207 216 225 234 243" y="300.96">current</text>
+<text class="ink" x="522 531 540 549 558 567 576 585 594" y="300.96">README.md</text>
+<text class="accent" x="630 639 648 657 666 675 684" y="300.96">pending</text>
+<text class="accent" x="720 729 738 747 756 765 774 783 792 801 810 819 828 837 846" y="300.96">imports_changed</text>
+<text class="ink" x="576 585 594 603 612 621" y="318.96">review</text>
+<text class="ink" x="639 648 657" y="318.96">the</text>
+<text class="ink" x="675 684 693 702 711" y="318.96">whole</text>
+<text class="ink" x="729 738 747 756 765" y="318.96">root,</text>
+<text class="ink" x="783 792 801 810" y="318.96">then</text>
+<text class="ink" x="828 837 846" y="318.96">ack</text>
+<text class="ink" x="522 531 540 549 558 567 576 585 594" y="354.96">README.md</text>
+<text class="accent" x="630 639 648 657 666 675 684" y="354.96">current</text>
+<text class="ink" x="36 45 54" y="372.96">One</text>
+<text class="ink" x="72 81 90 99 108 117 126" y="372.96">review.</text>
+<text class="ink" x="144 153 162" y="372.96">The</text>
+<text class="ink" x="180 189 198 207 216 225" y="372.96">change</text>
+<text class="ink" x="243 252 261 270 279" y="372.96">stops</text>
+<text class="ink" x="297 306" y="372.96">at</text>
+<text class="ink" x="324 333 342" y="372.96">the</text>
+<text class="ink" x="360 369 378 387 396 405 414" y="372.96">folder.</text>
+<text class="ink" x="522 531 540" y="372.96">Two</text>
+<text class="ink" x="558 567 576 585 594 603 612 621" y="372.96">reviews,</text>
+<text class="ink" x="639 648" y="372.96">in</text>
+<text class="ink" x="666 675 684 693 702 711" y="372.96">import</text>
+<text class="ink" x="729 738 747 756 765 774" y="372.96">order.</text>
+<text class="ink" x="63 72 81 90 99 108 117" y="444.96">reached</text>
+<text class="ink" x="135 144" y="444.96">by</text>
+<text class="ink" x="162 171 180" y="444.96">the</text>
+<text class="ink" x="198 207 216 225 234 243" y="444.96">change</text>
+<text class="ink" x="324 333 342" y="444.96">not</text>
+<text class="ink" x="360 369 378 387 396 405 414" y="444.96">reached</text>
+<text class="ink" x="450" y="444.96">×</text>
+<text class="ink" x="468 477 486" y="444.96">the</text>
+<text class="ink" x="504 513 522 531 540 549" y="444.96">change</text>
+<text class="ink" x="567 576 585 594 603" y="444.96">stops</text>
+<text class="ink" x="621 630 639 648" y="444.96">here</text>
+</svg>

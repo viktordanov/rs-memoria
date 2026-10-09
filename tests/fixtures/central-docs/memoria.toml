@@ -1,0 +1,14 @@
+version = 3
+ignore = []
+include = []
+
+[documentation]
+guidance = [
+    "Write for a user of Keyhole. Use short sentences, and keep commands, paths, and limits exact.",
+]
+guidance_files = []
+section_guidance_files = []
+
+[lint]
+# The root README links its pages for navigation, not to import them.
+missing_import_hint = false

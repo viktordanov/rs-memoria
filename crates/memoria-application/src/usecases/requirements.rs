@@ -153,7 +153,8 @@ fn gather_evidence(
     }
 }
 
-/// Index every guidance entry inside its declaring inline or file list.
+/// Index every guidance entry inside its declaring inline or file list. A
+/// section guide is indexed among the document's section guide entries.
 fn guidance_references(guidance: &crate::guidance::EffectiveGuidance) -> Vec<GuidanceReference> {
     let mut counters: std::collections::BTreeMap<(String, &'static str), u64> =
         std::collections::BTreeMap::new();
@@ -162,7 +163,13 @@ fn guidance_references(guidance: &crate::guidance::EffectiveGuidance) -> Vec<Gui
         .iter()
         .map(|entry| {
             let kind = entry.kind.as_str();
-            let counter = counters.entry((entry.source.clone(), kind)).or_insert(0);
+            let section = entry.kind == memoria_domain::GuidanceKind::Section;
+            let key = if section {
+                String::new()
+            } else {
+                entry.source.clone()
+            };
+            let counter = counters.entry((key, kind)).or_insert(0);
             let entry_index = *counter;
             *counter += 1;
             GuidanceReference {
@@ -170,6 +177,7 @@ fn guidance_references(guidance: &crate::guidance::EffectiveGuidance) -> Vec<Gui
                 source: entry.source.clone(),
                 kind: kind.to_string(),
                 entry_index,
+                sections: section.then(|| entry.sections.iter().map(|s| s.id.clone()).collect()),
             }
         })
         .collect()
@@ -522,6 +530,7 @@ pub fn build(
                         .iter()
                         .map(|p| p.as_str().to_string())
                         .collect(),
+                    guidance: section.guidance.as_ref().map(|p| p.as_str().to_string()),
                 });
             }
         }
@@ -889,6 +898,8 @@ fn prior_mapping(
             first_line: section.first_line,
             last_line: section.last_line,
             sources,
+            // The guide is never part of the identity.
+            guidance: None,
         });
     }
     SectionMap::Valid(mappings).identity()

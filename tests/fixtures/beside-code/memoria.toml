@@ -1,0 +1,13 @@
+version = 3
+ignore = []
+include = []
+
+[documentation]
+guidance = [
+    "Write for a developer who is new to this project. Use short sentences, and keep commands, paths, and names exact.",
+]
+guidance_files = []
+
+[lint]
+# The design notes link their README for navigation, not to import it.
+missing_import_hint = false

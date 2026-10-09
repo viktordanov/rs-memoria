@@ -471,6 +471,18 @@ impl Project {
         steps
     }
 
+    /// The agent-instructions cookbook fixture: two tracked agent files that
+    /// share two registered section guides. Every document is acknowledged
+    /// and the state is committed.
+    pub fn agent_instructions() -> Project {
+        let project = Project::seed_from("agent-instructions");
+        project.canonical_loop();
+        let (code, value) = project.json(&["check"]);
+        assert_eq!(code, 0, "check failed: {}", json::to_pretty(&value));
+        project.commit_all("baseline");
+        project
+    }
+
     /// init, render, acknowledge everything in order, and assert `check` passes.
     pub fn baseline(&self) {
         // A root README is authored before Memoria writes anything.
@@ -735,6 +747,11 @@ pub fn numbers(value: &Json) -> Vec<u64> {
     }
 }
 
+/// Whether an object has `key`. Absent and null are different answers.
+pub fn has_key(value: &Json, key: &str) -> bool {
+    matches!(value, Json::Object(map) if map.contains_key(key))
+}
+
 pub fn diagnostic_codes(value: &Json) -> Vec<String> {
     let Json::Array(items) = get(value, &["diagnostics"]) else {
         return vec![];
@@ -769,4 +786,94 @@ pub fn set_path(value: &mut Json, path: &[&str], new: Json) {
         }
         current = map.get_mut(*key).unwrap();
     }
+}
+
+/// Replace every `marker` followed by 16 lowercase hex digits with
+/// `replacement`: tokens and saved file names differ on every run.
+pub fn mask_hex(text: &str, marker: &str, replacement: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(index) = rest.find(marker) {
+        let after = &rest[index + marker.len()..];
+        let hex = after
+            .chars()
+            .take(16)
+            .filter(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+            .count();
+        out.push_str(&rest[..index]);
+        if hex == 16 {
+            out.push_str(replacement);
+            rest = &after[16..];
+        } else {
+            out.push_str(marker);
+            rest = after;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// One cookbook command: its human stdout and stderr, with the saved
+/// directory and the run-specific tokens masked.
+pub fn cookbook_run(project: &Project, args: &[&str]) -> String {
+    let output = project.run(args);
+    // A terminal shows the diagnostics before the closing status line.
+    let text = format!("{}{}", stderr(&output), stdout(&output));
+    let text = text.replace(project.packets.path().to_str().unwrap(), "$dir");
+    let text = mask_hex(&text, "mrv3.", "mrv3.<token>");
+    let text = mask_artifact_ids(&text);
+    // Hunk context lines end in spaces; the page stores them trimmed.
+    text.lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim_end()
+        .to_string()
+}
+
+/// The fenced block that follows `<!-- cookbook-KIND: KEY -->` in a
+/// cookbook page.
+pub fn cookbook_block(cookbook: &str, kind: &str, key: &str) -> String {
+    let marker = format!("<!-- cookbook-{kind}: {key} -->\n");
+    let start = cookbook
+        .find(&marker)
+        .unwrap_or_else(|| panic!("the cookbook shows {kind} {key}"));
+    let fence_start = start + marker.len();
+    let body_start = fence_start + cookbook[fence_start..].find('\n').unwrap() + 1;
+    let body_end = body_start + cookbook[body_start..].find("\n```").unwrap();
+    cookbook[body_start..body_end].to_string()
+}
+
+/// Replace the run-specific id in each saved artifact name
+/// (`memoria-manifest-<DOCUMENT>-<id>.json`, and the full-export name) with `<id>`.
+pub fn mask_artifact_ids(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(index) = rest.find("memoria-") {
+        out.push_str(&rest[..index]);
+        let after = &rest[index..];
+        let name_end = after.find(".json").unwrap_or(0);
+        let name = &after[..name_end];
+        let masked = name.rsplit_once('-').filter(|(prefix, id)| {
+            prefix.starts_with("memoria-")
+                && prefix.contains('-')
+                && id.len() == 16
+                && id
+                    .chars()
+                    .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        });
+        match masked {
+            Some((prefix, _)) => {
+                out.push_str(prefix);
+                out.push_str("-<id>");
+                rest = &after[name_end..];
+            }
+            None => {
+                out.push_str("memoria-");
+                rest = &after["memoria-".len()..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }

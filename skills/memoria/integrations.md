@@ -6,7 +6,7 @@ Load this file for a request or an error about the skill, the agent hook, or the
 
 - Do not install, upgrade, or remove an integration unless the user asks. Each one is an explicit, reversible, local change.
 - Use `memoria integrations skill ...`, `memoria integrations hook ...`, and `memoria integrations github ...`. The older `memoria agent ...` names keep the same behavior.
-- The skill package has four files: `SKILL.md`, `review-details.md`, `saved-exports.md`, and `integrations.md`. Memoria records a hash for each file.
+- The skill package has five files: `SKILL.md`, `review-details.md`, `saved-exports.md`, `integrations.md`, and `section-guidance.md`. Memoria records a hash for each file.
 - `memoria integrations github install|upgrade|uninstall` previews the change and writes nothing without `--apply`.
 - The workflow installs Memoria 0.7.0 or later, because configuration version 3 needs 0.7.0.
 - The workflow never acknowledges a review. A failing `memoria check` in CI still needs a local review.

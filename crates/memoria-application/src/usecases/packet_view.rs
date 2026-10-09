@@ -5,8 +5,9 @@ use crate::ports::{
     FingerprintHasher, PacketFailure, PacketInput, PacketSource, ReviewPacketCodec,
 };
 
-/// The reading projection schema version.
-pub const VIEW_VERSION: u64 = 2;
+/// The reading projection schema version. Version 3 labels section guide
+/// layers in the guidance view.
+pub const VIEW_VERSION: u64 = 3;
 
 pub fn run(
     input: &dyn PacketInput,
@@ -88,7 +89,7 @@ fn project(
             })?
     } else {
         match section {
-            "guidance" => get(&context, "guidance"),
+            "guidance" => guidance_view(p, get(&context, "guidance")),
             "content" => content,
             "history" => DetailMap::default()
                 .with("previous_review", get(&context, "previous_review"))
@@ -126,6 +127,20 @@ fn project(
         .text("section", if file.is_some() { "file" } else { section })
         .with("selection", selected)
         .build())
+}
+
+/// The captured guidance, with the authority rule when a section guide
+/// applies. It shows only the text the packet captured, never live files.
+fn guidance_view(p: &FocusedReviewPacket, mut guidance: Detail) -> Detail {
+    if p.context.guidance.section_guides().next().is_some()
+        && let Detail::Map(map) = &mut guidance
+    {
+        map.insert(
+            "authority".into(),
+            Detail::text(crate::guidance::CONFLICT_RULE),
+        );
+    }
+    guidance
 }
 
 fn incremental(p: &FocusedReviewPacket, data: &Detail, trust: bool) -> Detail {

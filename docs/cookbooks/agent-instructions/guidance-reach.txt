@@ -1,0 +1,16 @@
+title: A section guide edit reaches only the documents that name the guide
+desc: Two panels. Editing project guidance in memoria.toml lists all four documents in memoria guidance --changed. Editing the agent-commands section guide lists only AGENTS.md and CLAUDE.md, and README.md and src/README.md stay unchanged. Neither edit makes a document pending.
+---
+«░▒▓█» WHAT ONE GUIDANCE EDIT REACHES «█▓▒░»
+
+┌─ EDIT PROJECT GUIDANCE (memoria.toml) ─────┐  ┌─ EDIT A SECTION GUIDE (agent-commands.md) ─┐
+│                                            │  │                                            │
+│ AGENTS.md       ▓▓▓▓ «guidance changed»    │  │ AGENTS.md       ▓▓▓▓ «guidance changed»    │
+│ CLAUDE.md       ▓▓▓▓ «guidance changed»    │  │ CLAUDE.md       ▓▓▓▓ «guidance changed»    │
+│ README.md       ▓▓▓▓ «guidance changed»    │  │ README.md       ░░░░ ‹unchanged›           │
+│ src/README.md   ▓▓▓▓ «guidance changed»    │  │ src/README.md   ░░░░ ‹unchanged›           │
+│                                            │  │                                            │
+│ Every document saw the old rule.           │  │ Only the documents that name the guide.    │
+└────────────────────────────────────────────┘  └────────────────────────────────────────────┘
+
+Neither edit makes a document pending. memoria guidance --changed lists ▓▓▓▓ documents for your decision.

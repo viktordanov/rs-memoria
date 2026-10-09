@@ -1,0 +1,28 @@
+title: Four ways to document a project with Memoria
+desc: Four panels. One, AGENTS.md and CLAUDE.md at the root cover justfile and Cargo.toml and name shared section guides. Two, a README tree where the api and web READMEs cover their folders and the root README imports their summaries, with central guidance from memoria.toml. Three, a design document beside the code shares its folder's coverage with the README and maps a section to invoice.rs. Four, a page in a central docs folder cannot see src changes and gets them only through an import from src/README.md.
+---
+                    «░░▒▒▓▓██» MEMORIA · FOUR WAYS TO DOCUMENT A PROJECT «██▓▓▒▒░░»
+
+┌─ 1 · AGENT INSTRUCTION FILES ──────────────────┐  ┌─ 2 · README TREE + CENTRAL GUIDELINES ─────────┐
+│                                                │  │                                                │
+│ AGENTS.md ──┬──▶ «commands» ▓▓▓▓ justfile      │  │ README.md ◀── import ──┬──────┐                │
+│ CLAUDE.md ──┤               ▓▓▓▓ Cargo.toml    │  │  ├─ api/README.md ─────┘      │  ▓▓▓▓ api/     │
+│             └──▶ guides ‹docs/templates/›      │  │  └─ web/README.md ────────────┘  ▓▓▓▓ web/     │
+│                                                │  │ memoria.toml ──▶ «guidance» for every review   │
+│ Two root files share one set of rules.         │  │                                                │
+│ A guide edit reaches only these two.           │  │ Each folder explains itself. The root          │
+│                                                │  │ imports their summaries and waits for them.    │
+└────────────────────────────────────────────────┘  └────────────────────────────────────────────────┘
+
+┌─ 3 · DOCUMENTS BESIDE THE CODE ────────────────┐  ┌─ 4 · A CENTRAL DOCS/ SITE ─────────────────────┐
+│                                                │  │                                                │
+│ billing/README.md   ▓▓▓▓ billing/*.rs          │  │ docs/guide.md  ░░░░ ‹src/ is not in scope›     │
+│ billing/design.md   ▓▓▓▓ billing/*.rs          │  │       ▲                                        │
+│  └─ «section» ──▶ invoice.rs                   │  │       └─ import ── src/README.md               │
+│                                                │  │                    ▓▓▓▓ src/*.rs               │
+│ A marker opts a page in. It shares its         │  │                                                │
+│ folder with the README, and a section          │  │ A page in docs/ sees code changes only         │
+│ points the review at one part of it.           │  │ through what it imports.                       │
+└────────────────────────────────────────────────┘  └────────────────────────────────────────────────┘
+
+▓▓▓▓ covered by the document   ░░░░ outside its scope   ──▶ names or reads   ◀── import: carries freshness

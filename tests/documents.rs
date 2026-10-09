@@ -264,6 +264,18 @@ fn every_command_accepts_an_opted_in_document() {
     );
     project.ack_ok("docs/guide.md");
     assert!(project.pending().is_empty());
+    // The passing check counts opted-in documents, not only READMEs.
+    let (code, checked) = project.json(&["check"]);
+    assert_eq!(code, 0, "{checked:?}");
+    let documents = get_u64(&checked, &["data", "documents"]);
+    assert!(documents > get_u64(&checked, &["data", "readmes"]));
+    let output = project.run(&["check"]);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        format!(
+            "OK: {documents} document(s) current, imports rendered, no coverage or structure errors.\n"
+        )
+    );
     // A path that is not Markdown is not a document identity.
     let (code, value) = project.json(&["review", "src/main.rs"]);
     assert_eq!(code, 2);

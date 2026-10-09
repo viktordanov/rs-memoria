@@ -144,7 +144,10 @@ pub fn render_diagnostics(diagnostics: &[Diagnostic], options: HumanOptions) -> 
                 let _ = writeln!(out, "  Column: {column}");
             }
             prose(&mut out, &item.message, "  ", options);
-            detail(&mut out, &item.details, 1);
+            // A diagnostic without details prints no detail line.
+            if !matches!(&item.details, Detail::Map(map) if map.is_empty()) {
+                detail(&mut out, &item.details, 1);
+            }
         }
         let action = match diagnostic.code.as_str() {
             "summary_invalid" => Some(

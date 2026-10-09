@@ -1,0 +1,13 @@
+version = 3
+ignore = []
+include = []
+
+[documentation]
+guidance = [
+    "Write for a developer who joins the team. Start each README with what its folder owns, then how to run it.",
+]
+guidance_files = ["docs/writing-guide.md"]
+
+[lint]
+# The root links the shared library for navigation. It imports no summary from it.
+missing_import_hint = false

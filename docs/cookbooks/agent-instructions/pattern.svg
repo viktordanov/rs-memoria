@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="882" height="342" viewBox="0 0 882 342" role="img" aria-labelledby="title desc">
+<title id="title">Two agent instruction files share two section guides</title>
+<desc id="desc">AGENTS.md and CLAUDE.md each have a commands section that maps justfile and Cargo.toml and a guide-only boundaries section. Each commands section names the agent-commands guide and each boundaries section names the agent-rules guide. memoria.toml registers both guides, which are never sources or documents.</desc>
+<style>.bg{fill:#f4f0e6}.ink{fill:#24211b}.muted{fill:#8a8170}.accent{fill:#c2410c}.line{stroke:#24211b}.line-muted{stroke:#8a8170}.line-accent{stroke:#c2410c}@media (prefers-color-scheme: dark){.bg{fill:#13120f}.ink{fill:#e8e3d4}.muted{fill:#7f7867}.accent{fill:#f59e0b}.line{stroke:#e8e3d4}.line-muted{stroke:#7f7867}.line-accent{stroke:#f59e0b}}.line,.line-muted,.line-accent{stroke-width:1.5;fill:none;stroke-linecap:square}text{font-family:ui-monospace,"SFMono-Regular","JetBrains Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;font-size:15px;white-space:pre}</style>
+<defs><pattern id="d1-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/></pattern><pattern id="d2-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/><rect x="2" y="2" width="2" height="2" class="accent"/></pattern><pattern id="d3-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/><rect x="2" y="0" width="2" height="2" class="accent"/><rect x="2" y="2" width="2" height="2" class="accent"/></pattern><pattern id="d1-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/></pattern><pattern id="d2-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/><rect x="2" y="2" width="2" height="2" class="muted"/></pattern><pattern id="d3-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/><rect x="2" y="0" width="2" height="2" class="muted"/><rect x="2" y="2" width="2" height="2" class="muted"/></pattern><pattern id="d1-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/></pattern><pattern id="d2-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/><rect x="2" y="2" width="2" height="2" class="ink"/></pattern><pattern id="d3-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/><rect x="2" y="0" width="2" height="2" class="ink"/><rect x="2" y="2" width="2" height="2" class="ink"/></pattern></defs>
+<rect class="bg" width="882" height="342" rx="8"/>
+<rect x="27" y="37" width="9" height="16" fill="url(#d1-accent)"/>
+<rect x="36" y="37" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="45" y="37" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="54" y="37" width="9" height="16" class="accent"/>
+<rect x="666" y="37" width="9" height="16" class="accent"/>
+<rect x="675" y="37" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="684" y="37" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="693" y="37" width="9" height="16" fill="url(#d1-accent)"/>
+<rect x="297" y="73" width="36" height="16" fill="url(#d3-ink)"/>
+<rect x="297" y="127" width="36" height="16" fill="url(#d3-ink)"/>
+<rect x="18" y="289" width="36" height="16" fill="url(#d3-ink)"/>
+<path class="line" d="M112.5 81L117 81M112.5 81L108 81M121.5 81L126 81M121.5 81L117 81M121.5 81L121.5 90M130.5 81L135 81M130.5 81L126 81M265.5 81L270 81M265.5 81L261 81M274.5 81L279 81M274.5 81L270 81M121.5 99L121.5 90M121.5 99L126 99M130.5 99L135 99M130.5 99L126 99M265.5 99L270 99M265.5 99L261 99M274.5 99L279 99M274.5 99L270 99M112.5 135L117 135M112.5 135L108 135M121.5 135L126 135M121.5 135L117 135M121.5 135L121.5 144M130.5 135L135 135M130.5 135L126 135M265.5 135L270 135M265.5 135L261 135M274.5 135L279 135M274.5 135L270 135M121.5 153L121.5 144M121.5 153L126 153M130.5 153L135 153M130.5 153L126 153M265.5 153L270 153M265.5 153L261 153M274.5 153L279 153M274.5 153L270 153M157.5 207L162 207M157.5 207L153 207M166.5 207L171 207M166.5 207L162 207M157.5 225L162 225M157.5 225L153 225M166.5 225L171 225M166.5 225L162 225M355.5 261L360 261M355.5 261L351 261M652.5 297L657 297M652.5 297L648 297M661.5 297L666 297M661.5 297L657 297"/>
+<polygon points="288,81 279,76.5 279,85.5" class="accent"/>
+<polygon points="288,99 279,94.5 279,103.5" class="accent"/>
+<polygon points="288,135 279,130.5 279,139.5" class="accent"/>
+<polygon points="288,153 279,148.5 279,157.5" class="accent"/>
+<polygon points="180,207 171,202.5 171,211.5" class="accent"/>
+<polygon points="180,225 171,220.5 171,229.5" class="accent"/>
+<polygon points="369,261 360,256.5 360,265.5" class="accent"/>
+<polygon points="675,297 666,292.5 666,301.5" class="accent"/>
+<text class="ink" x="81 90 99 108 117" y="48.96">AGENT</text>
+<text class="ink" x="135 144 153 162 171 180 189 198 207 216 225" y="48.96">INSTRUCTION</text>
+<text class="ink" x="243 252 261 270 279" y="48.96">FILES</text>
+<text class="ink" x="297" y="48.96">·</text>
+<text class="ink" x="315 324 333" y="48.96">ONE</text>
+<text class="ink" x="351 360 369" y="48.96">SET</text>
+<text class="ink" x="387 396" y="48.96">OF</text>
+<text class="ink" x="414 423 432 441 450" y="48.96">RULES</text>
+<text class="ink" x="468 477 486" y="48.96">FOR</text>
+<text class="ink" x="504 513 522 531 540" y="48.96">EVERY</text>
+<text class="ink" x="558 567 576 585 594" y="48.96">AGENT</text>
+<text class="ink" x="612 621 630 639" y="48.96">FILE</text>
+<text class="ink" x="18 27 36 45 54 63 72 81 90" y="84.96">AGENTS.md</text>
+<text class="accent" x="153 162 171 180 189 198 207 216" y="84.96">commands</text>
+<text class="ink" x="342 351 360 369 378 387 396 405" y="84.96">justfile</text>
+<text class="ink" x="432 441 450 459 468 477 486 495 504 513" y="84.96">Cargo.toml</text>
+<text class="accent" x="153 162 171 180 189 198 207 216 225 234" y="102.96">boundaries</text>
+<text class="muted" x="306 315 324 333 342 351 360 369 378 387 396" y="102.96">guide-only:</text>
+<text class="muted" x="414 423" y="102.96">no</text>
+<text class="muted" x="441 450 459 468 477" y="102.96">files</text>
+<text class="ink" x="18 27 36 45 54 63 72 81 90" y="138.96">CLAUDE.md</text>
+<text class="accent" x="153 162 171 180 189 198 207 216" y="138.96">commands</text>
+<text class="ink" x="342 351 360 369 378 387 396 405" y="138.96">justfile</text>
+<text class="ink" x="432 441 450 459 468 477 486 495 504 513" y="138.96">Cargo.toml</text>
+<text class="accent" x="153 162 171 180 189 198 207 216 225 234" y="156.96">boundaries</text>
+<text class="muted" x="306 315 324 333 342 351 360 369 378 387 396" y="156.96">guide-only:</text>
+<text class="muted" x="414 423" y="156.96">no</text>
+<text class="muted" x="441 450 459 468 477" y="156.96">files</text>
+<text class="ink" x="18 27 36 45 54 63 72 81 90 99 108 117" y="192.96">guidance=&quot;…&quot;</text>
+<text class="ink" x="144 153 162 171" y="192.96">each</text>
+<text class="ink" x="189 198 207 216 225 234 243" y="192.96">section</text>
+<text class="ink" x="261 270 279 288 297" y="192.96">names</text>
+<text class="ink" x="315 324 333" y="192.96">one</text>
+<text class="ink" x="351 360 369 378 387 396" y="192.96">guide:</text>
+<text class="accent" x="45 54 63 72 81 90 99 108" y="210.96">commands</text>
+<text class="ink" x="189 198 207 216 225 234 243 252 261 270 279 288 297 306 315 324 333 342 351 360 369 378 387 396 405 414 423 432 441 450 459 468" y="210.96">docs/templates/agent-commands.md</text>
+<text class="muted" x="513 522 531 540 549 558 567 576" y="210.96">command,</text>
+<text class="muted" x="594 603 612 621 630 639 648 657 666 675" y="210.96">directory,</text>
+<text class="muted" x="693 702 711 720 729" y="210.96">when,</text>
+<text class="muted" x="747 756 765 774 783 792 801" y="210.96">success</text>
+<text class="accent" x="45 54 63 72 81 90 99 108 117 126" y="228.96">boundaries</text>
+<text class="ink" x="189 198 207 216 225 234 243 252 261 270 279 288 297 306 315 324 333 342 351 360 369 378 387 396 405 414 423 432 441" y="228.96">docs/templates/agent-rules.md</text>
+<text class="muted" x="513 522 531 540 549" y="228.96">rule,</text>
+<text class="muted" x="567 576 585 594 603 612 621" y="228.96">reason,</text>
+<text class="muted" x="639 648 657 666" y="228.96">safe</text>
+<text class="muted" x="684 693 702 711 720 729 738 747 756 765 774" y="228.96">alternative</text>
+<text class="ink" x="18 27 36 45 54 63 72 81 90 99 108 117" y="264.96">memoria.toml</text>
+<text class="ink" x="144 153 162 171 180 189 198 207 216 225 234 243 252 261 270 279 288 297 306 315 324 333" y="264.96">section_guidance_files</text>
+<text class="ink" x="378 387 396 405 414 423 432 441 450" y="264.96">registers</text>
+<text class="ink" x="468 477 486 495" y="264.96">both</text>
+<text class="ink" x="513 522 531 540 549 558" y="264.96">guides</text>
+<text class="muted" x="585 594 603 612 621" y="264.96">never</text>
+<text class="muted" x="639 648 657 666 675 684 693 702" y="264.96">sources,</text>
+<text class="muted" x="720 729 738 747 756" y="264.96">never</text>
+<text class="muted" x="774 783 792 801 810 819 828 837 846" y="264.96">documents</text>
+<text class="ink" x="63 72 81 90 99" y="300.96">files</text>
+<text class="ink" x="117 126 135" y="300.96">the</text>
+<text class="ink" x="153 162 171 180 189 198 207" y="300.96">section</text>
+<text class="ink" x="225 234 243 252 261 270 279 288 297" y="300.96">describes</text>
+<text class="accent" x="342 351 360 369 378 387 396" y="300.96">section</text>
+<text class="ink" x="423 432 441 450 459 468 477" y="300.96">Memoria</text>
+<text class="ink" x="495 504 513 522 531 540 549" y="300.96">section</text>
+<text class="ink" x="567 576 585 594 603 612" y="300.96">marker</text>
+<text class="ink" x="684 693 702 711 720" y="300.96">names</text>
+</svg>

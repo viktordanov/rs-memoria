@@ -102,7 +102,7 @@ another document can copy.
 | Adapter | Contract |
 | --- | --- |
 | `PulldownMarkdownCodec` | It identifies marker ranges and link locations, validates export text, parses advisory sections, and recognizes the markers that opt a Markdown file in. |
-| `TomlConfigurationReader` | It accepts the supported TOML configuration. |
+| `TomlConfigurationReader` | It accepts the supported TOML configuration. It refuses `section_guidance_files` in a sidecar with `configuration_invalid`, because only the root may register section guides. |
 | `JsonPacketCodec` | It encodes and decodes both review artifacts under hard limits. |
 | `LockStateStore` | It reads and writes the binary `memoria.lock` file. |
 | `LockStateInspector` | It decodes a state file for read-only inspection. |
@@ -117,7 +117,7 @@ another document can copy.
 | `Supervisor` | It owns every subprocess one bounded endpoint starts. |
 
 The codec writes envelope schema version 3 and accepts only that version.
-It writes manifest version 2 and packet version 4, and it accepts only those.
+It writes manifest version 3 and packet version 5, and it accepts only those.
 It rejects a save receipt passed as an artifact with `packet_schema_invalid`.
 A different version fails with the received value in the message and with
 instructions to produce a new artifact. The codec converts nothing.
@@ -151,7 +151,14 @@ even a malformed one, opts a Markdown file in: a mistake never drops the
 obligation to review it.
 
 The parser reports a section problem under `section_issues`, never under
-`issues`. A section-like line that is not a well-formed declaration still
+`issues`. The exception is a malformed `guidance` attribute: it is the
+structural error `section_guidance_invalid`, because dropping it would remove a
+guide from review context in silence. A section guide reference whose token
+parsed is kept in `guides`, even when the section's `id` or `files` are
+invalid, so the guide still applies. The parser looks for the `guidance` attribute name only outside quoted
+values. A source path such as `files="guidance=rules.md"` stays a literal
+path, and a `guidance` name with any space or tab around its `=` is
+structural. A section-like line that is not a well-formed declaration still
 reaches that channel, including a wrongly indented one. It never disappears in
 silence, because a mistyped mapping must not quietly narrow a review.
 

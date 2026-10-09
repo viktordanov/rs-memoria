@@ -42,6 +42,10 @@ pub const SKILL_PACKAGE: &[(&str, &str)] = &[
         "integrations.md",
         include_str!("../skills/memoria/integrations.md"),
     ),
+    (
+        "section-guidance.md",
+        include_str!("../skills/memoria/section-guidance.md"),
+    ),
 ];
 
 /// Mutation progress notes. They repeat the result that stdout reports, so

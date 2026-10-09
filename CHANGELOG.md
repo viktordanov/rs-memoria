@@ -4,6 +4,8 @@ This file records user-visible changes in Memoria. The project maintainer owns r
 
 Contents:
 
+- [0.9.0](#090---unreleased)
+- [Migration to 0.9.0](#migration-to-090)
 - [0.8.0](#080---2026-10-04)
 - [Migration to 0.8.0](#migration-to-080)
 - [0.7.0](#070---2026-09-29)
@@ -15,6 +17,58 @@ Contents:
 - [0.4.0](#040---2026-09-10)
 - [0.3.0](#030---2026-09-09)
 - [0.2.0](#020).
+
+## 0.9.0 - unreleased
+
+CAUTION: Update every Memoria executable, including setup-action `version:` pins, before a project adds `section_guidance_files`. Memoria 0.8 refuses the key and names it. Then follow [Migration to 0.9.0](#migration-to-090).
+
+### Section guides
+
+A section can now name one reusable Markdown guide with writing rules for that kind of section. The guide adds to project guidance for the sections that name it, and only for those.
+
+- Register each guide once under `[documentation] section_guidance_files` in the root `memoria.toml`. A registration reserves the file: it is never a source and never a tracked document.
+- Name a guide in a section marker with a last `guidance="PATH"` attribute. The path is relative to the document's folder, like an import `src`.
+- A section with `guidance` and no `files` is a guide-only section. A change never suggests it.
+- A guide adds no input and no freshness. A guide edit makes no document pending. `memoria guidance --changed` lists exactly the documents that name the guide.
+- Every guide of a document is bound into its review context. An `ack` of an artifact saved before a guide edit fails with `guidance_changed` (exit 3) and writes nothing.
+- `memoria guidance <DOCUMENT>` labels two layers, project guidance and section guides, and prints one rule: if they conflict, follow project guidance and report the conflict. `memoria guidance` without a document summarizes each registered guide.
+- New diagnostics: `section_guidance_invalid` and `section_guidance_unregistered` (errors), and `section_guidance_unused` (a hint for `lint` and `--verbose`). A registered guide that carries a Memoria marker, is also project guidance, is listed twice, or is larger than 65,536 bytes is `guidance_file_invalid`. A sidecar registration is `configuration_invalid`.
+- Bounds: one guide per section, at most 64 distinct guides per document, and at most 1,024 bytes per guide path.
+
+### Quiet output stays quiet
+
+A document that names no guide keeps its guidance digest, its review lines, and its `memoria guidance` view byte for byte. During a review, the only new lines are a `· guide: <path>` suffix on a suggested section and a count on the `Guidance:` line. `status`, `check`, the plan, `graph`, hooks, and the workflow template do not change.
+
+### Review artifacts
+
+- Review manifests are now `manifest_version` 3. They add `review.sections[].guidance` and `section` entries in `guidance.references`.
+- Full exports are now `packet_version` 5. They carry each section guide's exact text. `ack` now recomputes the guidance digest of a full export and refuses text that does not produce it (`packet_content_mismatch`).
+- `packet view` is now `view_version` 3.
+
+The token, the review context, `memoria.lock`, and configuration `version = 3` do not change.
+
+### Documentation
+
+- New cookbook: [keep agent instructions current](docs/cookbooks/agent-instructions/README.md). Its outputs come from a tested fixture.
+- New [cookbook index](docs/cookbooks/README.md). Each cookbook is a folder with a `README.md` and its diagrams, and shows one way to document a project. A test compares every output block with a real run.
+- New `scripts/ascii-diagram.py` renders a monospace drawing as an SVG in the Memoria diagram style, with light and dark colors. `--check` fails when an SVG is not the current render of its source.
+- The agent skill has a new on-demand file, `section-guidance.md`, and teaches the conflict rule.
+- `SKILL.md` now starts with the complete syntax: markers, configuration keys, and commands. A use-case table then maps each common task to its stages and reference files. The review stages and their rules do not change.
+- The skill links the agent instructions cookbook and the command reference on GitHub, pinned to this release, because an installed skill cannot read Memoria's own `docs/`.
+- The skill's `integrations.md` now names all five package files.
+- The root README lists its use cases before the purpose and the quick start.
+
+### Fixes
+
+- A human diagnostic without details no longer prints a stray `{}` line. JSON output does not change.
+- A passing `memoria check` now counts every tracked document in its human message. It counted only READMEs, so opted-in documents were missing from the number. The JSON `documents` and `readmes` fields do not change.
+
+## Migration to 0.9.0
+
+1. Update every Memoria executable, including setup-action `version:` pins, before you add `section_guidance_files`.
+2. Capture review artifacts that were in flight again. Manifest 2, packet 4, and view 2 artifacts are refused with regeneration text.
+3. Run `memoria agent upgrade` for each installed skill. `memoria agent status` reports it as outdated until then.
+4. A project that registers no guide sees no change: the same digests and the same output.
 
 ## 0.8.0 - 2026-10-04
 

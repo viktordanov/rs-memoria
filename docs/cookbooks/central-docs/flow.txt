@@ -1,0 +1,19 @@
+title: A summary change travels from the code to the docs page through one import
+desc: Six steps in two columns. 1, login.rs changes and src/auth/README.md is pending while docs/guide.md stays current. 2, the README edits its exported summary, and the guide waits with input changed. 3, the README is acknowledged and the guide is pending, render first. 4, memoria render copies the summary into the import body. 5, the guide is reviewed with imports_changed. 6, the guide is acknowledged and current. If the summary stays the same, the flow stops after step 1.
+---
+«░▒▓█» HOW ONE SUMMARY CHANGE TRAVELS «█▓▒░»
+
+           src/auth/README.md                            docs/guide.md
+           ▓▓▓▓ ‹covers src/auth/›                       ░░░░ ‹covers no source›
+
+1 code    «pending»                                     «current»
+          ‹login.rs: 30 → 15›
+2 edit    «pending»               summary changed ──▶   «waiting»
+          ‹export: 15 minutes›                          ‹input changed: #summary›
+3 ack     «current»                                     «pending» ‹render first›
+4 render                          copy the summary ──▶  ‹import body: 15 minutes›
+5 review                                                «pending» ‹imports_changed›
+6 ack                                                   «current»
+
+If the README review keeps the summary the same, the flow stops at step 1 with «no-update»
+The guide then stays «current»

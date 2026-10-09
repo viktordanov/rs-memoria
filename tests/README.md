@@ -31,6 +31,7 @@ The sample repositories stay outside this project documentation scope.
 A fixture is sample input for a test.
 `Project::seed` copies the three-level fixture into a temporary directory, and `Project::seed_from` copies any named fixture.
 `Project::worked_example` builds the worked example of the specification: a root that links `auth/`, imports an opted-in guide, and never mentions `legacy/`.
+`Project::agent_instructions` seeds the `agent-instructions` fixture: two tracked agent files that share two registered section guides, with every document acknowledged.
 It restores the fixture document names to `README.md` and `README.memoria.toml`.
 It creates a local Git repository for the test.
 
@@ -82,19 +83,20 @@ An invalidation requests a review with an explicit reason, even without a file c
 | --- | --- |
 | [workflow.rs](workflow.rs) | Scopes, review order, imports, and invalidation |
 | [handoffs.rs](handoffs.rs) | The backbone rule: the `auth/` before and after, changes A–G of the worked example, hints, waiting, and fan-out |
-| [documents.rs](documents.rs) | Discovery: every marker line shape, name variants, selection, encoding, symlinks, and nested repositories |
+| [documents.rs](documents.rs) | Discovery: every marker line shape, name variants, selection, encoding, symlinks, and nested repositories. Every command on an opted-in document, including the document count of a passing check |
 | [document_reviews.rs](document_reviews.rs) | Sections over scope, relationships, bounded downstream lists, full exports, and render convergence |
 | [save_ack.rs](save_ack.rs) | `review --save` destinations, bytes, mode, collisions, and `ack` without a token |
 | [upgrade.rs](upgrade.rs) | Configuration version 3 and projects acknowledged by the real Memoria 0.6.0 |
 | [review_context.rs](review_context.rs) | Saved export views, P1 fallback, and verified historical coverage |
-| [sections.rs](sections.rs) | Advisory mappings, review mode, fallback reasons, and snapshot safety |
-| [configuration.rs](configuration.rs) | Supported settings and explicit configuration errors |
+| [sections.rs](sections.rs) | Advisory mappings, section guide markers and bounds, review mode, fallback reasons, and snapshot safety |
+| [configuration.rs](configuration.rs) | Supported settings, section guide registration rules, and explicit configuration errors |
 | [packets.rs](packets.rs) | Artifact transport, limits, integrity, replay, and concurrency |
 | [parallel.rs](parallel.rs) | Independent reviewers in one checkout: simultaneous acknowledgements, shared sources, import waiting, competing reviewers, the lock wait, and worktree integration |
 | [quiet_output.rs](quiet_output.rs) | Default human output on stdout and stderr together: hints and progress only on request, review hunks, `explain` next steps, and the guidance assessment |
 | [edges.rs](edges.rs) | Discovery, paths, configuration, and corrupt state |
 | [portability.rs](portability.rs) | Host rules against repository policy, and clean clones |
-| [guidance.rs](guidance.rs) | Setup preview, guidance visibility, and advisory behavior |
+| [guidance.rs](guidance.rs) | Setup preview, guidance visibility, advisory behavior, section guide layers, and the agent-instructions cookbook run |
+| `cookbook_readme_tree.rs`, `cookbook_beside_code.rs`, `cookbook_central_docs.rs` | One real run of each cookbook fixture, compared block by block with its page |
 | [usability.rs](usability.rs) | Completions, reviewer identity, freshness explanations, state comparisons, and human guidance cues |
 | [state_format.rs](state_format.rs) | Frozen lock vectors, corruption, limits, and inspection |
 | [agent.rs](agent.rs) | Skill scopes, status, upgrade, backups, and removal |
@@ -204,7 +206,16 @@ plan reaches the clean check and never reaches the acknowledgement step.
 
 `sections.rs` also pins the complete manifest example in the CLI reference
 against the production decoder, so the documentation and the schema cannot
-drift apart.
+drift apart. In the same way, each cookbook test drives its fixture through
+the built binary and compares every file block and output block of its page
+under `docs/cookbooks/` with that run. `guidance.rs` holds the agent-instructions
+run, and each `cookbook_*.rs` suite holds one more. They share `cookbook_run`
+and `cookbook_block` from `common/mod.rs`. Run a cookbook test with
+`MEMORIA_PRINT_COOKBOOK=1` and `--nocapture` to print fresh output blocks.
+
+A section guide is bound like project guidance. `save_ack.rs` checks that an
+edit to any guide of a document after `--save` refuses the artifact, including
+the guide of a section that the review does not suggest.
 
 No reading-cost result may weaken any rule in this suite.
 

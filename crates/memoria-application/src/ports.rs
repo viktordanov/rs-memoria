@@ -152,7 +152,8 @@ pub trait RepositoryIgnoreMatcher {
 /// Strict configuration parsing.
 pub trait ConfigurationReader {
     fn parse_root(&self, bytes: &[u8]) -> Result<RootConfig, String>;
-    fn parse_sidecar(&self, bytes: &[u8]) -> Result<SidecarConfig, String>;
+    fn parse_sidecar(&self, bytes: &[u8])
+    -> Result<SidecarConfig, crate::config::SidecarRejection>;
 }
 
 /// A parsed import marker before reference resolution.
@@ -190,13 +191,37 @@ pub struct ParsedSection {
     /// The `id` attribute, before identifier validation.
     pub id: String,
     /// The `files` tokens in authored order, each already checked against the
-    /// literal-path grammar.
+    /// literal-path grammar. Empty for a guide-only section.
     pub files: Vec<String>,
+    /// The `guidance` token exactly as authored, already checked against the
+    /// guide path grammar.
+    pub guidance: Option<String>,
     /// Text of the first heading in the body. A hint, never an identity.
     pub heading: String,
     /// Authored body, excluding both marker lines.
     pub body: memoria_domain::ByteRange,
     /// 1-based inclusive body line range, excluding both marker lines.
+    pub first_line: usize,
+    pub last_line: usize,
+    /// Location of the opening marker.
+    pub location: SourceLocation,
+}
+
+/// One section guide reference exactly as authored.
+///
+/// A reference is kept whenever its `guidance` token parsed, even when the
+/// section's `id` or `files` are invalid: the guide still applies to the
+/// document while the section's advice is withdrawn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedGuide {
+    /// The `guidance` token, already checked against the guide path grammar.
+    pub token: String,
+    /// The section's `id` attribute as authored. Empty when it was unreadable.
+    pub section: String,
+    /// The section's first heading text. Empty when the body was unusable.
+    pub heading: String,
+    /// 1-based inclusive body line range, or the marker line when the
+    /// section never closed properly.
     pub first_line: usize,
     pub last_line: usize,
     /// Location of the opening marker.
@@ -218,17 +243,21 @@ pub struct ParsedDocument {
     /// Section problems. These are advisory: they never make a document
     /// structurally invalid, they only withdraw its focused-review advice.
     pub section_issues: Vec<MarkdownIssue>,
+    /// Every section guide reference whose token parsed, in authored order.
+    /// Unlike `sections`, these survive a section problem.
+    pub guides: Vec<ParsedGuide>,
 }
 
 /// Structural marker codes that still opt a Markdown file in: a malformed
 /// marker never drops the obligation to review the file.
-pub const OPT_IN_ISSUE_CODES: [&str; 6] = [
+pub const OPT_IN_ISSUE_CODES: [&str; 7] = [
     "marker_malformed",
     "marker_nested",
     "marker_mismatch",
     "marker_unclosed",
     "export_invalid",
     "export_duplicate",
+    "section_guidance_invalid",
 ];
 
 impl ParsedDocument {
@@ -240,6 +269,7 @@ impl ParsedDocument {
             || !self.imports.is_empty()
             || !self.sections.is_empty()
             || !self.section_issues.is_empty()
+            || !self.guides.is_empty()
             || self
                 .issues
                 .iter()
@@ -251,13 +281,19 @@ impl ParsedDocument {
         let exports = self.exports.iter().map(|e| e.location.line);
         let imports = self.imports.iter().map(|i| i.location.line);
         let sections = self.sections.iter().map(|s| s.location.line);
+        let guides = self.guides.iter().map(|g| g.location.line);
         let issues = self
             .issues
             .iter()
             .filter(|issue| OPT_IN_ISSUE_CODES.contains(&issue.code))
             .chain(self.section_issues.iter())
             .filter_map(|issue| issue.location.map(|l| l.line));
-        exports.chain(imports).chain(sections).chain(issues).min()
+        exports
+            .chain(imports)
+            .chain(sections)
+            .chain(guides)
+            .chain(issues)
+            .min()
     }
 }
 

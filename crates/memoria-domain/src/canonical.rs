@@ -159,7 +159,8 @@ fn encode_inputs_into(e: &mut Encoder, manifest: &InputManifest) {
 }
 
 /// `memoria.guidance.v1` canonical bytes: the domain, the entry count, and
-/// each entry's four length-prefixed UTF-8 fields in authored order.
+/// each entry's four length-prefixed UTF-8 fields in authored order. The
+/// presentation-only `sections` of a section guide entry are not encoded.
 pub fn encode_guidance(entries: &[GuidanceEntry]) -> Vec<u8> {
     let mut e = Encoder::new();
     e.str(GUIDANCE_DOMAIN);
@@ -991,6 +992,7 @@ mod tests {
             source: source.to_string(),
             kind: GuidanceKind::Inline,
             text: text.to_string(),
+            sections: Vec::new(),
         };
         assert_ne!(
             encode_guidance(&[entry("memoria.toml", "ab")]),

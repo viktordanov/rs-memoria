@@ -12,9 +12,9 @@ use memoria_domain::section::SectionMap;
 use memoria_domain::{
     ByteRange, DirPath, Document, DocumentId, DocumentLink, DocumentReference, DocumentStatus,
     EffectivePolicy, Exclusion, ExportId, FileInput, GitContext, GitRuleScope, Glob, GraphError,
-    GuidanceDigest, GuidanceEntry, GuidanceKind, Hash64, Import, ImportGraph, ImportInput,
-    InputManifest, NavigationGraph, PolicyRuleScope, ProjectPath, ReferenceKind, ReviewState,
-    RuleScope, ScopeMap, SelectionDecision,
+    GuidanceDigest, GuidanceEntry, GuidanceKind, GuidanceSection, Hash64, Import, ImportGraph,
+    ImportInput, InputManifest, NavigationGraph, PolicyRuleScope, ProjectPath, ReferenceKind,
+    ReviewState, RuleScope, ScopeMap, SelectionDecision,
 };
 
 use crate::config::RootConfig;
@@ -86,6 +86,9 @@ pub struct Collected {
     /// Opted-in documents with the first line that carries a marker.
     pub opted_in: BTreeMap<DocumentId, usize>,
     pub decisions: BTreeMap<ProjectPath, SelectionDecision>,
+    /// Registered section guides from the root `memoria.toml`, resolved.
+    /// Each one is reserved whether or not a section names it.
+    pub section_guides: BTreeSet<ProjectPath>,
     pub file_bytes: BTreeMap<ProjectPath, Vec<u8>>,
     pub document_bytes: BTreeMap<DocumentId, Vec<u8>>,
     pub guidance_bytes: BTreeMap<ProjectPath, Vec<u8>>,
@@ -533,8 +536,9 @@ fn collect(services: &Services<'_>) -> Result<Collected, AppError> {
                 guidance_files.extend(scope.guidance_files.iter().cloned());
                 scopes.push(scope);
             }
-            Err(message) => diagnostics
-                .push(Diagnostic::error("sidecar_invalid", message).at_path(sidecar.as_str())),
+            Err(rejection) => diagnostics.push(
+                Diagnostic::error(rejection.code(), rejection.message()).at_path(sidecar.as_str()),
+            ),
         }
     }
     scopes.sort_by_key(|scope| (scope.dir.depth(), scope.dir.clone()));
@@ -542,10 +546,28 @@ fn collect(services: &Services<'_>) -> Result<Collected, AppError> {
     // Guidance files.
     let mut guidance_bytes: BTreeMap<ProjectPath, Vec<u8>> = BTreeMap::new();
     for path in &guidance_files {
-        if let Some(bytes) = read_guidance_file(services, path, &documents, &mut diagnostics)? {
+        if let Some(bytes) = read_guidance_file(
+            services,
+            path,
+            "guidance_files",
+            &documents,
+            &mut diagnostics,
+        )? {
             guidance_bytes.insert(path.clone(), bytes);
         }
     }
+
+    // Registered section guides. The registration reserves each file before
+    // selection, so a marker never changes coverage.
+    let section_guides = register_section_guides(
+        services,
+        &root_config.section_guidance_files,
+        &scopes,
+        &mut guidance_bytes,
+        &mut diagnostics,
+    )?;
+    let mut reserved_guidance = guidance_files.clone();
+    reserved_guidance.extend(section_guides.iter().cloned());
 
     // Selection.
     let rule_scopes: Vec<RuleScope> = scopes.iter().map(|s| s.rules.clone()).collect();
@@ -555,7 +577,7 @@ fn collect(services: &Services<'_>) -> Result<Collected, AppError> {
     let mut gitignores: BTreeMap<ProjectPath, Vec<u8>> = BTreeMap::new();
     for path in &eligible {
         let reserved =
-            reserved_category(path, &guidance_files, &managed_parents).map(str::to_string);
+            reserved_category(path, &reserved_guidance, &managed_parents).map(str::to_string);
         let decision = memoria_domain::selection::decide(path, reserved, &rule_scopes);
         if decision.selected() {
             match kinds[path] {
@@ -720,6 +742,7 @@ fn collect(services: &Services<'_>) -> Result<Collected, AppError> {
         documents,
         opted_in,
         decisions,
+        section_guides,
         file_bytes,
         document_bytes,
         guidance_bytes,
@@ -749,13 +772,118 @@ fn forbidden_guidance_destination(path: &ProjectPath) -> Option<&'static str> {
     None
 }
 
+/// Resolve, reserve, and read the registered section guides.
+///
+/// A registered guide follows every `guidance_files` rule. It must also
+/// carry no Memoria marker (a registration never untracks a document in
+/// silence), stay out of every `guidance_files` list, appear once, and hold at
+/// most 64 KiB. Problems are errors; the returned set still reserves every
+/// path that resolved, so a refused registration never turns a guide into a
+/// source.
+fn register_section_guides(
+    services: &Services<'_>,
+    registered: &[String],
+    scopes: &[ScopeConfig],
+    guidance_bytes: &mut BTreeMap<ProjectPath, Vec<u8>>,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Result<BTreeSet<ProjectPath>, AppError> {
+    let mut guides: BTreeSet<ProjectPath> = BTreeSet::new();
+    let documents = BTreeSet::new();
+    for relative in registered {
+        let path = match ProjectPath::resolve_relative(&DirPath::root(), relative) {
+            Ok(path) => path,
+            Err(err) => {
+                diagnostics.push(
+                    Diagnostic::error(
+                        "guidance_file_invalid",
+                        format!("section_guidance_files entry {relative:?}: {err}"),
+                    )
+                    .at_path(ROOT_CONFIG_PATH),
+                );
+                continue;
+            }
+        };
+        if !guides.insert(path.clone()) {
+            diagnostics.push(
+                Diagnostic::error(
+                    "guidance_file_invalid",
+                    format!("{path} is listed more than once in section_guidance_files; register each section guide once"),
+                )
+                .at_path(path.as_str()),
+            );
+            continue;
+        }
+        if let Some(scope) = scopes
+            .iter()
+            .find(|scope| scope.guidance_files.contains(&path))
+        {
+            diagnostics.push(
+                Diagnostic::error(
+                    "guidance_file_invalid",
+                    format!(
+                        "{path} already applies as project guidance through `{}`; a section guide cannot also be project guidance",
+                        scope.source
+                    ),
+                )
+                .at_path(path.as_str()),
+            );
+            continue;
+        }
+        let Some(bytes) = read_guidance_file(
+            services,
+            &path,
+            "section_guidance_files",
+            &documents,
+            diagnostics,
+        )?
+        else {
+            continue;
+        };
+        if bytes.len() as u64 > memoria_domain::section::MAX_SECTION_GUIDE_BYTES {
+            diagnostics.push(
+                Diagnostic::error(
+                    "guidance_file_invalid",
+                    format!(
+                        "section guide is {} bytes; at most {} are permitted",
+                        bytes.len(),
+                        memoria_domain::section::MAX_SECTION_GUIDE_BYTES
+                    ),
+                )
+                .at_path(path.as_str()),
+            );
+            continue;
+        }
+        // The marker scanner ignores markers in fenced or inline code, so a
+        // guide can show marker examples.
+        let probe =
+            DocumentId::from_path(path.clone()).unwrap_or_else(|_| DirPath::root().readme());
+        if let Some(line) = services.markdown.recognizes_markers(&probe, &bytes) {
+            diagnostics.push(
+                Diagnostic::error(
+                    "guidance_file_invalid",
+                    format!(
+                        "carries a Memoria marker on line {line}, so it would stop being a tracked document; remove the markers or the registration"
+                    ),
+                )
+                .at_path(path.as_str())
+                .at(line, 1),
+            );
+            continue;
+        }
+        guidance_bytes.insert(path, bytes);
+    }
+    Ok(guides)
+}
+
 /// Read one configured guidance file with the inspection rules: it must
 /// exist, be a regular file (never a symlink), be UTF-8, and name a
 /// destination that guidance may use. Problems are reported as diagnostics;
-/// `Ok(None)` means the file could not be used.
+/// `Ok(None)` means the file could not be used. `key` names the configuration
+/// list in messages.
 fn read_guidance_file(
     services: &Services<'_>,
     path: &ProjectPath,
+    key: &str,
     documents: &BTreeSet<DocumentId>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<Option<Vec<u8>>, AppError> {
@@ -764,7 +892,7 @@ fn read_guidance_file(
         diagnostics.push(
             Diagnostic::error(
                 "guidance_file_invalid",
-                format!("guidance_files entry names {reason}, which guidance may not use"),
+                format!("{key} entry names {reason}, which guidance may not use"),
             )
             .at_path(path.as_str()),
         );
@@ -834,8 +962,22 @@ pub fn validate_root_config(
     );
     let documents = BTreeSet::new();
     for path in &scope.guidance_files {
-        read_guidance_file(services, path, &documents, &mut diagnostics)?;
+        read_guidance_file(
+            services,
+            path,
+            "guidance_files",
+            &documents,
+            &mut diagnostics,
+        )?;
     }
+    let mut ignored = BTreeMap::new();
+    register_section_guides(
+        services,
+        &config.section_guidance_files,
+        std::slice::from_ref(&scope),
+        &mut ignored,
+        &mut diagnostics,
+    )?;
     sort_diagnostics(&mut diagnostics);
     Ok(diagnostics)
 }
@@ -890,6 +1032,11 @@ fn build_scope(
 /// guidance, symlinked, or missing path, a tracked document, or a source the
 /// document handed off or never covered — withdraws the whole document's
 /// advice, because partial advice cannot narrow a review.
+///
+/// A section's guide never affects validity here. Guide references are
+/// resolved and checked separately, because a guide still applies when the
+/// section's advice is withdrawn.
+#[allow(clippy::too_many_arguments)]
 fn resolve_sections(
     document: &DocumentId,
     parsed_sections: &[crate::ports::ParsedSection],
@@ -897,6 +1044,7 @@ fn resolve_sections(
     scopes: &ScopeMap,
     documents: &BTreeSet<DocumentId>,
     selected: &BTreeMap<ProjectPath, Vec<u8>>,
+    section_guides: &BTreeSet<ProjectPath>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> SectionMap {
     let mut report = |message: String, location: Option<memoria_domain::SourceLocation>| {
@@ -951,6 +1099,17 @@ fn resolve_sections(
                 );
                 continue;
             }
+            if section_guides.contains(&resolved) {
+                invalid = true;
+                report(
+                    format!(
+                        "section {:?}: {resolved} is a section guide registered in {ROOT_CONFIG_PATH}, not a source; name it in `guidance`, or name the sources that the section describes in `files`",
+                        section.id
+                    ),
+                    Some(section.location),
+                );
+                continue;
+            }
             if !selected.contains_key(&resolved) {
                 invalid = true;
                 report(
@@ -999,6 +1158,11 @@ fn resolve_sections(
             first_line: section.first_line,
             last_line: section.last_line,
             sources,
+            guidance: section
+                .guidance
+                .as_deref()
+                .and_then(|token| ProjectPath::resolve_relative(&dir, token).ok())
+                .filter(|path| section_guides.contains(path)),
         });
     }
     if invalid {
@@ -1006,6 +1170,94 @@ fn resolve_sections(
     } else {
         SectionMap::Valid(mappings)
     }
+}
+
+/// Resolve one document's section guide references.
+///
+/// Each token resolves relative to the document's folder, exactly like an
+/// import `src`. The resolved path must be a registered section guide, and a
+/// document may name at most 64 distinct guides. The result maps each guide
+/// to the sections that name it, in authored order.
+fn resolve_section_guides(
+    document: &DocumentId,
+    guides: &[crate::ports::ParsedGuide],
+    registered: &BTreeSet<ProjectPath>,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> BTreeMap<ProjectPath, Vec<GuidanceSection>> {
+    let dir = document.directory();
+    let mut uses: BTreeMap<ProjectPath, Vec<GuidanceSection>> = BTreeMap::new();
+    for guide in guides {
+        let at = |code: &'static str, message: String| {
+            Diagnostic::error(code, message)
+                .at_path(document.as_str())
+                .at(guide.location.line, guide.location.column)
+        };
+        let path = match ProjectPath::resolve_relative(&dir, &guide.token) {
+            Ok(path) => path,
+            Err(err) => {
+                diagnostics.push(at(
+                    "section_guidance_invalid",
+                    format!(
+                        "section {:?}: guide path {:?} is not a project path: {err}",
+                        guide.section, guide.token
+                    ),
+                ));
+                continue;
+            }
+        };
+        if !registered.contains(&path) {
+            diagnostics.push(at(
+                "section_guidance_unregistered",
+                format!(
+                    "`{path}` is not a registered section guide. Add it to `section_guidance_files` in {ROOT_CONFIG_PATH}."
+                ),
+            ));
+            continue;
+        }
+        if !uses.contains_key(&path) && uses.len() == memoria_domain::section::MAX_SECTION_GUIDES {
+            diagnostics.push(at(
+                "section_guidance_invalid",
+                format!(
+                    "section {:?} names {path}, the document's {}th distinct section guide; a document may name at most {}",
+                    guide.section,
+                    memoria_domain::section::MAX_SECTION_GUIDES + 1,
+                    memoria_domain::section::MAX_SECTION_GUIDES
+                ),
+            ));
+            continue;
+        }
+        uses.entry(path).or_default().push(GuidanceSection {
+            id: guide.section.clone(),
+            heading: guide.heading.clone(),
+            first_line: guide.first_line,
+            last_line: guide.last_line,
+        });
+    }
+    uses
+}
+
+/// The project guidance entries of one document: root, then each sidecar
+/// toward the document; inline entries before file entries.
+fn project_guidance(collected: &Collected, document: &DocumentId) -> Vec<Guidance> {
+    let ancestors = document.directory().ancestors();
+    let mut entries: Vec<Guidance> = Vec::new();
+    for scope in &collected.scopes {
+        if !ancestors.contains(&scope.dir) {
+            continue;
+        }
+        entries.extend(scope.guidance.iter().cloned());
+        for path in &scope.guidance_files {
+            if let Some(bytes) = collected.guidance_bytes.get(path) {
+                entries.push(guidance::entry(
+                    scope.dir.clone(),
+                    path.as_str(),
+                    GuidanceKind::File,
+                    String::from_utf8_lossy(bytes).into_owned(),
+                ));
+            }
+        }
+    }
+    entries
 }
 
 /// Every local reference a document makes: normal links and import blocks,
@@ -1166,9 +1418,43 @@ fn analyze(services: &Services<'_>, collected: Collected) -> Snapshot {
                 &scopes,
                 &collected.documents,
                 &collected.file_bytes,
+                &collected.section_guides,
                 &mut diagnostics,
             ),
         );
+    }
+
+    // Section guides named by each document, resolved like an import `src`
+    // and checked against the registration.
+    let mut section_guide_uses: BTreeMap<DocumentId, BTreeMap<ProjectPath, Vec<GuidanceSection>>> =
+        BTreeMap::new();
+    for (document, parsed) in &parsed_documents {
+        section_guide_uses.insert(
+            document.clone(),
+            resolve_section_guides(
+                document,
+                &parsed.guides,
+                &collected.section_guides,
+                &mut diagnostics,
+            ),
+        );
+    }
+    let named: BTreeSet<&ProjectPath> = section_guide_uses
+        .values()
+        .flat_map(|uses| uses.keys())
+        .collect();
+    for path in &collected.section_guides {
+        if !named.contains(path) && collected.guidance_bytes.contains_key(path) {
+            diagnostics.push(
+                Diagnostic::hint(
+                    "section_guidance_unused",
+                    format!(
+                        "{path} is a registered section guide, but no section names it; name it in a section marker's `guidance` attribute, or remove it from section_guidance_files"
+                    ),
+                )
+                .at_path(path.as_str()),
+            );
+        }
     }
 
     // Graph.
@@ -1237,21 +1523,21 @@ fn analyze(services: &Services<'_>, collected: Collected) -> Snapshot {
     // propagation.
     let mut guidance_map: BTreeMap<DocumentId, guidance::EffectiveGuidance> = BTreeMap::new();
     for document in &collected.documents {
-        let ancestors = document.directory().ancestors();
-        let mut entries: Vec<Guidance> = Vec::new();
-        for scope in &collected.scopes {
-            if !ancestors.contains(&scope.dir) {
-                continue;
-            }
-            entries.extend(scope.guidance.iter().cloned());
-            for path in &scope.guidance_files {
+        let mut entries = project_guidance(&collected, document);
+        // Section guides follow project guidance, one entry per distinct
+        // guide, sorted by path. A document that names none keeps exactly
+        // its project entries, so its digest is unchanged.
+        if let Some(uses) = section_guide_uses.get(document) {
+            for (path, sections) in uses {
                 if let Some(bytes) = collected.guidance_bytes.get(path) {
-                    entries.push(guidance::entry(
-                        scope.dir.clone(),
+                    let mut entry = guidance::entry(
+                        DirPath::root(),
                         path.as_str(),
-                        GuidanceKind::File,
+                        GuidanceKind::Section,
                         String::from_utf8_lossy(bytes).into_owned(),
-                    ));
+                    );
+                    entry.sections = sections.clone();
+                    entries.push(entry);
                 }
             }
         }
@@ -1886,6 +2172,7 @@ impl Snapshot {
             &self.scopes,
             &self.collected.documents,
             &self.collected.file_bytes,
+            &self.collected.section_guides,
             &mut ignored,
         )
     }
@@ -1974,26 +2261,9 @@ impl Snapshot {
         DocumentId::from_path(path.clone()).is_ok_and(|id| self.collected.documents.contains(&id))
     }
 
+    /// The project guidance of a document, without its section guides.
     pub fn applicable_guidance(&self, document: &DocumentId) -> Vec<Guidance> {
-        let ancestors = document.directory().ancestors();
-        let mut out = Vec::new();
-        for scope in &self.collected.scopes {
-            if !ancestors.contains(&scope.dir) {
-                continue;
-            }
-            out.extend(scope.guidance.iter().cloned());
-            for path in &scope.guidance_files {
-                if let Some(bytes) = self.collected.guidance_bytes.get(path) {
-                    out.push(guidance::entry(
-                        scope.dir.clone(),
-                        path.as_str(),
-                        GuidanceKind::File,
-                        String::from_utf8_lossy(bytes).into_owned(),
-                    ));
-                }
-            }
-        }
-        out
+        project_guidance(&self.collected, document)
     }
 
     /// The effective guidance and digest of a document.

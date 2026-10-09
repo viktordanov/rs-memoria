@@ -270,6 +270,7 @@ fn guidance_bytes_and_digest_match_the_reference() {
         source: source.to_string(),
         kind,
         text: text.to_string(),
+        sections: Vec::new(),
     };
     let entries = vec![
         entry(
@@ -291,6 +292,43 @@ fn guidance_bytes_and_digest_match_the_reference() {
     assert_eq!(Xxh3Hasher.hash(&bytes).to_hex(), "9d0b6ce4f267ed63");
     // Guidance is advisory: it never enters the input manifest.
     assert_ne!(hex(&bytes), INPUTS_HEX);
+}
+
+/// A section guide extends `memoria.guidance.v1` in place: one more entry with
+/// the kind `section`, the root scope, and the guide path as its source. The
+/// sections that name it are presentation only and never change the bytes.
+#[test]
+fn section_guide_entries_extend_the_reference_encoding() {
+    use memoria_domain::GuidanceSection;
+    let project = GuidanceEntry {
+        scope: DirPath::root(),
+        source: "memoria.toml".into(),
+        kind: GuidanceKind::Inline,
+        text: "Explain the workflow first.".into(),
+        sections: Vec::new(),
+    };
+    let mut section = GuidanceEntry {
+        scope: DirPath::root(),
+        source: "docs/templates/agent-commands.md".into(),
+        kind: GuidanceKind::Section,
+        text: "Give the exact command.\n".into(),
+        sections: Vec::new(),
+    };
+    let bare = encode_guidance(&[project.clone(), section.clone()]);
+    section.sections = vec![GuidanceSection {
+        id: "commands".into(),
+        heading: "Commands".into(),
+        first_line: 6,
+        last_line: 9,
+    }];
+    let labelled = encode_guidance(&[project.clone(), section]);
+    assert_eq!(bare, labelled);
+    assert_eq!(Xxh3Hasher.hash(&bare).to_hex(), "140a4c6bca0c528b");
+    // The project entry alone keeps its own frozen digest.
+    assert_ne!(
+        Xxh3Hasher.hash(&encode_guidance(&[project])),
+        Xxh3Hasher.hash(&bare)
+    );
 }
 
 #[test]

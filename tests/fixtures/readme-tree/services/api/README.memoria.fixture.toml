@@ -1,0 +1,4 @@
+[documentation]
+guidance = [
+    "List every HTTP endpoint with its method and path, and say what it returns.",
+]

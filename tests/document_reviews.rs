@@ -276,7 +276,7 @@ fn full_exports_and_packet_view_carry_the_document() {
     project.append("auth/login.rs", "// edit\n");
     let (packet, token) = project.review_full("auth/flows.md");
     let value = parse_json(&fs::read(&packet).unwrap());
-    assert_eq!(get_u64(&value, &["data", "packet_version"]), 4);
+    assert_eq!(get_u64(&value, &["data", "packet_version"]), 5);
     assert_eq!(
         get_str(&value, &["data", "content", "document", "path"]),
         "auth/flows.md"
@@ -296,7 +296,7 @@ fn full_exports_and_packet_view_carry_the_document() {
     ]);
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
     let view = parse_json(&output.stdout);
-    assert_eq!(get_u64(&view, &["data", "view_version"]), 2);
+    assert_eq!(get_u64(&view, &["data", "view_version"]), 3);
     assert_eq!(
         get_str(&view, &["data", "selection", "document", "path"]),
         "auth/flows.md"

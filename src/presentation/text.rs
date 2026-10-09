@@ -231,30 +231,64 @@ pub fn guidance(report: &memoria_application::usecases::guidance::GuidanceReport
             );
         }
     }
+    let sectioned = report.has_section_guides();
+    let field = |entry: &Detail, key: &str| match entry.get(key) {
+        Some(Detail::Text(text)) => text.clone(),
+        _ => String::new(),
+    };
+    let project_entry = |out: &mut String, entry: &Detail| {
+        let scope = field(entry, "scope");
+        let scope = if scope.is_empty() {
+            "<root>".to_string()
+        } else {
+            scope
+        };
+        let _ = writeln!(
+            out,
+            "\n  [{} {} scope={scope}]\n{}",
+            field(entry, "kind"),
+            field(entry, "source"),
+            field(entry, "text").trim_end()
+        );
+    };
     if report.entries.is_empty() {
         let _ = writeln!(
             out,
             "\nThis boundary has no guidance. Add entries under [documentation] in memoria.toml."
         );
-    } else {
+    } else if !sectioned {
         let _ = writeln!(out, "\nEffective guidance, in applied order:");
         for entry in &report.entries {
-            let field = |key: &str| match entry.get(key) {
-                Some(memoria_application::error::Detail::Text(text)) => text.clone(),
-                _ => String::new(),
-            };
-            let scope = field("scope");
-            let scope = if scope.is_empty() {
-                "<root>".to_string()
-            } else {
-                scope
-            };
+            project_entry(&mut out, entry);
+        }
+    } else {
+        // Two labelled layers: project guidance for the whole document, then
+        // each section guide with the sections that name it.
+        let (section, project): (Vec<&Detail>, Vec<&Detail>) = report
+            .entries
+            .iter()
+            .partition(|entry| field(entry, "kind") == "section");
+        let _ = writeln!(
+            out,
+            "\nProject guidance, in applied order. It applies to the whole document:"
+        );
+        if project.is_empty() {
             let _ = writeln!(
                 out,
-                "\n  [{} {} scope={scope}]\n{}",
-                field("kind"),
-                field("source"),
-                field("text").trim_end()
+                "\n  none. Add entries under [documentation] in memoria.toml."
+            );
+        }
+        for entry in project {
+            project_entry(&mut out, entry);
+        }
+        let _ = writeln!(out, "\nSection guides:");
+        for entry in section {
+            let _ = writeln!(
+                out,
+                "\n  [section {}] {}\n{}",
+                field(entry, "source"),
+                guide_sections(entry),
+                field(entry, "text").trim_end()
             );
         }
     }
@@ -273,11 +307,55 @@ pub fn guidance(report: &memoria_application::usecases::guidance::GuidanceReport
             );
         }
     }
+    if !report.section_guides.is_empty() {
+        let _ = writeln!(out, "\nRegistered section guides:");
+        for guide in &report.section_guides {
+            let _ = writeln!(
+                out,
+                "  {}: {} document{}, {} section{}",
+                guide.source,
+                guide.documents,
+                if guide.documents == 1 { "" } else { "s" },
+                guide.sections,
+                if guide.sections == 1 { "" } else { "s" }
+            );
+        }
+    }
+    if sectioned {
+        let _ = writeln!(out, "\n{}", memoria_application::guidance::CONFLICT_RULE);
+    } else {
+        out.push('\n');
+    }
     let _ = writeln!(
         out,
-        "\nGuidance is review context. It never selects files and never decides freshness."
+        "Guidance is review context. It never selects files and never decides freshness."
     );
     out
+}
+
+/// "commands (lines 6-9), checks (lines 12-15)" for one section guide entry.
+fn guide_sections(entry: &Detail) -> String {
+    let Some(Detail::List(sections)) = entry.get("sections") else {
+        return String::new();
+    };
+    sections
+        .iter()
+        .map(|section| {
+            let id = match section.get("id") {
+                Some(Detail::Text(id)) if !id.is_empty() => id.clone(),
+                _ => "?".to_string(),
+            };
+            let line = |index: usize| match section.get("lines") {
+                Some(Detail::List(lines)) => match lines.get(index) {
+                    Some(Detail::Number(n)) => *n,
+                    _ => 0,
+                },
+                _ => 0,
+            };
+            format!("{id} (lines {}-{})", line(0), line(1))
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// "Documents N: M READMEs, K opted-in documents; H handoffs; S sources
@@ -757,6 +835,21 @@ pub fn packet(packet: &FocusedReviewPacket) -> String {
         let _ = writeln!(out, "  none declared for this boundary");
     } else {
         for entry in &guidance.entries {
+            if entry.kind.as_str() == "section" {
+                let sections: Vec<String> = entry
+                    .sections
+                    .iter()
+                    .map(|s| format!("{} (lines {}-{})", s.id, s.first_line, s.last_line))
+                    .collect();
+                let _ = writeln!(
+                    out,
+                    "  [section {}] {}\n{}",
+                    entry.source,
+                    sections.join(", "),
+                    entry.text.trim_end()
+                );
+                continue;
+            }
             let scope = if entry.scope.is_root() {
                 "<root>".to_string()
             } else {
@@ -914,7 +1007,7 @@ pub fn check(report: &CheckReport) -> String {
         let _ = writeln!(
             out,
             "OK: {} document(s) current, imports rendered, no coverage or structure errors.",
-            report.readmes
+            report.documents
         );
         return out;
     }

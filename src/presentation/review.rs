@@ -342,12 +342,16 @@ pub fn manifest(m: &ReviewManifest, details: bool, evidence: &[Detail]) -> Strin
             for section in &m.sections {
                 let _ = writeln!(
                     out,
-                    "  Suggested section {} \"{}\" lines {}-{}: {}",
+                    "  Suggested section {} \"{}\" lines {}-{}: {}{}",
                     section.id,
                     section.heading,
                     section.first_line,
                     section.last_line,
-                    section.sources.join(", ")
+                    section.sources.join(", "),
+                    match &section.guidance {
+                        Some(guide) => format!(" · guide: {guide}"),
+                        None => String::new(),
+                    }
                 );
             }
         }
@@ -384,10 +388,17 @@ pub fn manifest(m: &ReviewManifest, details: bool, evidence: &[Detail]) -> Strin
         }
     }
     out.push_str("  Whole document pass: required\n");
+    let section_guides: Vec<&str> = m
+        .guidance_references
+        .iter()
+        .filter(|r| r.kind == "section")
+        .map(|r| r.source.as_str())
+        .collect();
     let _ = writeln!(
         out,
-        "  Guidance: memoria guidance {}{}",
+        "  Guidance: memoria guidance {}{}{}",
         m.document,
+        guidance_layers(m.guidance_references.len(), section_guides.len()),
         match m.guidance_changed_since_review {
             Some(true) => " (changed since the last review; apply the current text)",
             _ => "",
@@ -413,6 +424,13 @@ pub fn manifest(m: &ReviewManifest, details: bool, evidence: &[Detail]) -> Strin
             m.snapshot.baseline_digest.to_hex()
         );
         let _ = writeln!(out, "  Guidance digest   {}", m.guidance_digest.to_hex());
+        if !section_guides.is_empty() {
+            let _ = writeln!(
+                out,
+                "  Section guides    {}",
+                capped_list(&section_guides, MAX_GUIDE_NAMES)
+            );
+        }
         let _ = writeln!(out, "  Selection version {}", m.snapshot.selection_version);
         let _ = writeln!(
             out,
@@ -566,4 +584,38 @@ pub fn explain(p: &ExplainReport) -> String {
     let _ = writeln!(out, "{next}");
     let _ = writeln!(out, "Exact evidence: memoria explain {} --full", p.document);
     out
+}
+
+/// Most section guide paths one human line names.
+const MAX_GUIDE_NAMES: usize = 10;
+
+/// " (project guidance and 2 section guides)" when a section guide applies,
+/// and nothing otherwise, so a document without guides keeps its 0.8 line.
+fn guidance_layers(entries: usize, section_guides: usize) -> String {
+    if section_guides == 0 {
+        return String::new();
+    }
+    let guides = format!(
+        "{section_guides} section guide{}",
+        if section_guides == 1 { "" } else { "s" }
+    );
+    if entries > section_guides {
+        format!(" (project guidance and {guides})")
+    } else {
+        format!(" ({guides})")
+    }
+}
+
+/// "a, b, c" with at most `cap` names, then "+N more".
+fn capped_list(names: &[&str], cap: usize) -> String {
+    let mut text = names
+        .iter()
+        .take(cap)
+        .copied()
+        .collect::<Vec<_>>()
+        .join(", ");
+    if names.len() > cap {
+        text.push_str(&format!(", +{} more", names.len() - cap));
+    }
+    text
 }

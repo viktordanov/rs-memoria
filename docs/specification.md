@@ -2,7 +2,7 @@
 
 ## Specification status
 
-**Status:** Approved contract, updated for release 0.8.0: directory scope, explicit handoffs, actionable output, and bounded writer waiting. The implementation follows it.
+**Status:** Approved contract, updated for release 0.9.0: directory scope, explicit handoffs, actionable output, bounded writer waiting, and section guides. The implementation follows it.
 
 **Purpose:** Memoria tracks documentation freshness across machines.
 
@@ -48,6 +48,7 @@ Fixed case behavior makes the inventory portable; actual eligibility still follo
 - [Documentation links](#3-documentation-links)
 - [Change detection and review](#4-change-detection-and-review)
 - [CLI, agents, and delivery scope](#5-cli-and-agent-support)
+- [Compatibility with 0.6](#7-compatibility-with-06) and [with 0.8](#8-compatibility-with-08)
 
 ## 1. Purpose
 
@@ -255,6 +256,25 @@ languages = {}
 An empty `languages` map means that no language-specific filter is enabled.
 Instruction paths above are examples. Each project supplies its own files.
 
+**Section guides:**
+
+```toml
+[documentation]
+section_guidance_files = [
+    "docs/templates/agent-commands.md",
+    "docs/templates/agent-rules.md",
+]
+```
+
+`section_guidance_files` registers reusable section guides (§4.6.1, §5.6).
+Only the root `memoria.toml` may set it. In a sidecar, it is `configuration_invalid`.
+Each entry resolves relative to the project root and follows every `guidance_files` rule.
+A registered guide must also carry no Memoria marker outside code, appear in no `guidance_files` list, appear once, and hold at most 65,536 bytes.
+Each violation is `guidance_file_invalid` or `guidance_file_missing`.
+A registration reserves the file as `reserved:guidance-file` before selection, whether or not a section names it.
+A registered guide is never a source and never a tracked document.
+A registration alone applies the guide to no document.
+
 **Local exception:**
 
 ```toml
@@ -421,6 +441,13 @@ The guidance digest uses XXH3-64 with seed 0 and the canonical domain `memoria.g
 The encoding starts with that domain and the entry count, and then each entry's four length-prefixed UTF-8 fields.
 It stays outside the policy hash, the input manifest, the review schedule, and the import propagation rules.
 
+Section guides extend the same encoding.
+After the project entries, a document's entry list holds one entry for each distinct section guide that one of its sections names, sorted by path.
+Each such entry has the root scope, the guide path as its source, the kind `section`, and the exact file text.
+The sections that name a guide are presentation only and are never encoded.
+A document that names no guide keeps its entry list and digest byte for byte, so an upgrade adds no assessment item.
+As a result, an edit to a guide is a guidance change for the documents that name it, and for no other document.
+
 ### 4.4 Explicitly invalidate documentation
 
 A human or agent may know that documentation needs semantic review even when source fingerprints have not changed.
@@ -551,7 +578,8 @@ The grammar is exact and small:
 | --- | --- |
 | Markers | Column zero. The attribute order is fixed. Trailing spaces, tabs, LF, and CRLF are permitted. No trailing prose. |
 | `id` | `[A-Za-z][A-Za-z0-9_-]{0,63}`. Case-sensitive and unique in one document. It implies no identity across documents. |
-| `files` | One or more literal paths relative to the document's folder, separated by exactly one space. |
+| `files` | Optional when `guidance` is present. One or more literal paths relative to the document's folder, separated by exactly one space. |
+| `guidance` | Optional, and always the last attribute. Exactly one path to a registered section guide (§2.6), relative to the document's folder. |
 | Body | Nonempty authored Markdown. The first block must be a Markdown heading. |
 | Nesting | Sections do not nest. An export or import can sit wholly inside a section. A section cannot sit inside or cross an export or import. |
 
@@ -580,8 +608,45 @@ baseline. `ack` can accept that full review when the structural requirements
 stay valid.
 
 Mapping identity uses the sorted section identifiers and each section's sorted
-normalized source set. Body edits, heading text, and moved line ranges do not
-change it. Any changed association requires a full baseline.
+normalized source set. Body edits, heading text, moved line ranges, and the
+section guide do not change it. Any changed association requires a full baseline.
+
+#### Section guides
+
+A section can name one section guide, which supplements project guidance for that section:
+
+```markdown
+<!-- memoria:section id="commands" files="justfile Cargo.toml" guidance="docs/templates/agent-commands.md" -->
+## Commands
+<!-- /memoria:section -->
+```
+
+The `guidance` value is exactly one path token. Memoria must reject an empty
+value, whitespace, a quote, a control character, `\`, `:`, `#`, `?`, a glob
+character, a leading `/`, and more than 1024 bytes. `.` and `..` components are
+permitted. The path resolves relative to the document's folder, exactly like an
+import `src`, and an escape above the root is refused. The resolved path must be
+a registered section guide.
+
+A section with `guidance` and no `files` is a guide-only section. Its source set
+is empty, a change never suggests it, and it adds no input. It contributes its
+identifier with an empty source set to the mapping identity, so its first
+appearance requires one full baseline. Adding `guidance` to a mapped section
+keeps the identity.
+
+| Problem | Code | Severity |
+| --- | --- | --- |
+| A malformed `guidance` attribute or token, a root escape, or more than 64 distinct guides in one document | `section_guidance_invalid` | Error |
+| The resolved path is not registered | `section_guidance_unregistered` | Error |
+| A registered guide is missing or breaks a registration rule | `guidance_file_missing`, `guidance_file_invalid` | Error |
+| A bad `id` or `files` while the `guidance` token parsed | `section_mapping_invalid` | Warning. The section's advice is withdrawn, but its guide still applies. |
+| `files` names a registered guide | `section_mapping_invalid` | Warning that names the guide as the cause |
+| A registered guide that no section names | `section_guidance_unused` | Hint, shown only by `lint` and `--verbose` |
+
+A guide is review context only. It never selects files, changes coverage,
+decides freshness, or adds an acknowledgement. Guide text is opaque: Memoria
+follows no include or link in it and reads no marker in it, so cycles cannot
+occur. A guide never applies to a generated import body.
 
 ### 4.7 Review a fixed snapshot
 
@@ -748,6 +813,18 @@ When a project wants existing documentation reviewed against a new rule, it shou
 A missing guidance file must produce a clear error. Do not silently skip it.
 The canonical skill must tell the agent to read these project rules.
 
+A section guide (§4.6.1) is a reusable file of writing rules for one kind of section.
+The authority order is: task and higher-priority instructions, then project guidance, then the section guide.
+A section guide supplements project guidance and never overrides it.
+Memoria orders and labels the layers. It never ranks, merges, deduplicates, or detects contradictions.
+The guidance views (`memoria guidance` and `packet view --section guidance`) print one rule when a section guide applies:
+"Project guidance applies to the whole document. A section guide adds to it for the sections that name it. If they conflict, follow project guidance and report the conflict."
+A reviewer follows project guidance, states a conflict in the `ack` note and to the owner, and never edits a guide or a registration only to pass a review.
+A conflict alone does not block an acknowledgement.
+
+Every guide of a document is bound into its review context, including the guide of a section that the review does not suggest.
+A guide edit after an artifact is saved makes `ack` fail with `guidance_changed` and writes nothing.
+
 Simplified English and ADHD-friendly structure are project preferences, not hard-coded rules for every user.
 A separate LLM style-linting service is not required.
 
@@ -883,3 +960,19 @@ Committed review history is read as-is. Reading never writes. The first ordinary
 A README that links or imports every tracked document directly below it keeps its 0.6 scope and policy, so it stays current. A README with an unhanded nested README now also covers that folder, so it is pending. When the exact proof holds, the fallback is `handoff_changed`. Otherwise it is `coverage_unrecorded` with a reason. A README that 0.6 reviewed more than once usually gets `coverage_unrecorded` (`revision_not_first`).
 
 Memoria 0.6 refuses configuration version 3. After the first 0.7 write, its read-only `state inspect` and `state diff` report `state_unsupported_schema` (exit status 4) for the format 3 lock. That lock is valid: keep it.
+
+## 8. Compatibility with 0.8
+
+Memoria 0.9 adds section guides. The token, the review context, the lock format, and configuration `version = 3` are unchanged.
+
+| Layer | 0.8 | 0.9 |
+| --- | --- | --- |
+| `[documentation] section_guidance_files` | Refused as an unknown field | Accepted in the root `memoria.toml` only |
+| Review manifest `manifest_version` | 2 | 3: `review.sections[].guidance` and `section` guidance references |
+| Full export `packet_version` | 4 | 5: section guide entries with their exact text and sections |
+| `packet view` `view_version` | 2 | 3: the authority rule in the guidance view |
+| Guidance digest | `memoria.guidance.v1` | Unchanged for a document that names no guide |
+
+Disposable review artifacts from 0.8 are refused with regeneration text. There is no converter and no legacy reader.
+
+Memoria 0.8 refuses a configuration with `section_guidance_files` and names the field. Upgrade every executable, including setup-action version pins, before a project registers a guide.

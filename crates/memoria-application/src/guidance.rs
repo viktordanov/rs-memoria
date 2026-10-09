@@ -11,6 +11,10 @@ use memoria_domain::{DirPath, DocumentId, GuidanceDigest, GuidanceEntry, Guidanc
 use crate::error::{Detail, DetailMap};
 use crate::ports::FingerprintHasher;
 
+/// The authority rule for section guides. Guidance views print it once,
+/// and only when a section guide applies.
+pub const CONFLICT_RULE: &str = "Project guidance applies to the whole document. A section guide adds to it for the sections that name it. If they conflict, follow project guidance and report the conflict.";
+
 /// The complete effective guidance of one boundary and its digest.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectiveGuidance {
@@ -22,6 +26,13 @@ pub struct EffectiveGuidance {
 impl EffectiveGuidance {
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+
+    /// The section guide entries, sorted by path.
+    pub fn section_guides(&self) -> impl Iterator<Item = &GuidanceEntry> {
+        self.entries
+            .iter()
+            .filter(|entry| entry.kind == GuidanceKind::Section)
     }
 
     /// The `data.context.guidance` shape used by full exports and the
@@ -37,12 +48,34 @@ impl EffectiveGuidance {
     }
 }
 
+/// One entry. A section guide also lists the sections that name it; that
+/// list is presentation only and is never digested.
 pub fn entry_detail(entry: &GuidanceEntry) -> Detail {
-    DetailMap::default()
+    let detail = DetailMap::default()
         .text("scope", entry.scope.as_str())
         .text("source", entry.source.clone())
         .text("kind", entry.kind.as_str())
-        .text("text", entry.text.clone())
+        .text("text", entry.text.clone());
+    if entry.kind != GuidanceKind::Section {
+        return detail.build();
+    }
+    detail
+        .with(
+            "sections",
+            Detail::list(entry.sections.iter().map(|section| {
+                DetailMap::default()
+                    .text("id", section.id.clone())
+                    .text("heading", section.heading.clone())
+                    .with(
+                        "lines",
+                        Detail::list([
+                            Detail::Number(section.first_line as u64),
+                            Detail::Number(section.last_line as u64),
+                        ]),
+                    )
+                    .build()
+            })),
+        )
         .build()
 }
 
@@ -58,6 +91,7 @@ pub fn entry(scope: DirPath, source: &str, kind: GuidanceKind, text: String) -> 
         source: source.to_string(),
         kind,
         text,
+        sections: Vec::new(),
     }
 }
 

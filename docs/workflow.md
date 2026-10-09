@@ -17,6 +17,7 @@ If guidance conflicts with the task, obtain an owner decision.
 
 If the project has no `memoria.toml`, [prepare the project](#prepare-a-project-for-its-first-review).
 If a term on this page is new to you, read the [concept guide](concepts.md) first.
+The [cookbooks](cookbooks/README.md) show complete, tested uses of this procedure.
 
 Examine the current state:
 
@@ -440,6 +441,8 @@ memoria guidance src/README.md
 
 Guidance lives in `memoria.toml` under `[documentation]`.
 A `README.memoria.toml` sidecar adds local guidance for documents in its folder and below.
+A section guide is a shared file of writing rules for one kind of section. The root `memoria.toml` registers it, and a section marker names it. It adds to project guidance for the sections that name it. If the two conflict, follow project guidance and report the conflict.
+The [agent instructions cookbook](cookbooks/agent-instructions/README.md) shows a complete example.
 When you change the wording, the plan reports one assessment item.
 The next section explains that decision.
 
@@ -480,8 +483,9 @@ The command reference also describes [single-document and subtree scopes](cli.md
 
 ### Self-hosting cycle
 
-This repository has six READMEs and one opted-in guide: this page.
+This repository has eleven READMEs and one opted-in guide: this page.
 The root README links to this guide and imports its `review-cycle` export, so it hands `docs/` to this guide.
+This guide links the cookbook index, so it hands `docs/cookbooks/` to that index. The index links each cookbook README, so each cookbook folder has its own document.
 This guide covers the other pages under `docs/`.
 The crate, command entry, and test READMEs explain their local files.
 The root policy requires `simple-english` and `i-have-adhd` before documentation edits.
@@ -552,8 +556,8 @@ It does not start a prose review.
 
 ## Agent guidance and state recovery
 
-The [Memoria skill](../skills/memoria/SKILL.md) gives agents the review procedure in five stages, with three reference files that load on demand.
-The executable embeds all four files at build time.
+The [Memoria skill](../skills/memoria/SKILL.md) gives agents the review procedure in five stages, with four reference files that load on demand.
+The executable embeds all five files at build time.
 The [agent integrations guide](agents.md) describes skill scopes, the lifecycle, and the optional `Stop` hook.
 
 A corrupt state file causes `state_corrupt` with exit 4.

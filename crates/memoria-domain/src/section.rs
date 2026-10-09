@@ -6,6 +6,11 @@
 //! complete input state that an acknowledgement validates. One invalid
 //! mapping makes the whole document's advice unusable, so a reviewer falls
 //! back to the full baseline instead of trusting partial advice.
+//!
+//! A section can also name one registered section guide. The guide is review
+//! context only: it adds no input, never changes the mapping identity, and
+//! never makes a section a suggestion. A section with a guide and no `files`
+//! is a guide-only section.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -163,6 +168,77 @@ pub fn validate_section_path(raw: &str) -> Result<(), SectionPathError> {
     Ok(())
 }
 
+/// Why one authored `guidance` token is not a usable guide path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GuidancePathError {
+    Empty,
+    Absolute,
+    Forbidden(char),
+    Whitespace,
+    Quote,
+    Control,
+    TooLong,
+}
+
+impl fmt::Display for GuidancePathError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            GuidancePathError::Empty => f.write_str("guide path is empty"),
+            GuidancePathError::Absolute => {
+                f.write_str("guide path must be relative to the document's folder, not absolute")
+            }
+            GuidancePathError::Forbidden(c) => {
+                write!(f, "guide path must not contain the character {c:?}")
+            }
+            GuidancePathError::Whitespace => {
+                f.write_str("guide path must be exactly one path with no whitespace")
+            }
+            GuidancePathError::Quote => {
+                f.write_str("guide path must not contain a quote character")
+            }
+            GuidancePathError::Control => {
+                f.write_str("guide path must not contain a control character")
+            }
+            GuidancePathError::TooLong => f.write_str("guide path is longer than 1024 bytes"),
+        }
+    }
+}
+
+impl std::error::Error for GuidancePathError {}
+
+/// Most distinct section guides that one document may name.
+pub const MAX_SECTION_GUIDES: usize = 64;
+
+/// Largest registered section guide, in bytes.
+pub const MAX_SECTION_GUIDE_BYTES: u64 = 65_536;
+
+/// Check one authored `guidance` token before it is resolved against the
+/// document's directory. `.` and `..` components are allowed, exactly as in
+/// an import `src`; the resolver refuses an escape above the project root.
+pub fn validate_guidance_path(raw: &str) -> Result<(), GuidancePathError> {
+    if raw.is_empty() {
+        return Err(GuidancePathError::Empty);
+    }
+    if raw.len() > MAX_SECTION_PATH_BYTES {
+        return Err(GuidancePathError::TooLong);
+    }
+    if raw.starts_with('/') {
+        return Err(GuidancePathError::Absolute);
+    }
+    for c in raw.chars() {
+        match c {
+            '"' | '\'' => return Err(GuidancePathError::Quote),
+            '\\' | ':' | '#' | '?' | '*' | '[' | ']' | '{' | '}' => {
+                return Err(GuidancePathError::Forbidden(c));
+            }
+            c if c.is_control() => return Err(GuidancePathError::Control),
+            c if c.is_whitespace() => return Err(GuidancePathError::Whitespace),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 /// One resolved advisory mapping.
 ///
 /// `lines` is the 1-based inclusive line range of the authored body, with
@@ -175,8 +251,12 @@ pub struct SectionMapping {
     pub heading: String,
     pub first_line: usize,
     pub last_line: usize,
-    /// Sorted, deduplicated owned sources this section describes.
+    /// Sorted, deduplicated owned sources this section describes. Empty only
+    /// for a guide-only section.
     pub sources: Vec<ProjectPath>,
+    /// The resolved section guide this section names, if any. It is never
+    /// part of the mapping identity.
+    pub guidance: Option<ProjectPath>,
 }
 
 /// A README's complete advisory mapping state.
@@ -221,8 +301,9 @@ impl SectionMap {
 
     /// The comparable association set.
     ///
-    /// Body edits, heading text, and moved line ranges do not change this
-    /// identity. Any change to it requires a full baseline review.
+    /// Body edits, heading text, moved line ranges, and the section guide do
+    /// not change this identity. A guide-only section contributes its id with
+    /// no sources. Any change to it requires a full baseline review.
     pub fn identity(&self) -> SectionMapIdentity {
         match self {
             SectionMap::Absent => SectionMapIdentity::Absent,
@@ -291,7 +372,93 @@ mod tests {
             first_line: 1,
             last_line: 2,
             sources: sources.iter().map(|s| path(s)).collect(),
+            guidance: None,
         }
+    }
+
+    #[test]
+    fn guidance_paths_are_one_relative_token() {
+        for ok in [
+            "docs/templates/agent-commands.md",
+            "../templates/x.md",
+            "./x.md",
+            "a/../b.md",
+            "guide",
+        ] {
+            assert!(validate_guidance_path(ok).is_ok(), "{ok}");
+        }
+        assert_eq!(validate_guidance_path(""), Err(GuidancePathError::Empty));
+        assert_eq!(
+            validate_guidance_path("/x.md"),
+            Err(GuidancePathError::Absolute)
+        );
+        for (raw, c) in [
+            ("a\\b", '\\'),
+            ("C:x", ':'),
+            ("a#b", '#'),
+            ("a?b", '?'),
+            ("*.md", '*'),
+            ("[a].md", '['),
+            ("a].md", ']'),
+            ("{a}.md", '{'),
+            ("a}.md", '}'),
+        ] {
+            assert_eq!(
+                validate_guidance_path(raw),
+                Err(GuidancePathError::Forbidden(c)),
+                "{raw}"
+            );
+        }
+        assert_eq!(
+            validate_guidance_path("a b.md"),
+            Err(GuidancePathError::Whitespace)
+        );
+        assert_eq!(
+            validate_guidance_path("a\u{a0}b"),
+            Err(GuidancePathError::Whitespace)
+        );
+        assert_eq!(validate_guidance_path("a'b"), Err(GuidancePathError::Quote));
+        assert_eq!(
+            validate_guidance_path("a\"b"),
+            Err(GuidancePathError::Quote)
+        );
+        assert_eq!(
+            validate_guidance_path("a\u{1}b"),
+            Err(GuidancePathError::Control)
+        );
+        assert!(validate_guidance_path(&"a".repeat(MAX_SECTION_PATH_BYTES)).is_ok());
+        assert_eq!(
+            validate_guidance_path(&"a".repeat(MAX_SECTION_PATH_BYTES + 1)),
+            Err(GuidancePathError::TooLong)
+        );
+    }
+
+    #[test]
+    fn a_section_guide_never_changes_the_identity() {
+        let plain = SectionMap::Valid(vec![mapping("commands", &["justfile"])]);
+        let mut guided = mapping("commands", &["justfile"]);
+        guided.guidance = Some(path("docs/templates/agent-commands.md"));
+        let with_guide = SectionMap::Valid(vec![guided]);
+        assert_eq!(plain.identity(), with_guide.identity());
+        // A guide-only section contributes its id with no sources, so adding
+        // one is a changed identity.
+        let mut only = mapping("boundaries", &[]);
+        only.guidance = Some(path("docs/templates/agent-rules.md"));
+        let with_only = SectionMap::Valid(vec![mapping("commands", &["justfile"]), only]);
+        assert_ne!(plain.identity(), with_only.identity());
+        assert_eq!(
+            with_only.identity().pairs(),
+            &[
+                ("boundaries".to_string(), vec![]),
+                ("commands".to_string(), vec!["justfile".to_string()]),
+            ]
+        );
+        // A guide-only section is never suggested by a change.
+        assert!(
+            with_only
+                .sections_for(&path("docs/templates/agent-rules.md"))
+                .is_empty()
+        );
     }
 
     #[test]

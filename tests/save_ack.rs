@@ -138,7 +138,7 @@ fn a_full_export_saves_and_acknowledges_too() {
             .starts_with("memoria-full-")
     );
     let saved = parse_json(&fs::read(&path).unwrap());
-    assert_eq!(get_u64(&saved, &["data", "packet_version"]), 4);
+    assert_eq!(get_u64(&saved, &["data", "packet_version"]), 5);
     assert_eq!(
         get_str(&receipt, &["data", "artifact_digest"]),
         get_str(&saved, &["data", "packet_digest"])
@@ -380,4 +380,32 @@ fn ack_refusals_leave_state_unchanged() {
         "argument"
     );
     let _ = token;
+}
+
+#[test]
+fn an_edit_to_any_section_guide_after_saving_refuses_acknowledgement() {
+    for guide in [
+        // The guide of the suggested section.
+        "docs/templates/agent-commands.md",
+        // The guide of a section that the review does not suggest.
+        "docs/templates/agent-rules.md",
+    ] {
+        let project = Project::agent_instructions();
+        project.append("justfile", "\nlint:\n    cargo clippy\n");
+        let (packet, token) = project.review_packet("AGENTS.md");
+        let state = project.state();
+        project.append(guide, "One more rule.\n");
+        let (code, value) = project.ack_json("AGENTS.md", &packet, &token, "no-update", NOTE);
+        assert_eq!(code, 3, "{guide}: {value:?}");
+        assert_eq!(
+            diagnostic_codes(&value),
+            vec!["guidance_changed"],
+            "{guide}"
+        );
+        assert_eq!(project.state(), state, "{guide}: no state write");
+        // A fresh artifact acknowledges.
+        let (packet, token) = project.review_packet("AGENTS.md");
+        let output = project.ack("AGENTS.md", &packet, &token, "no-update", NOTE);
+        assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    }
 }

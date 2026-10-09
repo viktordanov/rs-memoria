@@ -143,9 +143,16 @@ token. The frozen byte layouts live with their tests in
 a reader cannot tell which mapping the author meant.
 
 `SectionMap::identity` gives the comparable association set: the sorted
-identifiers, each with its sorted source set. Body edits, heading text, and
-moved line ranges do not change it. Any changed association requires a full
-baseline.
+identifiers, each with its sorted source set. Body edits, heading text,
+moved line ranges, and a section guide do not change it. Any changed
+association requires a full baseline.
+
+A section can name one section guide. `SectionMapping.guidance` holds its
+resolved path. A guide-only section has no sources, so a change never suggests
+it, and it contributes its identifier with an empty source set to the
+identity. `validate_guidance_path` checks the guide token grammar. The guide
+text becomes a `GuidanceKind::Section` entry of the document's guidance, and
+its `sections` list is presentation only.
 
 A section adds or removes no input and has no separate freshness. The domain
 validates the identifier grammar and the literal-path grammar. The application
@@ -201,8 +208,8 @@ The application maps these errors to diagnostics and exit classes.
 | `selection`, `scope`, `policy` | Selected inputs, document scopes, and handoffs |
 | `graph`, `schedule` | Dependencies, navigation, and review order |
 | `manifest`, `canonical` | Input comparisons and stable byte encodings |
-| `section` | Advisory mapping identities, path grammar, and mapping identity |
-| `guidance` | The guidance digest value type and its entry kinds |
+| `section` | Advisory mapping identities, source and guide path grammar, guide bounds, and mapping identity |
+| `guidance` | The guidance digest value type, its entry kinds (`inline`, `file`, `section`), and the sections that name a guide |
 | `review` | Review records and invalidation transitions |
 
 The [crate manifest](Cargo.toml) declares no runtime dependencies.

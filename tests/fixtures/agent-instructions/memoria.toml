@@ -1,0 +1,17 @@
+version = 3
+ignore = []
+include = []
+
+[documentation]
+guidance = [
+    "Write for a contributor who is new to this project. Use short sentences, and keep commands, paths, and names exact.",
+]
+guidance_files = []
+section_guidance_files = [
+    "docs/templates/agent-commands.md",
+    "docs/templates/agent-rules.md",
+]
+
+[lint]
+# The agent files link the source guide for navigation, not to import it.
+missing_import_hint = false

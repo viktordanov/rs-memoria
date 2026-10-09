@@ -10,7 +10,7 @@
 //! their last review saw. It records nothing. The reviewer decides which
 //! documents the change affects and requests their review explicitly.
 
-use memoria_domain::DocumentId;
+use memoria_domain::{DocumentId, GuidanceKind};
 
 use crate::error::{AppError, Detail, DetailMap, ExitClass, Outcome};
 use crate::guidance::entry_detail;
@@ -29,6 +29,16 @@ pub struct ScopeSummary {
     pub inspect_command: String,
 }
 
+/// One registered section guide and how many sections name it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SectionGuideSummary {
+    pub source: String,
+    /// Documents with at least one section that names the guide.
+    pub documents: u64,
+    /// Sections, across all documents, that name the guide.
+    pub sections: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GuidanceReport {
     pub document: String,
@@ -41,11 +51,24 @@ pub struct GuidanceReport {
     /// The digest this document's last review recorded, when one exists.
     pub reviewed_digest: Option<String>,
     pub changed_since_review: Option<bool>,
+    /// Every registered section guide, for `memoria guidance` without a
+    /// document. Empty for a named document and for a project that
+    /// registers none.
+    pub section_guides: Vec<SectionGuideSummary>,
+}
+
+impl GuidanceReport {
+    /// Whether any section guide applies to this document.
+    pub fn has_section_guides(&self) -> bool {
+        self.entries
+            .iter()
+            .any(|entry| entry.get("kind") == Some(&Detail::text(GuidanceKind::Section.as_str())))
+    }
 }
 
 impl GuidanceReport {
     pub fn to_detail(&self) -> Detail {
-        DetailMap::default()
+        let detail = DetailMap::default()
             .text("document", self.document.clone())
             .text("digest", self.digest.clone())
             .with("entries", Detail::List(self.entries.clone()))
@@ -70,9 +93,52 @@ impl GuidanceReport {
                 self.changed_since_review
                     .map(Detail::Bool)
                     .unwrap_or(Detail::Null),
+            );
+        // Added only when a section guide is registered, so a project that
+        // registers none keeps its exact 0.8 output.
+        if self.section_guides.is_empty() {
+            return detail.build();
+        }
+        detail
+            .with(
+                "section_guides",
+                Detail::list(self.section_guides.iter().map(|guide| {
+                    DetailMap::default()
+                        .text("source", guide.source.clone())
+                        .number("documents", guide.documents)
+                        .number("sections", guide.sections)
+                        .build()
+                })),
             )
             .build()
     }
+}
+
+/// Every registered section guide with its use across the project.
+pub fn section_guide_summary(snapshot: &Snapshot) -> Vec<SectionGuideSummary> {
+    snapshot
+        .collected
+        .section_guides
+        .iter()
+        .map(|path| {
+            let mut documents = 0;
+            let mut sections = 0;
+            for effective in snapshot.guidance.values() {
+                if let Some(entry) = effective
+                    .section_guides()
+                    .find(|entry| entry.source == path.as_str())
+                {
+                    documents += 1;
+                    sections += entry.sections.len() as u64;
+                }
+            }
+            SectionGuideSummary {
+                source: path.as_str().to_string(),
+                documents,
+                sections,
+            }
+        })
+        .collect()
 }
 
 /// Build the report for one document of an existing snapshot.
@@ -107,6 +173,7 @@ pub fn report_for(snapshot: &Snapshot, document: &DocumentId) -> GuidanceReport 
         scopes,
         changed_since_review: snapshot.guidance_changed(document),
         reviewed_digest: reviewed,
+        section_guides: Vec::new(),
     }
 }
 
@@ -140,10 +207,11 @@ pub fn run(
     if !snapshot.collected.documents.contains(&document) {
         return Err(super::document_not_found(&snapshot, &document));
     }
-    Ok(Outcome::new(
-        report_for(&snapshot, &document),
-        snapshot.non_error_diagnostics(),
-    ))
+    let mut report = report_for(&snapshot, &document);
+    if raw_document.is_none() {
+        report.section_guides = section_guide_summary(&snapshot);
+    }
+    Ok(Outcome::new(report, snapshot.non_error_diagnostics()))
 }
 
 /// Reviewed documents that saw the same guidance change: the same digest at

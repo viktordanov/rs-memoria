@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use memoria_application::config::{CONFIG_VERSION, RootConfig, SidecarConfig};
+use memoria_application::config::{CONFIG_VERSION, RootConfig, SidecarConfig, SidecarRejection};
 use memoria_application::ports::ConfigurationReader;
 use memoria_application::snapshot::{ROOT_CONFIG_PATH, SIDECAR_FILE_NAME};
 use serde::Deserialize;
@@ -51,6 +51,8 @@ fn inherited_version() -> i64 {
 struct DocumentationWire {
     guidance: Vec<String>,
     guidance_files: Vec<String>,
+    /// Root only. A sidecar that sets it is refused.
+    section_guidance_files: Option<Vec<String>>,
     instructions: Option<Vec<String>>,
     instruction_files: Option<Vec<String>>,
 }
@@ -142,6 +144,13 @@ fn validate_lists(
             "documentation.guidance_files",
             &documentation.guidance_files,
         ),
+        (
+            "documentation.section_guidance_files",
+            documentation
+                .section_guidance_files
+                .as_deref()
+                .unwrap_or_default(),
+        ),
     ] {
         if values.iter().any(|value| value.trim().is_empty()) {
             return Err(format!("{name} entries must not be empty"));
@@ -188,15 +197,25 @@ impl ConfigurationReader for TomlConfigurationReader {
             include: wire.include,
             guidance: wire.documentation.guidance,
             guidance_files: wire.documentation.guidance_files,
+            section_guidance_files: wire
+                .documentation
+                .section_guidance_files
+                .unwrap_or_default(),
             missing_import_hint: wire.lint.missing_import_hint,
         })
     }
 
-    fn parse_sidecar(&self, bytes: &[u8]) -> Result<SidecarConfig, String> {
-        let wire: SidecarWire = parse(bytes, SIDECAR_FILE_NAME)?;
-        validate_version(wire.version, SIDECAR_FILE_NAME)?;
-        validate_documentation(&wire.documentation)?;
-        validate_lists(&wire.ignore, &wire.include, &wire.documentation)?;
+    fn parse_sidecar(&self, bytes: &[u8]) -> Result<SidecarConfig, SidecarRejection> {
+        let invalid = SidecarRejection::Invalid;
+        let wire: SidecarWire = parse(bytes, SIDECAR_FILE_NAME).map_err(invalid)?;
+        validate_version(wire.version, SIDECAR_FILE_NAME).map_err(invalid)?;
+        validate_documentation(&wire.documentation).map_err(invalid)?;
+        if wire.documentation.section_guidance_files.is_some() {
+            return Err(SidecarRejection::RootOnlyKey(format!(
+                "documentation.section_guidance_files is allowed only in {ROOT_CONFIG_PATH}. Move the registration to the root {ROOT_CONFIG_PATH}; any document can name a guide registered there."
+            )));
+        }
+        validate_lists(&wire.ignore, &wire.include, &wire.documentation).map_err(invalid)?;
         Ok(SidecarConfig {
             ignore: wire.ignore,
             include: wire.include,
@@ -295,6 +314,41 @@ guidance_files = ['local rules.md']
     }
 
     #[test]
+    fn section_guides_are_registered_in_the_root_only() {
+        let config = TomlConfigurationReader
+            .parse_root(
+                b"version = 3\n[documentation]\nsection_guidance_files = ['docs/templates/a.md', 'b.md']\n",
+            )
+            .unwrap();
+        assert_eq!(
+            config.section_guidance_files,
+            ["docs/templates/a.md", "b.md"]
+        );
+        assert!(
+            TomlConfigurationReader
+                .parse_root(b"version = 3\n[documentation]\nsection_guidance_files = ['']\n")
+                .is_err()
+        );
+        // A sidecar registration is a configuration error that names the root.
+        for text in [
+            "[documentation]\nsection_guidance_files = []\n",
+            "[documentation]\nsection_guidance_files = ['a.md']\n",
+        ] {
+            let error = TomlConfigurationReader
+                .parse_sidecar(text.as_bytes())
+                .unwrap_err();
+            assert_eq!(error.code(), "configuration_invalid", "{text}");
+            assert!(
+                error
+                    .message()
+                    .contains("section_guidance_files is allowed only in memoria.toml"),
+                "{}",
+                error.message()
+            );
+        }
+    }
+
+    #[test]
     fn unknown_fields_are_rejected_at_every_level() {
         for text in [
             "unknown = 1",
@@ -316,6 +370,8 @@ guidance_files = ['local rules.md']
             let error = TomlConfigurationReader
                 .parse_sidecar(text.as_bytes())
                 .unwrap_err();
+            assert_eq!(error.code(), "sidecar_invalid");
+            let error = error.message();
             assert!(error.contains("unknown field"), "{error}");
         }
     }
@@ -421,7 +477,9 @@ guidance_files = ['local rules.md']
                 .unwrap_err(),
             TomlConfigurationReader
                 .parse_sidecar(b"version = 2")
-                .unwrap_err(),
+                .unwrap_err()
+                .message()
+                .to_string(),
         ] {
             assert!(
                 error.contains("declares version 2. Memoria 0.7 reads configuration version 3:")

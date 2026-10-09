@@ -29,8 +29,8 @@ use memoria_domain::canonical::{
 };
 use memoria_domain::section::SELECTION_VERSION;
 use memoria_domain::{
-    DirPath, DocumentId, GitContext, GuidanceDigest, GuidanceEntry, GuidanceKind, Hash64,
-    ProjectPath, SectionMapIdentity,
+    DirPath, DocumentId, GitContext, GuidanceDigest, GuidanceEntry, GuidanceKind, GuidanceSection,
+    Hash64, ProjectPath, SectionMapIdentity,
 };
 
 use crate::fs::{kind_of, read_bounded};
@@ -577,6 +577,42 @@ fn hash_of(reader: &mut ObjectReader, key: &str, ctx: &str) -> Result<Hash64, Js
     })
 }
 
+/// Decode one section that names a section guide: `{id, heading, lines}`.
+fn guidance_section(value: Json, ctx: &str) -> Result<GuidanceSection, JsonError> {
+    let schema = |m: String| JsonError {
+        code: "json_schema",
+        message: m,
+    };
+    let mut entry = ObjectReader::new(value, ctx)?;
+    let id = entry.take_string("id")?;
+    let heading = entry.take_string("heading")?;
+    let lines = entry.take_array("lines")?;
+    if lines.len() != 2 {
+        return Err(schema(format!(
+            "{ctx}.lines must be a two-element [start, end] array"
+        )));
+    }
+    let mut bounds = [0usize; 2];
+    for (i, value) in lines.into_iter().enumerate() {
+        let Json::Number(n) = value else {
+            return Err(schema(format!("{ctx}.lines[{i}] must be a number")));
+        };
+        bounds[i] = n as usize;
+    }
+    if bounds[0] == 0 || bounds[1] < bounds[0] {
+        return Err(schema(format!(
+            "{ctx}.lines must be a 1-based inclusive range"
+        )));
+    }
+    entry.finish()?;
+    Ok(GuidanceSection {
+        id,
+        heading,
+        first_line: bounds[0],
+        last_line: bounds[1],
+    })
+}
+
 /// Decode the complete manifest-v1 data object.
 ///
 /// `data` must already have its digest field removed. Used both for a small
@@ -754,6 +790,10 @@ fn decode_requirements(mut data: ObjectReader, ctx: &str) -> Result<ReviewManife
             ProjectPath::parse(&text).map_err(|e| schema(format!("{source_ctx}: {e}")))?;
             sources.push(text);
         }
+        let guidance = entry.take_optional_string("guidance")?;
+        if let Some(path) = &guidance {
+            ProjectPath::parse(path).map_err(|e| schema(format!("{section_ctx}.guidance: {e}")))?;
+        }
         entry.finish()?;
         sections.push(SectionSuggestion {
             id,
@@ -761,6 +801,7 @@ fn decode_requirements(mut data: ObjectReader, ctx: &str) -> Result<ReviewManife
             first_line: bounds[0],
             last_line: bounds[1],
             sources,
+            guidance,
         });
     }
     if !review.take_bool("whole_document_pass")? {
@@ -865,18 +906,34 @@ fn decode_requirements(mut data: ObjectReader, ctx: &str) -> Result<ReviewManife
         DirPath::parse(&scope).map_err(|e| schema(format!("{reference_ctx}.scope: {e}")))?;
         let source = entry.take_string("source")?;
         let kind = entry.take_string("kind")?;
-        if GuidanceKind::parse(&kind).is_none() {
+        let Some(parsed_kind) = GuidanceKind::parse(&kind) else {
             return Err(schema(format!(
-                "{reference_ctx}.kind must be `inline` or `file`"
+                "{reference_ctx}.kind must be `inline`, `file`, or `section`"
             )));
-        }
+        };
         let entry_index = entry.take_u64("entry_index")?;
+        // Only a section guide lists the sections that name it.
+        let sections = if parsed_kind == GuidanceKind::Section {
+            ProjectPath::parse(&source)
+                .map_err(|e| schema(format!("{reference_ctx}.source: {e}")))?;
+            let mut ids = Vec::new();
+            for (i, value) in entry.take_array("sections")?.into_iter().enumerate() {
+                ids.push(expect_string(
+                    value,
+                    &format!("{reference_ctx}.sections[{i}]"),
+                )?);
+            }
+            Some(ids)
+        } else {
+            None
+        };
         entry.finish()?;
         guidance_references.push(GuidanceReference {
             scope,
             source,
             kind,
             entry_index,
+            sections,
         });
     }
     for (index, value) in guidance.take_array("command")?.into_iter().enumerate() {
@@ -1373,8 +1430,18 @@ fn decode_envelope(envelope: Json, digest: String) -> Result<FocusedReviewPacket
         let source = entry.take_string("source")?;
         let kind_text = entry.take_string("kind")?;
         let kind = GuidanceKind::parse(&kind_text)
-            .ok_or_else(|| schema(format!("{ctx}.kind must be `inline` or `file`")))?;
+            .ok_or_else(|| schema(format!("{ctx}.kind must be `inline`, `file`, or `section`")))?;
         let text = entry.take_string("text")?;
+        let sections = if kind == GuidanceKind::Section {
+            ProjectPath::parse(&source).map_err(|e| schema(format!("{ctx}.source: {e}")))?;
+            let mut sections = Vec::new();
+            for (i, item) in entry.take_array("sections")?.into_iter().enumerate() {
+                sections.push(guidance_section(item, &format!("{ctx}.sections[{i}]"))?);
+            }
+            sections
+        } else {
+            Vec::new()
+        };
         entry.finish()?;
         add_budget(&mut budget, text.len() as u64)?;
         guidance_entries.push(GuidanceEntry {
@@ -1382,6 +1449,7 @@ fn decode_envelope(envelope: Json, digest: String) -> Result<FocusedReviewPacket
             source,
             kind,
             text,
+            sections,
         });
     }
     guidance_reader.finish()?;

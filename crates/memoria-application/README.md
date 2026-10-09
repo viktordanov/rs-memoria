@@ -112,7 +112,7 @@ An invalidation is an explicit review request with a recorded reason.
 The acknowledgement path has five stages:
 
 1. Argument validation accepts the reviewer, result, note, and an optional token. Without `--token`, the token comes from the integrity-checked artifact.
-2. Artifact validation examines the schema, limits, and digest before the write lock. A full export also validates its content hashes and its self-contained token.
+2. Artifact validation examines the schema, limits, and digest before the write lock. A full export also validates its content hashes, recomputes its guidance digest from the captured entries, and checks its self-contained token.
 3. Under the write lock, a snapshot rebuilds the complete input manifest and the complete review context, then recomputes the token.
 4. The domain transition compares the revision and covered invalidations.
 5. A final rebuild and token recomputation precede the state save through `StateStore`. The record stores the handed-off folders of this final snapshot as its coverage evidence.
@@ -129,7 +129,7 @@ because the artifact stays valid.
 Changed inputs cause `snapshot_changed` with exit 3. A full export supplies
 exact per-input differences, because it carries the reviewed bytes. A manifest
 names the changed digest categories instead.
-Changed documentation guidance causes `guidance_changed` with exit 3.
+Changed documentation guidance, including an edit to any section guide that the document names, causes `guidance_changed` with exit 3.
 A pending provider causes `dependencies_pending` with exit 3.
 A later document revision causes `revision_conflict` with exit 3.
 These conflicts leave the stored review unchanged.
@@ -192,6 +192,8 @@ It returns the errors with the partial report instead of hiding them.
 It lists the reviewed documents whose guidance digest differs from their record, grouped by the old and the new digest.
 It writes nothing, and the plan reports the same count as `guidance_assessment`.
 A guidance change never becomes a pending cause.
+Effective guidance holds the project entries, then one `section` entry for each registered section guide that the document's sections name, sorted by path.
+The snapshot reads registered guides in both collection passes and reserves them before selection, so a guide is never a source.
 `agent hooks install` validates the root configuration before its first write.
 If that configuration is invalid, the command fails and changes nothing.
 

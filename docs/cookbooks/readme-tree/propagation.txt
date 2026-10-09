@@ -1,0 +1,26 @@
+title: Only a changed summary carries a code change to the root README
+desc: Two panels. A refactor in services/api makes only services/api/README.md pending. Its review ends with no-update, the export does not change, and the root README stays current. A behavior change makes services/api/README.md pending, the reviewer edits its exported summary, then memoria render updates the root import, and the root README gets its own review with imports_changed.
+---
+«░▒▓█» WHAT ONE CODE CHANGE REACHES «█▓▒░»
+
+┌─ A REFACTOR · THE SUMMARY STAYS TRUE ────────────┐  ┌─ A BEHAVIOR CHANGE · THE SUMMARY CHANGES ────────┐
+│                                                  │  │                                                  │
+│ services/api/src/orders.rs  ‹internal rename›    │  │ services/api/src/orders.rs  ‹writes orders.log›  │
+│    │                                             │  │    │                                             │
+│    ▼                                             │  │    ▼                                             │
+│ services/api/README.md  ▓▓▓▓ «pending»           │  │ services/api/README.md  ▓▓▓▓ «pending»           │
+│    │  README.md waits and stays «current»        │  │    │  README.md waits and stays «current»        │
+│    │  review, then ack «no-update»               │  │    │  edit the «summary» and ack «updated»       │
+│    ▼                                             │  │    ▼                                             │
+│ services/api/README.md  «current»                │  │ README.md  ▓▓▓▓ «pending» ‹import outdated›      │
+│    │  ‹the export did not change›                │  │    │  memoria «render» copies the new summary    │
+│    ×                                             │  │    ▼                                             │
+│ README.md  ░░░░ «current»                        │  │ README.md  «pending» «imports_changed»           │
+│                                                  │  │    │  review the whole root, then ack            │
+│                                                  │  │    ▼                                             │
+│                                                  │  │ README.md  «current»                             │
+│ One review. The change stops at the folder.      │  │ Two reviews, in import order.                    │
+│                                                  │  │                                                  │
+└──────────────────────────────────────────────────┘  └──────────────────────────────────────────────────┘
+
+▓▓▓▓ reached by the change   ░░░░ not reached   × the change stops here

@@ -8,11 +8,12 @@ use common::*;
 use memoria_infrastructure::json::Json;
 
 /// The shipped package files, in package order.
-const PACKAGE_FILES: [&str; 4] = [
+const PACKAGE_FILES: [&str; 5] = [
     "SKILL.md",
     "review-details.md",
     "saved-exports.md",
     "integrations.md",
+    "section-guidance.md",
 ];
 
 fn shipped(name: &str) -> String {
@@ -26,7 +27,7 @@ fn shipped(name: &str) -> String {
 
 /// Completeness and anchors of one installed package (plan §11.3).
 fn assert_skill_package(dir: &std::path::Path) {
-    // Four files plus the record, byte-identical to the repository files.
+    // Five files plus the record, byte-identical to the repository files.
     for name in PACKAGE_FILES {
         let installed = fs::read_to_string(dir.join(name)).unwrap();
         assert_eq!(installed, shipped(name), "{name} is the shipped file");
@@ -56,7 +57,7 @@ fn assert_skill_package(dir: &std::path::Path) {
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
     entries.sort();
-    assert_eq!(entries.len(), 5, "{entries:?}");
+    assert_eq!(entries.len(), 6, "{entries:?}");
 
     let skill = shipped("SKILL.md");
     assert!(skill.lines().count() <= 500);
@@ -157,6 +158,7 @@ fn detection_dry_run_install_reinstall_and_uninstall() {
             "review-details.md",
             "saved-exports.md",
             "integrations.md",
+            "section-guidance.md",
             ".memoria-install.json"
         ]
     );
@@ -828,4 +830,43 @@ fn a_change_between_plan_and_apply_is_a_conflict_that_preserves_bytes() {
         fs::read_to_string(parent.join("memoria/mine.md")).unwrap(),
         "entirely mine\n"
     );
+}
+
+#[test]
+fn a_package_without_the_section_guidance_file_reports_outdated() {
+    // A package installed by 0.8 has no `section-guidance.md`. Simulate that
+    // install exactly: remove the file and its record entries, and age the
+    // recorded version.
+    let project = Project::seed();
+    project.baseline();
+    assert_eq!(
+        project.json(&["agent", "install", "--target", "codex"]).0,
+        0
+    );
+    let dir = ".agents/skills/memoria";
+    project.remove(&format!("{dir}/section-guidance.md"));
+    let mut record = parse_json(&project.read(&format!("{dir}/.memoria-install.json")));
+    if let Json::Object(map) = &mut record {
+        if let Some(Json::Object(hashes)) = map.get_mut("hashes") {
+            hashes.remove("section-guidance.md");
+        }
+        if let Some(Json::Array(paths)) = map.get_mut("managed_paths") {
+            paths.retain(|path| path != &Json::String("section-guidance.md".into()));
+        }
+        map.insert("package_version".into(), Json::String("0.8.0".into()));
+    }
+    let older = memoria_infrastructure::json::to_pretty(&record);
+    assert!(!older.contains("section-guidance"), "{older}");
+    project.write(&format!("{dir}/.memoria-install.json"), &older);
+    let (_, status) = project.json(&["agent", "status", "--target", "codex"]);
+    assert_eq!(
+        get_str(&status, &["data", "plan", "state"]),
+        "outdated",
+        "{status:?}"
+    );
+    let (code, upgraded) = project.json(&["agent", "upgrade", "--target", "codex"]);
+    assert_eq!(code, 0, "{upgraded:?}");
+    assert_skill_package(&project.root.join(dir));
+    let (_, status) = project.json(&["agent", "status", "--target", "codex"]);
+    assert_eq!(get_str(&status, &["data", "plan", "state"]), "current");
 }

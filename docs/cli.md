@@ -91,7 +91,7 @@ The [specification](specification.md#25-scope-and-handoffs) gives the complete h
 A tracked document below a document that does not hand it off gets the hint `handoff_absent` on the parent.
 Hints never fail a command.
 
-The root configuration supports these defaults:
+The root configuration supports these defaults. The optional `section_guidance_files` list is described in [Section guides](#section-guides-section_guidance_files).
 
 ```toml
 version = 3
@@ -123,6 +123,24 @@ Memoria does not override, deduplicate, or rank conflicting prose.
 A `guidance_files` entry resolves relative to its declaring configuration file.
 The destination must stay inside the project and hold a regular UTF-8 file.
 These destinations are invalid: a symlink, a missing file, Git metadata, a state artifact, a configuration file, and a `README.md`.
+
+#### Section guides: `section_guidance_files`
+
+```toml
+[documentation]
+section_guidance_files = ["docs/templates/agent-commands.md"]
+```
+
+`section_guidance_files` registers section guides. A section marker names a registered guide in its `guidance` attribute (see [Advisory sections](#advisory-sections)).
+
+- Only the root `memoria.toml` can set the key. In a `README.memoria.toml`, it fails with `configuration_invalid`, exit 1.
+- Each entry resolves relative to the project root and follows the `guidance_files` destination rules.
+- A registered guide must carry no Memoria marker outside code, must not also be in a `guidance_files` list, must appear once, and must hold at most 65,536 bytes. Each violation is `guidance_file_invalid`, exit 1. A missing file is `guidance_file_missing`.
+- A registration reserves the file as `reserved:guidance-file`, whether or not a section names it. The file is never a source and never a tracked document.
+- A registration alone applies the guide to no document. A registered guide that no section names gets the hint `section_guidance_unused`.
+- Git-ignored and untracked guides are read, as for `guidance_files`.
+
+Memoria 0.8 and earlier refuse the key as an unknown field. Upgrade every executable before you register a guide.
 
 Configuration version 3 is required. Version 2 fails with `configuration_invalid`, exit 1, and names the cutover: change `version = 2` to `version = 3` in `memoria.toml` and in any `README.memoria.toml` that declares a version.
 A sidecar version, when present, must be 3.
@@ -370,6 +388,8 @@ These counters are not disjoint categories.
 
 Without a path, the command shows the effective guidance of the root README.
 It also lists each scope that adds guidance, with the command that inspects that scope.
+When the project registers section guides, it also lists each one under "Registered section guides", with the number of documents and sections that name it.
+JSON adds `data.section_guides[] = {source, documents, sections}` in that case only.
 With a path, it shows that document's entries, exact sources, digest, and applicable scope.
 A document's guidance comes from the configuration scopes in its folder and above it.
 
@@ -379,7 +399,14 @@ It needs no review artifact, and it changes no state.
 Its `data` object holds `document`, `digest`, `entries`, `sources`, `scopes`, `reviewed_digest`, and `changed_since_review`.
 Each entry holds `scope`, `source`, `kind`, and `text`.
 The empty scope string is the repository root.
-Entry kinds are exactly `inline` and `file`.
+Entry kinds are exactly `inline`, `file`, and `section`.
+Project entries (`inline`, `file`) come first. Section guide entries follow, one for each distinct guide that the document's sections name, sorted by path.
+A `section` entry has the root scope and also holds `sections`: one `{id, heading, lines: [first, last]}` object for each section that names the guide.
+The `sections` list is presentation only. It is not part of the digest.
+
+When a section guide applies, the human view prints two labelled layers: "Project guidance, in applied order. It applies to the whole document:" and "Section guides:", where each guide names its sections and line ranges.
+It then prints this rule once: "Project guidance applies to the whole document. A section guide adds to it for the sections that name it. If they conflict, follow project guidance and report the conflict."
+A document that names no guide prints the 0.8 view.
 
 #### Guidance assessment: `--changed`
 
@@ -437,7 +464,7 @@ must read and why the reviewer cannot read less. It contains no document body,
 no source body, no import body, no historical content, and no guidance prose.
 Read the listed paths with ordinary file tools.
 
-The manifest (`manifest_version` 2) reports the document and its kind, its
+The manifest (`manifest_version` 3) reports the document and its kind, its
 scope and handoffs, the review revision, the token, the bound snapshot
 digests, the previous review, the changed inputs with their relationships,
 the review mode, the suggested sections, the suggested reads, the downstream
@@ -453,7 +480,7 @@ The human view is change-first:
 5. Semantic review requests.
 6. "Also pending for the same changes": co-covering documents, at most 10 lines.
 7. "Downstream": export consumers, at most 10 lines.
-8. "How to read": the mode and its reasons, suggested sections, the reads, the whole-document pass, and the guidance command.
+8. "How to read": the mode and its reasons, suggested sections, the reads, the whole-document pass, and the guidance command. A suggested section that names a guide ends with `· guide: <path>`. When section guides apply, the guidance line ends with "(project guidance and N section guides)".
 9. "Next": read and edit, save a fresh artifact, and acknowledge.
 10. Only when a hunk was cut: the line "Complete hunks: memoria review DOCUMENT --details".
 
@@ -463,7 +490,7 @@ If Git no longer holds the reviewed bytes, one `No hunk (<code>): <reason>` line
 An added input shows no hunk line.
 The hunks are human context only. The manifest, the JSON output, and the saved artifact carry no hunk.
 
-`--details` adds the token, the digests, per-input sizes and hashes, and counts to the human view, and shows all computed hunks without display truncation. If evidence computation exceeds its budget, hunks can be omitted without a reason, even with `--details`.
+`--details` adds the token, the digests, per-input sizes and hashes, counts, and at most 10 section guide paths (then `+N more`) to the human view, and shows all computed hunks without display truncation. If evidence computation exceeds its budget, hunks can be omitted without a reason, even with `--details`.
 
 ### A complete manifest
 
@@ -480,10 +507,10 @@ document.
 {
   "command": "review",
   "data": {
-    "artifact_digest": "b7d5c9162fbc2540",
+    "artifact_digest": "be5a507bdac29b82",
     "baseline": {
       "evidence_status": "verified",
-      "recorded_commit": "ba1e8da0b5856b7050cdeda4788566d21cdd8ab5",
+      "recorded_commit": "38dbae1ee665839293db86b6ef4e7de6ddc8fc1e",
       "result": "no-update",
       "reviewer": "fixture",
       "revision": 1,
@@ -561,12 +588,13 @@ document.
       }
     ],
     "kind": "review_manifest",
-    "manifest_version": 2,
+    "manifest_version": 3,
     "review": {
       "fallback_reasons": [],
       "mode": "focused_candidate",
       "sections": [
         {
+          "guidance": null,
           "heading": "Login",
           "id": "login",
           "lines": [
@@ -589,13 +617,13 @@ document.
       "handoffs_total": 0
     },
     "snapshot": {
-      "baseline_digest": "4b63f8474376f0c9",
+      "baseline_digest": "5d819bb20f034f9c",
       "context_digest": "ac6f9a256466da33",
       "guidance_digest": "bb97f9223e4cba99",
       "inputs_digest": "659dabed259ca916",
       "selection_version": 2
     },
-    "token": "mrv3.a5d2ebb85aefb2fe",
+    "token": "mrv3.1aa666aced18a2c5",
     "workflow": {
       "policy": "section-review-v2",
       "steps": [
@@ -706,6 +734,31 @@ handed-off file. The body must open with a Markdown heading.
 Sections do not nest. An export or an import can sit wholly inside a section.
 A section cannot sit inside or cross an export or an import. Marker text
 inside fenced or indented code is inert.
+
+A section can also name one registered section guide in a last `guidance`
+attribute. The path is relative to the document's folder, like an import
+`src`, and must resolve to an entry of `section_guidance_files`:
+
+```markdown
+<!-- memoria:section id="commands" files="justfile" guidance="docs/templates/agent-commands.md" -->
+## Commands
+<!-- /memoria:section -->
+```
+
+A section with `guidance` and no `files` is a guide-only section. A change
+never suggests it. Adding a guide-only section changes the mapping identity
+once. Adding `guidance` to a mapped section does not.
+
+| Problem | Code | Result |
+| --- | --- | --- |
+| A malformed `guidance` attribute or path, an escape above the root, or more than 64 distinct guides in one document | `section_guidance_invalid` | Error, exit 1 |
+| The path is not in `section_guidance_files` | `section_guidance_unregistered` | Error, exit 1 |
+| A bad `id` or `files` with a valid `guidance` | `section_mapping_invalid` | Warning. The guide still applies. |
+| `files` names a registered guide | `section_mapping_invalid` | Warning that names the cause |
+
+A guide changes no input. An edit to a guide is a guidance change for the
+documents that name it: `memoria guidance --changed` lists them, and an `ack`
+of an artifact saved before the edit fails with `guidance_changed`.
 
 A section is advice. It adds or removes no input and has no separate
 freshness. One invalid mapping withdraws the advice of the whole document,
@@ -834,7 +887,11 @@ record. The prior record in `data.binding.baseline` includes its
 `coverage_evidence`, because the baseline encoding binds it. A reader can
 recompute the token from the file alone.
 
-The guidance shape is `data.context.guidance`:
+The guidance shape is `data.context.guidance`. A section guide entry adds
+`sections`, as in `memoria guidance`. The digest is recomputable from the four
+fields `scope`, `source`, `kind`, and `text` of each entry, and `ack` refuses an
+export whose guidance text does not produce its digest
+(`packet_content_mismatch`).
 
 ```json
 {
@@ -855,14 +912,20 @@ The guidance shape is `data.context.guidance`:
 ### Versions and transport
 
 Every CLI JSON envelope uses schema version 3. The manifest uses
-`kind: "review_manifest"` and `manifest_version: 2`. The full export uses
-`kind: "focused_review"` and `packet_version: 4`. `packet view` uses
-`view_version: 2`. The token contains 21 bytes with the form `mrv3.<16 hex>`.
+`kind: "review_manifest"` and `manifest_version: 3`. The full export uses
+`kind: "focused_review"` and `packet_version: 5`. `packet view` uses
+`view_version: 3`.
 
-Memoria accepts the current versions only. A Memoria 0.6 artifact
-(`manifest_version: 1` or `packet_version: 3`) is refused with
-`packet_schema_invalid` and the text "…`manifest_version` is 1; this release
-accepts 2 only. Run `memoria review PATH --format json` again…". Memoria
+Version 3 manifests add `review.sections[].guidance` (the guide path or
+`null`) and `section` entries in `guidance.references`, each with `sections`
+(the ids of the sections that name it). A section reference's `entry_index`
+counts the section entries. Version 5 exports carry each section guide's exact
+text. The token contains 21 bytes with the form `mrv3.<16 hex>`.
+
+Memoria accepts the current versions only. An artifact from Memoria 0.8
+(`manifest_version: 2` or `packet_version: 4`) or 0.6 is refused with
+`packet_schema_invalid` and the text "…`manifest_version` is 2; this release
+accepts 3 only. Run `memoria review PATH --format json` again…". Memoria
 converts nothing and upgrades nothing. Review artifacts are disposable.
 Produce a new one.
 
@@ -1006,7 +1069,8 @@ A missing path causes `packet_view_file_missing` with exit 2.
 
 `--file` and an explicit `--section` are mutually exclusive.
 Imports remain accessible through `content` or `incremental`.
-JSON views use envelope schema 3, `data.kind=packet_view`, and `data.view_version=2`.
+JSON views use envelope schema 3, `data.kind=packet_view`, and `data.view_version=3`.
+When a section guide applies, the `guidance` view adds `authority`, the rule that project guidance applies to the whole document and wins a conflict.
 The document body is under the key `document`.
 They carry `canonical=false`, `snapshot_token`, and `source_packet_digest`.
 They cannot substitute for the canonical acknowledgement artifact.
@@ -1208,7 +1272,7 @@ memoria agent hook install|status|uninstall --target codex|claude [--dry-run]
 memoria agent hook run --target codex|claude --protocol 1 --configuration-root <directory>
 ```
 
-The binary embeds the four files of `skills/memoria/` at build time: `SKILL.md`, `review-details.md`, `saved-exports.md`, and `integrations.md`. One body serves Claude Code and Codex.
+The binary embeds the five files of `skills/memoria/` at build time: `SKILL.md`, `review-details.md`, `saved-exports.md`, `integrations.md`, and `section-guidance.md`. One body serves Claude Code and Codex.
 The default scope is `local`, inside the selected worktree.
 The local destination is `.agents/skills/memoria` for Codex or `.claude/skills/memoria` for Claude.
 Without `--target`, exactly one of `.agents` and `.claude` must exist.
@@ -1222,7 +1286,7 @@ A path outside the worktree never implies a global installation.
 The dry run makes no changes.
 `status` never writes and exits 0 for any readable inspection.
 
-The package contains those four files and `.memoria-install.json`, at record schema 2, with a hash for each file.
+The package contains those five files and `.memoria-install.json`, at record schema 2, with a hash for each file.
 A package is `current` only when its version, its file names, and every file's bytes match this executable.
 An upgrade replaces exactly the files that the previous record names, so a single-file 0.6 package upgrades cleanly.
 An older managed package returns `skill_upgrade_required` with exit 1, so replacement is explicit.
@@ -1327,7 +1391,7 @@ Every JSON response uses this envelope:
 {"schema_version": 3, "command": "status", "ok": true, "data": {}, "diagnostics": []}
 ```
 
-Release 0.8 keeps the existing envelope schema version 3.
+Release 0.9 keeps the existing envelope schema version 3.
 The native hook runner is the one exception.
 It speaks native hook JSON on stdin and stdout, and it does not accept `--format`.
 Its protocol version is separate and stays unchanged.
@@ -1389,7 +1453,8 @@ marker_mismatch marker_unclosed export_invalid export_duplicate import_invalid
 import_missing_document import_missing_export import_self import_duplicate import_cycle
 imports_outdated navigation_disconnected missing_import_hint review_pending
 review_not_pending dependencies_pending document_not_found document_invalid
-document_encoding_invalid section_mapping_invalid handoff_not_applied handoff_absent
+document_encoding_invalid section_mapping_invalid section_guidance_invalid
+section_guidance_unregistered section_guidance_unused handoff_not_applied handoff_absent
 save_requires_document save_destination_invalid save_destination_in_project
 save_name_exhausted save_failed packet_too_large max_bytes_invalid
 summary_invalid token_invalid token_mismatch reviewer_invalid result_invalid note_invalid
@@ -1478,7 +1543,7 @@ Source evidence: [Markdown codec](../crates/memoria-infrastructure/src/markdown.
 
 </details>
 
-The [specification](specification.md) records the approved contract, updated for 0.8.0.
+The [specification](specification.md) records the approved contract, updated for 0.9.0.
 This reference describes the implementation in this checkout.
 
 ## Continue

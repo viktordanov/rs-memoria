@@ -991,3 +991,256 @@ fn held_lock_reports_busy_and_post_commit_edits_are_detected() {
     assert_eq!(code, 1);
     assert!(diagnostic_codes(&check).contains(&"review_pending".to_string()));
 }
+
+#[test]
+fn a_manifest_names_the_guide_of_each_suggested_section() {
+    let project = Project::agent_instructions();
+    project.append("justfile", "\nlint:\n    cargo clippy\n");
+    let (packet, _) = project.review_packet("AGENTS.md");
+    let value = parse_json(&fs::read(&packet).unwrap());
+    assert_eq!(get_u64(&value, &["data", "manifest_version"]), 3);
+    let Json::Array(sections) = get(&value, &["data", "review", "sections"]) else {
+        panic!()
+    };
+    assert_eq!(sections.len(), 1);
+    assert_eq!(
+        get_str(&sections[0], &["guidance"]),
+        "docs/templates/agent-commands.md"
+    );
+    let Json::Array(references) = get(&value, &["data", "guidance", "references"]) else {
+        panic!()
+    };
+    let shape: Vec<(String, String, u64, Option<Vec<String>>)> = references
+        .iter()
+        .map(|r| {
+            (
+                get_str(r, &["kind"]).to_string(),
+                get_str(r, &["source"]).to_string(),
+                get_u64(r, &["entry_index"]),
+                match r {
+                    Json::Object(map) => map.get("sections").map(strings),
+                    _ => None,
+                },
+            )
+        })
+        .collect();
+    assert_eq!(
+        shape,
+        vec![
+            ("inline".into(), "memoria.toml".into(), 0, None),
+            (
+                "section".into(),
+                "docs/templates/agent-commands.md".into(),
+                0,
+                Some(vec!["commands".to_string()])
+            ),
+            (
+                "section".into(),
+                "docs/templates/agent-rules.md".into(),
+                1,
+                Some(vec!["boundaries".to_string()])
+            ),
+        ]
+    );
+    // The manifest carries no guide prose.
+    let text = String::from_utf8(fs::read(&packet).unwrap()).unwrap();
+    assert!(!text.contains("The exact command, in a code span."));
+    // A section entry without its `sections`, or a project entry with them,
+    // is refused by the strict decoder.
+    let hasher = memoria_infrastructure::Xxh3Hasher;
+    let redigest = |mut value: Json| {
+        if let Json::Object(map) = &mut value
+            && let Some(Json::Object(data)) = map.get_mut("data")
+        {
+            data.remove("artifact_digest");
+        }
+        let digest = memoria_infrastructure::packet::manifest_digest(&hasher, &value);
+        set_path(
+            &mut value,
+            &["data", "artifact_digest"],
+            Json::String(digest),
+        );
+        value
+    };
+    for (label, path, new) in [
+        (
+            "section without sections",
+            vec!["data", "guidance", "references"],
+            None,
+        ),
+        (
+            "old version",
+            vec!["data", "manifest_version"],
+            Some(Json::Number(2)),
+        ),
+    ] {
+        let mut changed = value.clone();
+        match new {
+            Some(new) => set_path(&mut changed, &path, new),
+            None => {
+                if let Json::Object(map) = &mut changed
+                    && let Some(Json::Object(data)) = map.get_mut("data")
+                    && let Some(Json::Object(guidance)) = data.get_mut("guidance")
+                    && let Some(Json::Array(items)) = guidance.get_mut("references")
+                    && let Json::Object(entry) = &mut items[1]
+                {
+                    entry.remove("sections");
+                }
+            }
+        }
+        let file = project.packets.path().join("changed-manifest.json");
+        fs::write(&file, to_pretty(&redigest(changed))).unwrap();
+        let output = project.run(&[
+            "ack",
+            "AGENTS.md",
+            "--packet",
+            file.to_str().unwrap(),
+            "--reviewer",
+            "fixture",
+            "--result",
+            "no-update",
+            "--note",
+            NOTE,
+            "--format",
+            "json",
+        ]);
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "{label}: {}",
+            stdout(&output)
+        );
+        let refused = parse_json(&output.stdout);
+        assert_eq!(
+            diagnostic_codes(&refused),
+            vec!["packet_schema_invalid"],
+            "{label}"
+        );
+        if label == "old version" {
+            let message = stdout(&output);
+            assert!(message.contains("accepts 3 only"), "{message}");
+            assert!(
+                message.contains("memoria review PATH --format json"),
+                "{message}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_full_export_carries_section_guides_and_binds_their_text() {
+    let project = Project::agent_instructions();
+    project.append("justfile", "\nlint:\n    cargo clippy\n");
+    let (packet, token) = project.review_full("AGENTS.md");
+    let value = parse_json(&fs::read(&packet).unwrap());
+    assert_eq!(get_u64(&value, &["data", "packet_version"]), 5);
+    // The digest is recomputable from the four canonical fields alone.
+    let Json::Array(items) = get(&value, &["data", "context", "guidance", "entries"]) else {
+        panic!()
+    };
+    let entries: Vec<memoria_domain::GuidanceEntry> = items
+        .iter()
+        .map(|e| memoria_domain::GuidanceEntry {
+            scope: memoria_domain::DirPath::parse(get_str(e, &["scope"])).unwrap(),
+            source: get_str(e, &["source"]).to_string(),
+            kind: memoria_domain::GuidanceKind::parse(get_str(e, &["kind"])).unwrap(),
+            text: get_str(e, &["text"]).to_string(),
+            sections: Vec::new(),
+        })
+        .collect();
+    use memoria_application::ports::FingerprintHasher;
+    let recomputed = memoria_infrastructure::Xxh3Hasher
+        .hash(&memoria_domain::canonical::encode_guidance(&entries))
+        .to_hex();
+    assert_eq!(
+        recomputed,
+        get_str(&value, &["data", "context", "guidance", "digest"])
+    );
+    assert_eq!(entries[1].kind, memoria_domain::GuidanceKind::Section);
+    assert_eq!(
+        entries[1].text,
+        project.read_string("docs/templates/agent-commands.md")
+    );
+    // The view shows the captured layers with the authority rule.
+    let output = project.run(&[
+        "packet",
+        "view",
+        packet.to_str().unwrap(),
+        "--section",
+        "guidance",
+        "--format",
+        "json",
+    ]);
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    let view = parse_json(&output.stdout);
+    assert_eq!(get_u64(&view, &["data", "view_version"]), 3);
+    assert!(
+        get_str(&view, &["data", "selection", "authority"])
+            .starts_with("Project guidance applies to the whole document.")
+    );
+    // Tampered guide text, even with a recomputed packet digest, fails the
+    // guidance digest check.
+    let hasher = memoria_infrastructure::Xxh3Hasher;
+    let mut tampered = value.clone();
+    if let Json::Object(map) = &mut tampered
+        && let Some(Json::Object(data)) = map.get_mut("data")
+    {
+        data.remove("packet_digest");
+        if let Some(Json::Object(context)) = data.get_mut("context")
+            && let Some(Json::Object(guidance)) = context.get_mut("guidance")
+            && let Some(Json::Array(items)) = guidance.get_mut("entries")
+            && let Json::Object(entry) = &mut items[1]
+        {
+            entry.insert("text".into(), Json::String("Anything goes.\n".into()));
+        }
+    }
+    let digest = memoria_infrastructure::packet::packet_digest(&hasher, &tampered);
+    set_path(
+        &mut tampered,
+        &["data", "packet_digest"],
+        Json::String(digest),
+    );
+    let file = project.packets.path().join("tampered-guide.json");
+    fs::write(&file, to_pretty(&tampered)).unwrap();
+    let output = ack_with(&project, "AGENTS.md", &file, &token);
+    assert_eq!(output.status.code(), Some(2), "{}", stdout(&output));
+    assert_eq!(
+        diagnostic_codes(&parse_json(&output.stdout)),
+        vec!["packet_content_mismatch"]
+    );
+    // Tampered section metadata without a new digest fails integrity.
+    let mut relabelled = value.clone();
+    set_path(
+        &mut relabelled,
+        &["data", "context", "guidance", "entries"],
+        Json::Array(vec![]),
+    );
+    let file = project.packets.path().join("relabelled.json");
+    fs::write(&file, to_pretty(&relabelled)).unwrap();
+    let output = ack_with(&project, "AGENTS.md", &file, &token);
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(
+        diagnostic_codes(&parse_json(&output.stdout)),
+        vec!["packet_integrity_failed"]
+    );
+    // An older packet version is refused with regeneration text.
+    let mut old = value.clone();
+    set_path(&mut old, &["data", "packet_version"], Json::Number(4));
+    if let Json::Object(map) = &mut old
+        && let Some(Json::Object(data)) = map.get_mut("data")
+    {
+        data.remove("packet_digest");
+    }
+    let digest = memoria_infrastructure::packet::packet_digest(&hasher, &old);
+    set_path(&mut old, &["data", "packet_digest"], Json::String(digest));
+    let file = project.packets.path().join("old-packet.json");
+    fs::write(&file, to_pretty(&old)).unwrap();
+    let output = ack_with(&project, "AGENTS.md", &file, &token);
+    assert_eq!(output.status.code(), Some(2));
+    let message = stdout(&output);
+    assert!(message.contains("packet_version is 4"), "{message}");
+    assert!(message.contains("accepts 5 only"), "{message}");
+    // The intact export round-trips through acknowledgement.
+    let output = ack_with(&project, "AGENTS.md", &packet, &token);
+    assert_eq!(output.status.code(), Some(0), "{}", stdout(&output));
+}

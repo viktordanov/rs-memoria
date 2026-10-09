@@ -8,8 +8,9 @@ use crate::guidance::EffectiveGuidance;
 use crate::ports::FingerprintHasher;
 
 /// Full offline exports. Older packets are not accepted: packets are
-/// disposable, so an old one is regenerated rather than converted.
-pub const PACKET_VERSION: u64 = 4;
+/// disposable, so an old one is regenerated rather than converted. Version 5
+/// carries section guide entries with their exact text and sections.
+pub const PACKET_VERSION: u64 = 5;
 /// The version of every CLI JSON envelope. The release has one clean
 /// cutover: `schema_version: 3` for envelopes, manifests, and packets alike.
 pub const ENVELOPE_SCHEMA_VERSION: u64 = 3;

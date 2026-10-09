@@ -1,0 +1,23 @@
+title: One change to tax.rs makes every document in billing/ pending, and one section is suggested
+desc: billing/tax.rs changes. billing/README.md, billing/design.md, and billing/notes.md all cover billing/, so all three become pending and each gets its own review. design.md maps a section to tax.rs, so its review is a focused candidate that suggests the tax section. README.md and notes.md have no section that maps tax.rs, so their reviews are full baselines. Every review still reads the whole document.
+---
+                      «░░▒▒▓▓██» ONE CHANGE TO TAX.RS, THREE REVIEWS «██▓▓▒▒░░»
+
+ billing/tax.rs  «changed»
+    │
+    ├──▶ billing/README.md   «pending» ──▶ «full baseline»       ‹no section maps tax.rs›
+    │
+    ├──▶ billing/design.md   «pending» ──▶ «focused candidate» ──┐
+    │                                                            ▼
+    │                                            ┌─ billing/design.md ──────────────────────────────┐
+    │                                            │ ▒▒▒▒ # Billing design                            │
+    │                                            │ ▒▒▒▒ ## Invoice lines  ‹section invoice›         │
+    │                                            │ ▓▓▓▓ ## Tax            «section tax» ◀ suggested │
+    │                                            └──────────────────────────────────────────────────┘
+    │
+    └──▶ billing/notes.md    «pending» ──▶ «full baseline»       ‹no section maps tax.rs›
+
+ Each document gets its own review, its own artifact, and its own ack.
+ Every review reads the whole document. A suggested section only says where to start.
+
+ ▓▓▓▓ suggested section   ▒▒▒▒ the rest of the document: the whole-document pass reads it too

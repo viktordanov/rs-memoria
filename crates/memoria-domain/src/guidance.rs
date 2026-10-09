@@ -11,11 +11,15 @@ use std::fmt;
 use crate::manifest::{Hash64, InvalidHash};
 use crate::path::DirPath;
 
-/// Whether an entry came from configuration text or from a guidance file.
+/// Whether an entry came from configuration text, from a guidance file, or
+/// from a section guide that a section of the document names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum GuidanceKind {
     Inline,
     File,
+    /// A registered section guide. It supplements project guidance for the
+    /// sections that name it and never overrides it.
+    Section,
 }
 
 impl GuidanceKind {
@@ -23,6 +27,7 @@ impl GuidanceKind {
         match self {
             GuidanceKind::Inline => "inline",
             GuidanceKind::File => "file",
+            GuidanceKind::Section => "section",
         }
     }
 
@@ -30,6 +35,7 @@ impl GuidanceKind {
         match raw {
             "inline" => Some(GuidanceKind::Inline),
             "file" => Some(GuidanceKind::File),
+            "section" => Some(GuidanceKind::Section),
             _ => None,
         }
     }
@@ -52,6 +58,24 @@ pub struct GuidanceEntry {
     pub kind: GuidanceKind,
     /// The exact decoded configuration string or exact guidance file text.
     pub text: String,
+    /// For a section guide: the sections of the document that name it, in
+    /// authored order. Presentation only. It is never digested, because the
+    /// association already lives in the document bytes. Empty for project
+    /// guidance.
+    pub sections: Vec<GuidanceSection>,
+}
+
+/// One section that names a section guide, as a reading hint.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GuidanceSection {
+    /// The authored section id.
+    pub id: String,
+    /// Text of the section's first heading. Empty when the section could not
+    /// be parsed far enough to read it.
+    pub heading: String,
+    /// 1-based inclusive body line range.
+    pub first_line: usize,
+    pub last_line: usize,
 }
 
 /// The digest of an ordered guidance list. Advisory review context only: it
@@ -90,7 +114,9 @@ mod tests {
     fn kind_round_trips_through_its_exact_names() {
         assert_eq!(GuidanceKind::parse("inline"), Some(GuidanceKind::Inline));
         assert_eq!(GuidanceKind::parse("file"), Some(GuidanceKind::File));
+        assert_eq!(GuidanceKind::parse("section"), Some(GuidanceKind::Section));
         assert_eq!(GuidanceKind::parse("Inline"), None);
+        assert_eq!(GuidanceKind::Section.to_string(), "section");
         assert_eq!(GuidanceKind::Inline.to_string(), "inline");
     }
 

@@ -214,6 +214,18 @@ pub fn verify_packet_with_hasher(
             "the packet token does not match its own snapshot fields",
         ));
     }
+    // The captured guidance text, project and section guides alike, must
+    // produce the digest the token binds. The four canonical fields of each
+    // entry are in the file, so the digest is recomputable from it alone.
+    let guidance = &packet.context.guidance;
+    if crate::guidance::digest_of(hasher, &guidance.entries) != guidance.digest
+        || packet.binding.context.guidance != guidance.digest
+        || packet.requirements.guidance_digest != guidance.digest.0
+    {
+        return Err(mismatch(
+            "the packet's guidance text does not produce its recorded guidance digest".into(),
+        ));
+    }
     // The embedded requirements must describe the same snapshot the packet
     // does, so a full export and a small manifest cannot disagree.
     let requirements = &packet.requirements;

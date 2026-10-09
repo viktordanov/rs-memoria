@@ -397,3 +397,131 @@ fn a_render_that_restores_a_reviewed_import_leaves_the_consumer_current() {
     let (code, _) = project.json(&["check"]);
     assert_eq!(code, 0);
 }
+
+#[test]
+fn section_guides_add_one_suffix_and_change_only_the_guidance_line() {
+    let project = Project::agent_instructions();
+    // CLAUDE.md maps the same commands section without its guide.
+    project.write(
+        "CLAUDE.md",
+        project
+            .read_string("CLAUDE.md")
+            .replace(" guidance=\"docs/templates/agent-commands.md\"", ""),
+    );
+    project.canonical_loop();
+    project.commit_all("CLAUDE.md maps commands without a guide");
+    project.append("justfile", "\nlint:\n    cargo clippy\n");
+
+    let agents = stdout(&project.run(&["review", "AGENTS.md"]));
+    assert!(
+        agents.contains(
+            "  Suggested section commands \"Commands\" lines 7-10: Cargo.toml, justfile · guide: docs/templates/agent-commands.md\n"
+        ),
+        "{agents}"
+    );
+    assert!(
+        agents.contains(
+            "  Guidance: memoria guidance AGENTS.md (project guidance and 2 section guides)\n"
+        ),
+        "{agents}"
+    );
+    // Without a guide on the suggested section, the suggestion line is the
+    // 0.8 line. The document still names one guide-only section.
+    let claude = stdout(&project.run(&["review", "CLAUDE.md"]));
+    assert!(
+        claude.contains(
+            "  Suggested section commands \"Commands\" lines 7-10: Cargo.toml, justfile\n"
+        ),
+        "{claude}"
+    );
+    assert!(
+        claude.contains(
+            "  Guidance: memoria guidance CLAUDE.md (project guidance and 1 section guide)\n"
+        ),
+        "{claude}"
+    );
+    // A document without guides prints exactly the 0.8 guidance line.
+    let readme = stdout(&project.run(&["review", "README.md"]));
+    assert!(
+        readme.contains("  Guidance: memoria guidance README.md\n"),
+        "{readme}"
+    );
+    assert!(!readme.contains("section guide"), "{readme}");
+    assert!(!readme.contains("· guide:"), "{readme}");
+    // No new line in status, check, or the plan.
+    for args in [vec!["status"], vec!["status", "--summary"], vec!["review"]] {
+        let text = stdout(&project.run(&args));
+        assert!(!text.contains("section guide"), "{args:?}: {text}");
+        assert!(!text.contains("guide:"), "{args:?}: {text}");
+    }
+}
+
+#[test]
+fn details_name_at_most_ten_section_guides() {
+    let project = Project::agent_instructions();
+    let mut registered = String::new();
+    let mut sections = String::new();
+    for index in 0..12 {
+        let path = format!("docs/templates/g{index:02}.md");
+        project.write(&path, format!("# Guide {index}\n"));
+        registered.push_str(&format!("    \"{path}\",\n"));
+        sections.push_str(&format!(
+            "\n<!-- memoria:section id=\"g{index}\" guidance=\"{path}\" -->\n## Guide {index}\n\nText.\n<!-- /memoria:section -->\n"
+        ));
+    }
+    project.write(
+        "memoria.toml",
+        project.read_string("memoria.toml").replace(
+            "    \"docs/templates/agent-rules.md\",\n",
+            &format!("    \"docs/templates/agent-rules.md\",\n{registered}"),
+        ),
+    );
+    project.append("AGENTS.md", &sections);
+    let text = stdout(&project.run(&["review", "AGENTS.md", "--details"]));
+    assert!(
+        text.contains("(project guidance and 14 section guides)"),
+        "{text}"
+    );
+    let line = text
+        .lines()
+        .find(|line| line.starts_with("  Section guides    "))
+        .expect("details name the section guides");
+    assert!(line.ends_with(", +4 more"), "{line}");
+    assert_eq!(line.matches(".md").count(), 10, "{line}");
+}
+
+#[test]
+fn an_unused_section_guide_is_a_hint_for_lint_and_verbose_only() {
+    let project = Project::agent_instructions();
+    project.write("docs/templates/unused.md", "# Unused\n");
+    project.write(
+        "memoria.toml",
+        project.read_string("memoria.toml").replace(
+            "    \"docs/templates/agent-rules.md\",\n",
+            "    \"docs/templates/agent-rules.md\",\n    \"docs/templates/unused.md\",\n",
+        ),
+    );
+    for args in [
+        vec!["status"],
+        vec!["check"],
+        vec!["review"],
+        vec!["guidance"],
+    ] {
+        let output = project.run(&args);
+        let shown = format!("{}{}", stdout(&output), stderr(&output));
+        assert!(!shown.contains("section_guidance_unused"), "{args:?}");
+        let (_, value) = project.json(&args);
+        assert!(
+            hint_codes(&value).contains(&"section_guidance_unused".to_string()),
+            "{args:?}: JSON keeps every diagnostic"
+        );
+    }
+    for args in [vec!["lint"], vec!["status", "--verbose"]] {
+        let output = project.run(&args);
+        let shown = format!("{}{}", stdout(&output), stderr(&output));
+        assert!(
+            shown.contains("section_guidance_unused"),
+            "{args:?}: {shown}"
+        );
+    }
+}

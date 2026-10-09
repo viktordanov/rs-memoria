@@ -135,6 +135,7 @@ Memoria supports the judgment and does not make it:
 - A passing `memoria check` proves that every document matches its last review and that imports are rendered. It does not prove that the explanations are correct.
 - Advisory sections suggest where to read. They never replace the whole-document pass.
 - Guidance is review context. A guidance change does not make documents pending by itself. It asks you to [assess it](workflow.md#assess-a-guidance-change).
+- A section can name a section guide: shared writing rules for one kind of section, which add to project guidance. The [agent instructions cookbook](cookbooks/agent-instructions/README.md) shows one in use.
 
 ## Examples side by side
 

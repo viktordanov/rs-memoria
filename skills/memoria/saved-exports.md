@@ -17,6 +17,8 @@ A full export carries every reviewed byte. It is for offline reading or for a ma
 3. Run `memoria packet view <saved file> --file <PATH>` for one saved input.
 4. Run `memoria packet view <saved file> --section history` for old bodies and historical evidence.
 
+Saved guidance is the text captured with the export, section guides included. Before you act on it, compare it with the live text in `memoria guidance <DOCUMENT>`.
+
 `packet view` accepts a current full export only. A review manifest carries no content, so `packet view` reports `packet_content_unavailable`. A view is not an acknowledgement artifact. Retrieval does not prove that you read the content.
 
 Artifacts from Memoria 0.6 are refused. Capture a new artifact. No converter exists.

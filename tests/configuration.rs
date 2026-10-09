@@ -186,3 +186,224 @@ fn toml_sidecar_restores_files_and_reports_exact_guidance_sources() {
     };
     assert_eq!(full_entries.len(), entries.len());
 }
+
+/// Add entries to the fixture's `section_guidance_files` list.
+fn register(project: &Project, extra: &[&str]) {
+    let lines: String = extra
+        .iter()
+        .map(|path| format!("    \"{path}\",\n"))
+        .collect();
+    project.write(
+        "memoria.toml",
+        project.read_string("memoria.toml").replace(
+            "    \"docs/templates/agent-rules.md\",\n",
+            &format!("    \"docs/templates/agent-rules.md\",\n{lines}"),
+        ),
+    );
+}
+
+/// `(code, path, message)` of every error that `memoria check` reports.
+fn errors(project: &Project) -> Vec<(String, String, String)> {
+    let (code, value) = project.json(&["check"]);
+    assert_ne!(code, 0, "check passed unexpectedly");
+    let Json::Array(items) = get(&value, &["diagnostics"]) else {
+        panic!()
+    };
+    items
+        .iter()
+        .filter(|d| get_str(d, &["severity"]) == "error")
+        .map(|d| {
+            (
+                get_str(d, &["code"]).to_string(),
+                match get(d, &["path"]) {
+                    Json::String(path) => path.clone(),
+                    _ => String::new(),
+                },
+                get_str(d, &["message"]).to_string(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_sidecar_cannot_register_a_section_guide() {
+    let project = Project::agent_instructions();
+    project.write(
+        "src/README.memoria.toml",
+        "[documentation]\nsection_guidance_files = [\"../docs/templates/agent-rules.md\"]\n",
+    );
+    let errors = errors(&project);
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert_eq!(errors[0].0, "configuration_invalid");
+    assert_eq!(errors[0].1, "src/README.memoria.toml");
+    assert!(
+        errors[0].2.contains("allowed only in memoria.toml"),
+        "{errors:?}"
+    );
+}
+
+#[test]
+fn every_registration_rule_refuses_with_a_named_cause() {
+    // A duplicate entry, even when spelled differently.
+    let project = Project::agent_instructions();
+    register(&project, &["docs/../docs/templates/agent-rules.md"]);
+    let found = errors(&project);
+    assert_eq!(found[0].0, "guidance_file_invalid", "{found:?}");
+    assert!(found[0].2.contains("listed more than once"), "{found:?}");
+
+    // Overlap with project guidance.
+    let project = Project::agent_instructions();
+    project.write(
+        "memoria.toml",
+        project.read_string("memoria.toml").replace(
+            "guidance_files = []",
+            "guidance_files = [\"docs/templates/agent-rules.md\"]",
+        ),
+    );
+    let found = errors(&project);
+    assert!(
+        found
+            .iter()
+            .any(|(code, path, message)| code == "guidance_file_invalid"
+                && path == "docs/templates/agent-rules.md"
+                && message.contains("already applies as project guidance through `memoria.toml`")),
+        "{found:?}"
+    );
+
+    // A file that carries a Memoria marker outside code: registering it
+    // would untrack a document in silence.
+    let project = Project::agent_instructions();
+    project.write(
+        "docs/templates/marked.md",
+        "# Marked\n\n```markdown\n<!-- memoria:export id=\"x\" -->\n```\n\n<!-- memoria:export id=\"summary\" -->\nA summary.\n<!-- /memoria:export -->\n",
+    );
+    register(&project, &["docs/templates/marked.md"]);
+    let found = errors(&project);
+    assert!(
+        found.iter().any(|(code, path, message)| code == "guidance_file_invalid"
+            && path == "docs/templates/marked.md"
+            && message == "carries a Memoria marker on line 7, so it would stop being a tracked document; remove the markers or the registration"),
+        "{found:?}"
+    );
+
+    // Size: 65,536 bytes are accepted, 65,537 are refused.
+    let project = Project::agent_instructions();
+    project.write("docs/templates/big.md", "a".repeat(65_536));
+    register(&project, &["docs/templates/big.md"]);
+    let (code, value) = project.json(&["check"]);
+    assert_eq!(code, 0, "{value:?}");
+    project.write("docs/templates/big.md", "a".repeat(65_537));
+    let found = errors(&project);
+    assert_eq!(
+        found,
+        vec![(
+            "guidance_file_invalid".to_string(),
+            "docs/templates/big.md".to_string(),
+            "section guide is 65537 bytes; at most 65536 are permitted".to_string()
+        )]
+    );
+
+    // Missing, README, and non-UTF-8 files use the existing rules.
+    for (path, content, code) in [
+        ("docs/templates/missing.md", None, "guidance_file_missing"),
+        (
+            "docs/README.md",
+            Some(&b"# Docs\n"[..]),
+            "guidance_file_invalid",
+        ),
+        (
+            "docs/templates/latin1.md",
+            Some(&b"caf\xe9\n"[..]),
+            "guidance_file_invalid",
+        ),
+    ] {
+        let project = Project::agent_instructions();
+        if let Some(content) = content {
+            project.write(path, content);
+        }
+        register(&project, &[path]);
+        let found = errors(&project);
+        assert!(
+            found.iter().any(|(c, p, _)| c == code && p == path),
+            "{path}: {found:?}"
+        );
+    }
+
+    // A path outside the project.
+    let project = Project::agent_instructions();
+    register(&project, &["../outside.md"]);
+    let found = errors(&project);
+    assert!(
+        found
+            .iter()
+            .any(|(code, path, _)| code == "guidance_file_invalid" && path == "memoria.toml"),
+        "{found:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlinked_section_guide_is_refused() {
+    let project = Project::agent_instructions();
+    std::os::unix::fs::symlink(
+        "agent-rules.md",
+        project.root.join("docs/templates/link.md"),
+    )
+    .unwrap();
+    register(&project, &["docs/templates/link.md"]);
+    let found = errors(&project);
+    assert!(
+        found
+            .iter()
+            .any(|(code, path, message)| code == "guidance_file_invalid"
+                && path == "docs/templates/link.md"
+                && message.contains("symlink")),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_git_ignored_section_guide_is_read() {
+    let project = Project::agent_instructions();
+    project.write(".gitignore", "local-guides/\n");
+    project.write(
+        "local-guides/agent.md",
+        "# Local guide\n\nThe local rule.\n",
+    );
+    register(&project, &["local-guides/agent.md"]);
+    project.write(
+        "AGENTS.md",
+        project
+            .read_string("AGENTS.md")
+            .replace("docs/templates/agent-rules.md", "local-guides/agent.md"),
+    );
+    let (code, value) = project.json(&["guidance", "AGENTS.md"]);
+    assert_eq!(code, 0, "{value:?}");
+    let Json::Array(items) = get(&value, &["data", "entries"]) else {
+        panic!()
+    };
+    assert!(
+        items
+            .iter()
+            .any(|e| get_str(e, &["source"]) == "local-guides/agent.md"
+                && get_str(e, &["text"]) == "# Local guide\n\nThe local rule.\n"),
+        "{value:?}"
+    );
+}
+
+#[test]
+fn a_section_guide_key_is_refused_by_name_when_misplaced() {
+    // The key lives under [documentation]. Anywhere else, strict parsing
+    // names it as an unknown field.
+    let project = Project::agent_instructions();
+    project.write(
+        "memoria.toml",
+        project.read_string("memoria.toml").replace(
+            "include = []\n",
+            "include = []\nsection_guidance_files = []\n",
+        ),
+    );
+    let (code, value) = project.json(&["status"]);
+    assert_eq!(code, 1);
+    assert_eq!(diagnostic_codes(&value), vec!["configuration_invalid"]);
+}

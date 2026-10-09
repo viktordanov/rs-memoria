@@ -891,7 +891,7 @@ fn artifacts_from_earlier_releases_are_refused_with_regeneration_instructions() 
     let (codes, message) = refusal(&output);
     assert_eq!(codes, vec!["packet_schema_invalid"]);
     assert!(message.contains("packet_version is 3"), "{message}");
-    assert!(message.contains("accepts 4 only"), "{message}");
+    assert!(message.contains("accepts 5 only"), "{message}");
     assert!(message.contains("--full"), "{message}");
     assert!(message.contains("not converted"), "{message}");
 
@@ -932,7 +932,7 @@ fn artifacts_from_earlier_releases_are_refused_with_regeneration_instructions() 
     let (codes, message) = refusal(&output);
     assert_eq!(codes, vec!["packet_schema_invalid"]);
     assert!(message.contains("manifest_version is 1"), "{message}");
-    assert!(message.contains("accepts 2 only"), "{message}");
+    assert!(message.contains("accepts 3 only"), "{message}");
     assert!(
         message.contains("memoria review PATH --format json"),
         "{message}"
@@ -1458,4 +1458,494 @@ fn the_documented_manifest_example_is_a_real_artifact() {
         memoria_infrastructure::json::to_pretty(&documented_value),
         "regenerate the example with MEMORIA_PRINT_DOC_EXAMPLE=1"
     );
+}
+
+/// The error and warning codes of `memoria lint`, with its exit status.
+fn lint_codes(project: &Project) -> (i32, Vec<String>) {
+    let (code, value) = project.json(&["lint"]);
+    let Json::Array(items) = get(&value, &["diagnostics"]) else {
+        panic!("diagnostics is not an array")
+    };
+    let mut codes: Vec<String> = items
+        .iter()
+        .filter(|d| get_str(d, &["severity"]) != "hint")
+        .map(|d| get_str(d, &["code"]).to_string())
+        .collect();
+    codes.sort();
+    codes.dedup();
+    (code, codes)
+}
+
+/// Replace the `guidance` value of the `commands` section in `AGENTS.md`.
+fn set_commands_guide(project: &Project, value: &str) {
+    project.write(
+        "AGENTS.md",
+        project.read_string("AGENTS.md").replace(
+            "guidance=\"docs/templates/agent-commands.md\"",
+            &format!("guidance=\"{value}\""),
+        ),
+    );
+}
+
+/// The `(kind, source)` effective guidance entries of a document.
+fn guide_sources(project: &Project, document: &str) -> Vec<String> {
+    let (code, value) = project.json(&["guidance", document]);
+    assert_eq!(
+        code,
+        0,
+        "{}",
+        memoria_infrastructure::json::to_pretty(&value)
+    );
+    let Json::Array(items) = get(&value, &["data", "entries"]) else {
+        panic!()
+    };
+    items
+        .iter()
+        .filter(|e| get_str(e, &["kind"]) == "section")
+        .map(|e| get_str(e, &["source"]).to_string())
+        .collect()
+}
+
+#[test]
+fn a_guide_path_resolves_like_an_import_src() {
+    let project = Project::agent_instructions();
+    project.write(
+        "tools/README.md",
+        "# Tools\n\n<!-- memoria:section id=\"commands\" guidance=\"../docs/templates/agent-commands.md\" -->\n## Commands\n\nRun the tools from the root.\n<!-- /memoria:section -->\n",
+    );
+    project.write("tools/run.sh", "echo run\n");
+    project.append(
+        "README.md",
+        "- The [tools](tools/README.md) run the project.\n",
+    );
+    assert_eq!(lint_codes(&project), (0, vec![]));
+    assert_eq!(
+        guide_sources(&project, "tools/README.md"),
+        vec!["docs/templates/agent-commands.md"]
+    );
+    // `.` and `..` components normalize inside the project.
+    set_commands_guide(&project, "./docs/../docs/templates/agent-commands.md");
+    assert_eq!(lint_codes(&project), (0, vec![]));
+    // An escape above the root is refused.
+    project.write(
+        "tools/README.md",
+        project
+            .read_string("tools/README.md")
+            .replace("../docs/templates", "../../docs/templates"),
+    );
+    let (code, codes) = lint_codes(&project);
+    assert_ne!(code, 0);
+    assert_eq!(codes, vec!["section_guidance_invalid"]);
+}
+
+#[test]
+fn the_guide_token_grammar_refuses_every_ambiguous_spelling() {
+    let project = Project::agent_instructions();
+    let original = project.read_string("AGENTS.md");
+    let long = format!("{}.md", "a".repeat(1022));
+    for token in [
+        "",
+        "docs/templates/agent-commands.md docs/templates/agent-rules.md",
+        "docs/templates/agent commands.md",
+        "docs/templates/agent-commands.md#top",
+        "C:docs/x.md",
+        "docs/templates/*.md",
+        "docs/templates/[a].md",
+        "docs/templates/{a}.md",
+        "docs/templates/a?.md",
+        "/docs/templates/agent-commands.md",
+        "docs\\templates\\agent-commands.md",
+        "docs/templates/agent'commands.md",
+        long.as_str(),
+    ] {
+        project.write("AGENTS.md", &original);
+        set_commands_guide(&project, token);
+        let (code, codes) = lint_codes(&project);
+        assert_ne!(code, 0, "{token:?}");
+        assert_eq!(codes, vec!["section_guidance_invalid"], "{token:?}");
+    }
+    // A quote inside the value, a guide before `files`, and two `guidance`
+    // attributes are malformed attributes, never a dropped guide.
+    for marker in [
+        "<!-- memoria:section id=\"commands\" guidance=\"docs/templates/agent-commands.md\" files=\"justfile\" -->",
+        "<!-- memoria:section id=\"commands\" files=\"justfile\" guidance=\"docs/templates/agent-commands.md\" guidance=\"docs/templates/agent-rules.md\" -->",
+        "<!-- memoria:section id=\"commands\" files=\"justfile\" guidance=\"docs/\"templates.md\" -->",
+        "<!-- memoria:section id=\"commands\" files=\"justfile\" guidance='docs/templates/agent-commands.md' -->",
+        "<!-- memoria:section id=\"commands\" files=\"justfile\"  guidance=\"docs/templates/agent-commands.md\" -->",
+        "  <!-- memoria:section id=\"commands\" files=\"justfile\" guidance=\"docs/templates/agent-commands.md\" -->",
+        // Spacing around `=` (R-001).
+        "<!-- memoria:section id=\"commands\" files=\"justfile Cargo.toml\" guidance =\"docs/templates/agent-commands.md\" -->",
+        "<!-- memoria:section id=\"commands\" files=\"justfile Cargo.toml\" guidance = \"docs/templates/agent-commands.md\" -->",
+        "<!-- memoria:section id=\"commands\" files=\"justfile Cargo.toml\" guidance\t=\"docs/templates/agent-commands.md\" -->",
+    ] {
+        project.write(
+            "AGENTS.md",
+            original.replace(
+                "<!-- memoria:section id=\"commands\" files=\"justfile Cargo.toml\" guidance=\"docs/templates/agent-commands.md\" -->",
+                marker,
+            ),
+        );
+        let (code, codes) = lint_codes(&project);
+        assert_ne!(code, 0, "{marker}");
+        assert!(
+            codes.contains(&"section_guidance_invalid".to_string()),
+            "{marker}: {codes:?}"
+        );
+    }
+    // A marker inside code stays inert.
+    project.write(
+        "AGENTS.md",
+        format!("{original}\n```markdown\n<!-- memoria:section id=\"x\" guidance=\"no such file\" -->\n```\n"),
+    );
+    assert_eq!(lint_codes(&project), (0, vec![]));
+}
+
+#[test]
+fn an_unregistered_guide_is_an_error_that_names_the_fix() {
+    let project = Project::agent_instructions();
+    project.write("docs/templates/other.md", "# Other\n");
+    set_commands_guide(&project, "docs/templates/other.md");
+    let (code, value) = project.json(&["check"]);
+    assert_eq!(code, 1);
+    let diagnostic = project
+        .lint_diagnostics("section_guidance_unregistered")
+        .pop()
+        .expect("the unregistered guide is reported");
+    assert_eq!(get_str(&diagnostic, &["path"]), "AGENTS.md");
+    assert_eq!(get_u64(&diagnostic, &["line"]), 6);
+    assert_eq!(
+        get_str(&diagnostic, &["message"]),
+        "`docs/templates/other.md` is not a registered section guide. Add it to `section_guidance_files` in memoria.toml."
+    );
+    assert!(diagnostic_codes(&value).contains(&"section_guidance_unregistered".to_string()));
+    // A missing guide path is unregistered too: registration decides.
+    set_commands_guide(&project, "docs/templates/missing.md");
+    assert!(
+        lint_codes(&project)
+            .1
+            .contains(&"section_guidance_unregistered".to_string())
+    );
+}
+
+#[test]
+fn a_document_may_name_at_most_sixty_four_distinct_guides() {
+    let project = Project::agent_instructions();
+    let mut registered = String::new();
+    let mut body = String::from("# Many\n");
+    for index in 0..65 {
+        let path = format!("guides/g{index:02}.md");
+        project.write(&path, format!("# Guide {index}\n"));
+        registered.push_str(&format!("    \"{path}\",\n"));
+        body.push_str(&format!(
+            "\n<!-- memoria:section id=\"s{index}\" guidance=\"../{path}\" -->\n## Section {index}\n\nText.\n<!-- /memoria:section -->\n"
+        ));
+    }
+    project.write(
+        "memoria.toml",
+        project.read_string("memoria.toml").replace(
+            "    \"docs/templates/agent-rules.md\",\n",
+            &format!("    \"docs/templates/agent-rules.md\",\n{registered}"),
+        ),
+    );
+    project.write("many/README.md", &body);
+    let diagnostics = project.lint_diagnostics("section_guidance_invalid");
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(get_str(&diagnostics[0], &["path"]), "many/README.md");
+    // The 65th marker sits on line 3 + 64 * 6.
+    assert_eq!(get_u64(&diagnostics[0], &["line"]), 3 + 64 * 6);
+    // Sixty-four are accepted.
+    let last = "\n<!-- memoria:section id=\"s64\" guidance=\"../guides/g64.md\" -->\n## Section 64\n\nText.\n<!-- /memoria:section -->\n";
+    project.write("many/README.md", body.replace(last, ""));
+    assert!(
+        project
+            .lint_diagnostics("section_guidance_invalid")
+            .is_empty()
+    );
+    assert_eq!(guide_sources(&project, "many/README.md").len(), 64);
+}
+
+#[test]
+fn bad_files_withdraw_the_advice_but_the_guide_still_applies() {
+    let project = Project::agent_instructions();
+    project.write(
+        "AGENTS.md",
+        project.read_string("AGENTS.md").replace(
+            "files=\"justfile Cargo.toml\"",
+            "files=\"justfile missing.toml\"",
+        ),
+    );
+    let (code, codes) = lint_codes(&project);
+    assert_eq!(code, 0, "a mapping problem is a warning");
+    assert_eq!(codes, vec!["section_mapping_invalid"]);
+    assert_eq!(
+        guide_sources(&project, "AGENTS.md"),
+        vec![
+            "docs/templates/agent-commands.md",
+            "docs/templates/agent-rules.md"
+        ]
+    );
+    let value = review(&project, "AGENTS.md");
+    assert_eq!(mode(&value), "full_baseline");
+    assert!(fallback_codes(&value).contains(&"mapping_invalid".to_string()));
+    // An `id` problem behaves the same way.
+    project.write(
+        "AGENTS.md",
+        project
+            .read_string("AGENTS.md")
+            .replace(
+                "files=\"justfile missing.toml\"",
+                "files=\"justfile Cargo.toml\"",
+            )
+            .replace("id=\"commands\"", "id=\"9commands\""),
+    );
+    let (code, codes) = lint_codes(&project);
+    assert_eq!(
+        (code, codes),
+        (0, vec!["section_mapping_invalid".to_string()])
+    );
+    assert_eq!(guide_sources(&project, "AGENTS.md").len(), 2);
+}
+
+#[test]
+fn a_registered_guide_is_reserved_and_never_a_source() {
+    let project = Project::agent_instructions();
+    let (code, explained) =
+        project.json(&["status", "--explain", "docs/templates/agent-commands.md"]);
+    assert_eq!(code, 0);
+    assert_eq!(
+        get_str(&explained, &["data", "explanation", "outcome"]),
+        "excluded"
+    );
+    assert!(
+        get_str(&explained, &["data", "explanation", "reason"]).contains("guidance-file"),
+        "{explained:?}"
+    );
+    // A link to it gets the guidance-file handoff hint.
+    project.append(
+        "README.md",
+        "\nThe [command guide](docs/templates/agent-commands.md).\n",
+    );
+    let hints = project.lint_diagnostics("handoff_not_applied");
+    assert_eq!(hints.len(), 1, "{hints:?}");
+    assert!(
+        get_str(&hints[0], &["message"]).contains("is a project guidance file"),
+        "{hints:?}"
+    );
+    // A section that names it in `files` gets a warning that names the cause.
+    project.write(
+        "AGENTS.md",
+        project.read_string("AGENTS.md").replace(
+            "files=\"justfile Cargo.toml\"",
+            "files=\"justfile docs/templates/agent-commands.md\"",
+        ),
+    );
+    let warnings = project.lint_diagnostics("section_mapping_invalid");
+    assert_eq!(warnings.len(), 1);
+    assert!(
+        get_str(&warnings[0], &["message"]).contains(
+            "docs/templates/agent-commands.md is a section guide registered in memoria.toml, not a source"
+        ),
+        "{warnings:?}"
+    );
+}
+
+#[test]
+fn a_guide_only_section_is_never_suggested() {
+    let project = Project::agent_instructions();
+    // A change to a mapped source suggests only the mapped section, with its
+    // guide, never the guide-only section.
+    project.append("justfile", "\nlint:\n    cargo clippy\n");
+    let value = review(&project, "AGENTS.md");
+    assert_eq!(
+        mode(&value),
+        "focused_candidate",
+        "{:?}",
+        fallback_codes(&value)
+    );
+    assert_eq!(section_ids(&value), vec!["commands"]);
+    let Json::Array(sections) = get(&value, &["data", "review", "sections"]) else {
+        panic!()
+    };
+    assert_eq!(
+        get_str(&sections[0], &["guidance"]),
+        "docs/templates/agent-commands.md"
+    );
+    // An edit to a guide changes no input, so it suggests nothing.
+    project.git(&["checkout", "justfile"]);
+    project.append("docs/templates/agent-rules.md", "Keep each rule short.\n");
+    assert!(project.pending().is_empty());
+}
+
+#[test]
+fn adding_a_guide_keeps_the_identity_but_a_new_guide_only_section_changes_it() {
+    let project = Project::seed();
+    project.write(
+        "memoria.toml",
+        project.read_string("memoria.toml").replace(
+            "[documentation]\n",
+            "[documentation]\nsection_guidance_files = [\"docs/templates/types.md\"]\n",
+        ),
+    );
+    project.write(
+        "docs/templates/types.md",
+        "# Types guide\n\nName each type.\n",
+    );
+    let body = project.read_string("src/corpus/README.md");
+    project.write("src/corpus/README.md", format!("{body}\n{SECTION}"));
+    project.baseline();
+    project.commit_all("mapped baseline");
+    // Attaching a guide to the mapped section edits the document, but the
+    // mapping identity is unchanged, so a focused review stays available.
+    project.write(
+        "src/corpus/README.md",
+        project.read_string("src/corpus/README.md").replace(
+            "files=\"types.rs\" -->",
+            "files=\"types.rs\" guidance=\"../../docs/templates/types.md\" -->",
+        ),
+    );
+    project.ack_ok("src/corpus/README.md");
+    project.commit_all("guided");
+    project.append("src/corpus/types.rs", "// change\n");
+    let value = review(&project, "src/corpus/README.md");
+    assert_eq!(
+        mode(&value),
+        "focused_candidate",
+        "{:?}",
+        fallback_codes(&value)
+    );
+    assert_eq!(section_ids(&value), vec!["types"]);
+    project.ack_ok("src/corpus/README.md");
+    project.commit_all("reviewed");
+    // A new guide-only section is a changed association: one full baseline.
+    project.append(
+        "src/corpus/README.md",
+        "\n<!-- memoria:section id=\"style\" guidance=\"../../docs/templates/types.md\" -->\n## Style\n\nShort names.\n<!-- /memoria:section -->\n",
+    );
+    project.append("src/corpus/types.rs", "// another change\n");
+    let value = review(&project, "src/corpus/README.md");
+    assert_eq!(mode(&value), "full_baseline");
+    assert!(fallback_codes(&value).contains(&"mapping_changed".to_string()));
+    project.ack_ok("src/corpus/README.md");
+    project.commit_all("guide-only section");
+    // After that one review, focused reading is available again.
+    project.append("src/corpus/types.rs", "// third change\n");
+    let value = review(&project, "src/corpus/README.md");
+    assert_eq!(
+        mode(&value),
+        "focused_candidate",
+        "{:?}",
+        fallback_codes(&value)
+    );
+    assert_eq!(section_ids(&value), vec!["types"]);
+}
+
+#[test]
+fn a_quoted_source_named_like_a_guidance_attribute_stays_a_source() {
+    // R-002: a project without section guides keeps a valid 0.8 mapping whose
+    // source file name contains `guidance=`.
+    let project = Project::empty_repo();
+    project.write("memoria.toml", "version = 3\n");
+    project.write("guidance=rules.md", "Rule one.\n");
+    project.write(
+        "README.md",
+        "# Example\n\n<!-- memoria:section id=\"commands\" files=\"guidance=rules.md\" -->\n## Commands\nRead the rules.\n<!-- /memoria:section -->\n",
+    );
+    project.commit_all("seed");
+    let (code, value) = project.json(&["lint"]);
+    assert_eq!(
+        code,
+        0,
+        "{}",
+        memoria_infrastructure::json::to_pretty(&value)
+    );
+    assert!(diagnostic_codes(&value).is_empty(), "{value:?}");
+    let value = review(&project, "README.md");
+    assert!(diagnostic_codes(&value).is_empty(), "{value:?}");
+    project.ack_ok("README.md");
+    project.commit_all("reviewed");
+    project.append("guidance=rules.md", "Rule two.\n");
+    let value = review(&project, "README.md");
+    assert_eq!(
+        mode(&value),
+        "focused_candidate",
+        "{:?}",
+        fallback_codes(&value)
+    );
+    assert_eq!(section_ids(&value), vec!["commands"]);
+    let (code, guidance) = project.json(&["guidance", "README.md"]);
+    assert_eq!(code, 0);
+    let Json::Array(entries) = get(&guidance, &["data", "entries"]) else {
+        panic!()
+    };
+    assert!(entries.is_empty(), "no guide applies: {guidance:?}");
+}
+
+#[test]
+fn non_ascii_marker_text_gets_a_diagnostic_never_a_crash() {
+    // R-003: each case returns a normal JSON envelope with its exit status.
+    let project = Project::empty_repo();
+    project.write("memoria.toml", "version = 3\n");
+    project.write("source.txt", "Source.\n");
+    project.write("\u{e9}.txt", "Source.\n");
+    project.commit_all("seed");
+    for (marker, closed, exit, code) in [
+        (
+            "<!-- memoria:section id=\"commands\" files=\"source.txt\"\u{a0}guidance=\"guide.md\" -->",
+            true,
+            1,
+            Some("section_guidance_invalid"),
+        ),
+        (
+            "<!-- memoria:section id=\u{e9} files=\"source.txt\" -->",
+            true,
+            0,
+            Some("section_mapping_invalid"),
+        ),
+        (
+            "<!-- memoria:section id=\"commands\" files=\"\u{e9}.txt\" -->",
+            true,
+            0,
+            None,
+        ),
+        (
+            "```markdown\n<!-- memoria:section id=\u{e9} files=\"source.txt\" -->\n```",
+            false,
+            0,
+            None,
+        ),
+    ] {
+        project.write(
+            "README.md",
+            format!(
+                "# Example\n\n{marker}\n## Commands\nRead the source.\n{}",
+                if closed {
+                    "<!-- /memoria:section -->\n"
+                } else {
+                    ""
+                }
+            ),
+        );
+        for args in [vec!["lint"], vec!["review", "README.md"]] {
+            let output = project.run(&[&args[..], &["--format", "json"]].concat());
+            assert_eq!(
+                output.status.code(),
+                Some(exit),
+                "{marker} {args:?}: {}",
+                stderr(&output)
+            );
+            assert!(!stderr(&output).contains("panicked"), "{marker}");
+            let value = parse_json(&output.stdout);
+            let codes = diagnostic_codes(&value);
+            match code {
+                Some(code) => assert!(
+                    codes.contains(&code.to_string()),
+                    "{marker} {args:?}: {codes:?}"
+                ),
+                None => assert!(
+                    !codes.iter().any(|c| c.starts_with("section_")),
+                    "{marker} {args:?}: {codes:?}"
+                ),
+            }
+        }
+    }
 }

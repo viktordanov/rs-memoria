@@ -1,0 +1,20 @@
+title: A docs page sees code changes only through the summaries that it imports
+desc: Two panels. Left, docs/guide.md only links src/auth/login.rs, which is outside its scope. When login.rs changes from 30 to 15 minutes, src/auth/README.md is pending and docs/guide.md stays current, so the guide drifts. Right, src/auth/README.md covers login.rs and exports a summary, and docs/guide.md imports it. src/ is still outside the guide's scope, but a change to the summary makes the guide wait and then become pending. Other code edits never reach the guide.
+---
+«░▒▓█» A CENTRAL DOCS/ PAGE · WHAT IT CAN AND CANNOT SEE «█▓▒░»
+
+┌─ PITFALL · THE GUIDE ONLY LINKS THE CODE ────────────┐  ┌─ PATTERN · THE GUIDE IMPORTS A SUMMARY ──────────────┐
+│                                                      │  │                                                      │
+│ docs/guide.md  ── link ──▶ ‹../src/auth/login.rs›    │  │ src/auth/README.md   ▓▓▓▓ src/auth/login.rs          │
+│   ░░░░ src/ is outside its scope                     │  │   └─ «export» summary ──┐                            │
+│                                                      │  │                         │ «import» ‹#summary›        │
+│ src/auth/login.rs changes: 30 → 15 minutes           │  │ docs/guide.md ◀─────────┘                            │
+│   ▓▓▓▓ src/auth/README.md      «pending»             │  │   ░░░░ src/ is still outside its scope               │
+│   ░░░░ docs/guide.md           «current»             │  │                                                      │
+│                                                      │  │ When the summary changes, the guide «waits»          │
+│ The guide still says 30 minutes, and no              │  │ for the README, then it is «pending»                 │
+│ review asks anyone to read it again.                 │  │ Other code edits never reach the guide.              │
+│                                                      │  │                                                      │
+└──────────────────────────────────────────────────────┘  └──────────────────────────────────────────────────────┘
+
+▓▓▓▓ in the document's scope   ░░░░ outside its scope   ──▶ link: navigation only   ◀── «import» carries freshness

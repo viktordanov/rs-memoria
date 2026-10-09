@@ -29,7 +29,7 @@ pub use canonical::{ConsumerEdge, ImportEdge, ProviderDescriptor, ReviewContext}
 pub use document::{ByteRange, Document, DocumentLink, Export, ExportId, Import, SourceLocation};
 pub use glob::{Glob, GlobError};
 pub use graph::{GraphError, ImportGraph, NavigationGraph};
-pub use guidance::{GuidanceDigest, GuidanceEntry, GuidanceKind};
+pub use guidance::{GuidanceDigest, GuidanceEntry, GuidanceKind, GuidanceSection};
 pub use manifest::{
     FileInput, Hash64, ImportInput, InputChange, InputManifest, InvalidHash, ManifestDiff,
 };
@@ -43,6 +43,7 @@ pub use review::{
 pub use schedule::{DocumentStatus, PendingCause, schedule};
 pub use scope::{DocumentReference, Handoff, HandoffVia, ReferenceKind, ScopeMap};
 pub use section::{
-    InvalidSectionId, SectionId, SectionMap, SectionMapIdentity, SectionMapping, SectionPathError,
+    GuidancePathError, InvalidSectionId, SectionId, SectionMap, SectionMapIdentity, SectionMapping,
+    SectionPathError,
 };
 pub use selection::{Exclusion, RuleKind, RuleScope, SelectionDecision, SelectionStep};

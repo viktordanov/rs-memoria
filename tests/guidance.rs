@@ -616,3 +616,474 @@ fn guidance_never_hides_a_missing_or_invalid_guidance_file() {
     assert!(get_bool(&value, &["ok"]));
     assert!(!strings(get(&value, &["data", "sources"])).is_empty());
 }
+
+/// The `(kind, source)` pairs of a document's effective guidance.
+fn layers(project: &Project, document: &str) -> Vec<(String, String)> {
+    let (code, value) = project.json(&["guidance", document]);
+    assert_eq!(code, 0, "guidance {document}: {value:?}");
+    entries(&value)
+        .into_iter()
+        .map(|(kind, source, _)| (kind, source))
+        .collect()
+}
+
+/// The documents of every group in `guidance --changed`.
+fn changed_documents(project: &Project) -> Vec<String> {
+    let (code, value) = project.json(&["guidance", "--changed"]);
+    assert_eq!(code, 0, "{value:?}");
+    let Json::Array(groups) = get(&value, &["data", "groups"]) else {
+        panic!("groups is not an array")
+    };
+    let mut documents: Vec<String> = groups
+        .iter()
+        .flat_map(|group| strings(get(group, &["documents"])))
+        .collect();
+    documents.sort();
+    documents
+}
+
+#[test]
+fn section_guides_follow_project_guidance_sorted_by_path() {
+    let project = Project::agent_instructions();
+    assert_eq!(
+        layers(&project, "AGENTS.md"),
+        vec![
+            ("inline".to_string(), "memoria.toml".to_string()),
+            (
+                "section".to_string(),
+                "docs/templates/agent-commands.md".to_string()
+            ),
+            (
+                "section".to_string(),
+                "docs/templates/agent-rules.md".to_string()
+            ),
+        ]
+    );
+    // A document that names no guide keeps only its project guidance.
+    for document in ["README.md", "src/README.md"] {
+        assert_eq!(
+            layers(&project, document),
+            vec![("inline".to_string(), "memoria.toml".to_string())],
+            "{document}"
+        );
+    }
+    // Section entries carry the root scope, the exact text, and the sections
+    // that name them; project entries carry no `sections`.
+    let (_, value) = project.json(&["guidance", "AGENTS.md"]);
+    let Json::Array(items) = get(&value, &["data", "entries"]) else {
+        panic!()
+    };
+    assert!(!has_key(&items[0], "sections"));
+    assert_eq!(get_str(&items[1], &["scope"]), "");
+    assert_eq!(
+        get_str(&items[1], &["text"]),
+        project.read_string("docs/templates/agent-commands.md")
+    );
+    let Json::Array(sections) = get(&items[1], &["sections"]) else {
+        panic!()
+    };
+    assert_eq!(sections.len(), 1);
+    assert_eq!(get_str(&sections[0], &["id"]), "commands");
+    assert_eq!(get_str(&sections[0], &["heading"]), "Commands");
+    assert_eq!(numbers(get(&sections[0], &["lines"])), vec![7, 10]);
+}
+
+#[test]
+fn a_document_without_section_guides_keeps_its_digest() {
+    // The digest of a document that names no guide is the 0.8 digest: the
+    // registration alone changes nothing.
+    let project = Project::agent_instructions();
+    let before = digest(&project, "README.md");
+    let src_before = digest(&project, "src/README.md");
+    let config = project.read_string("memoria.toml");
+    let unregistered = config.replace(
+        "section_guidance_files = [\n    \"docs/templates/agent-commands.md\",\n    \"docs/templates/agent-rules.md\",\n]\n",
+        "",
+    );
+    assert_ne!(unregistered, config);
+    project.write("memoria.toml", unregistered);
+    // Remove the references too, so the project is a 0.8 project again.
+    for file in ["AGENTS.md", "CLAUDE.md"] {
+        let text = project
+            .read_string(file)
+            .replace(" guidance=\"docs/templates/agent-commands.md\"", "")
+            .replace(
+                "<!-- memoria:section id=\"boundaries\" guidance=\"docs/templates/agent-rules.md\" -->\n",
+                "",
+            )
+            .replace("## Boundaries", "Boundaries:")
+            .replacen("<!-- /memoria:section -->\n", "", 2)
+            + "<!-- /memoria:section -->\n";
+        project.write(file, text);
+    }
+    assert_eq!(digest(&project, "README.md"), before);
+    assert_eq!(digest(&project, "src/README.md"), src_before);
+}
+
+#[test]
+fn a_guide_edit_is_advisory_for_its_consumers_only() {
+    let project = Project::agent_instructions();
+    project.append(
+        "docs/templates/agent-commands.md",
+        "Name the tool that each command needs.\n",
+    );
+    assert_eq!(changed_documents(&project), vec!["AGENTS.md", "CLAUDE.md"]);
+    assert!(project.pending().is_empty(), "nothing becomes pending");
+    let (code, value) = project.json(&["check"]);
+    assert_eq!(code, 0, "{value:?}");
+    // The group's sources name the guide.
+    let (_, value) = project.json(&["guidance", "--changed"]);
+    let Json::Array(groups) = get(&value, &["data", "groups"]) else {
+        panic!()
+    };
+    assert!(
+        strings(get(&groups[0], &["sources"]))
+            .contains(&"docs/templates/agent-commands.md".to_string())
+    );
+    // A project guidance edit, by contrast, reaches every document.
+    project.write(
+        "memoria.toml",
+        project
+            .read_string("memoria.toml")
+            .replace("Use short sentences", "Use very short sentences"),
+    );
+    assert_eq!(
+        changed_documents(&project),
+        vec!["AGENTS.md", "CLAUDE.md", "README.md", "src/README.md"]
+    );
+}
+
+#[test]
+fn swapping_the_bytes_of_two_guides_changes_the_digest() {
+    let project = Project::agent_instructions();
+    let before = digest(&project, "AGENTS.md");
+    let commands = project.read_string("docs/templates/agent-commands.md");
+    let rules = project.read_string("docs/templates/agent-rules.md");
+    project.write("docs/templates/agent-commands.md", &rules);
+    project.write("docs/templates/agent-rules.md", &commands);
+    assert_ne!(digest(&project, "AGENTS.md"), before);
+    assert_eq!(changed_documents(&project), vec!["AGENTS.md", "CLAUDE.md"]);
+}
+
+#[test]
+fn guidance_views_label_the_layers_and_state_the_authority_rule() {
+    let project = Project::agent_instructions();
+    let output = project.run(&["guidance", "AGENTS.md"]);
+    assert_eq!(output.status.code(), Some(0));
+    let text = stdout(&output);
+    assert!(
+        text.contains("\nProject guidance, in applied order. It applies to the whole document:\n"),
+        "{text}"
+    );
+    assert!(text.contains("\nSection guides:\n"), "{text}");
+    assert!(
+        text.contains("  [section docs/templates/agent-commands.md] commands (lines 7-10)\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("  [section docs/templates/agent-rules.md] boundaries (lines 14-17)\n"),
+        "{text}"
+    );
+    let rule = "Project guidance applies to the whole document. A section guide adds to it for the sections that name it. If they conflict, follow project guidance and report the conflict.";
+    assert_eq!(text.matches(rule).count(), 1, "{text}");
+    // A document without guides keeps the 0.8 view and no authority rule.
+    let text = stdout(&project.run(&["guidance", "src/README.md"]));
+    assert!(
+        text.contains("\nEffective guidance, in applied order:\n"),
+        "{text}"
+    );
+    assert!(!text.contains(rule), "{text}");
+    assert!(!text.contains("Section guides"), "{text}");
+    // The rule appears in guidance views only, never in a review.
+    project.append("justfile", "\nlint:\n    cargo clippy\n");
+    let text = stdout(&project.run(&["review", "AGENTS.md"]));
+    assert!(!text.contains(rule), "{text}");
+}
+
+#[test]
+fn guidance_without_a_document_summarizes_every_registered_guide() {
+    let project = Project::agent_instructions();
+    let (code, value) = project.json(&["guidance"]);
+    assert_eq!(code, 0, "{value:?}");
+    let Json::Array(guides) = get(&value, &["data", "section_guides"]) else {
+        panic!("section_guides is not an array")
+    };
+    let summary: Vec<(String, u64, u64)> = guides
+        .iter()
+        .map(|g| {
+            (
+                get_str(g, &["source"]).to_string(),
+                get_u64(g, &["documents"]),
+                get_u64(g, &["sections"]),
+            )
+        })
+        .collect();
+    assert_eq!(
+        summary,
+        vec![
+            ("docs/templates/agent-commands.md".to_string(), 2, 2),
+            ("docs/templates/agent-rules.md".to_string(), 2, 2),
+        ]
+    );
+    let text = stdout(&project.run(&["guidance"]));
+    assert!(
+        text.contains("  docs/templates/agent-commands.md: 2 documents, 2 sections\n"),
+        "{text}"
+    );
+    // A named document has no summary.
+    let (_, value) = project.json(&["guidance", "README.md"]);
+    assert!(!has_key(get(&value, &["data"]), "section_guides"));
+    // A project without registrations has no summary key at all.
+    let plain = Project::seed();
+    let (_, value) = plain.json(&["guidance"]);
+    assert!(!has_key(get(&value, &["data"]), "section_guides"));
+}
+
+#[test]
+fn registering_a_guide_makes_no_document_pending() {
+    let project = Project::agent_instructions();
+    project.write(
+        "docs/templates/release-notes.md",
+        "# Release notes\n\nKeep it short.\n",
+    );
+    project.commit_all("an ordinary source");
+    // The new file is a source of every root document.
+    let pending = project.pending();
+    assert_eq!(pending, vec!["AGENTS.md", "CLAUDE.md", "README.md"]);
+    project.canonical_loop();
+    project.commit_all("reviewed");
+    // Registering the former source makes only its covering documents
+    // pending: a source left their scope. No policy change occurs.
+    project.write(
+        "memoria.toml",
+        project.read_string("memoria.toml").replace(
+            "    \"docs/templates/agent-rules.md\",\n",
+            "    \"docs/templates/agent-rules.md\",\n    \"docs/templates/release-notes.md\",\n",
+        ),
+    );
+    assert_eq!(
+        project.pending(),
+        vec!["AGENTS.md", "CLAUDE.md", "README.md"]
+    );
+    for document in ["AGENTS.md", "README.md"] {
+        let fallbacks = project.fallbacks(document);
+        assert!(
+            fallbacks.contains(&(
+                "path_set_changed".to_string(),
+                "docs/templates/release-notes.md".to_string()
+            )),
+            "{document}: {fallbacks:?}"
+        );
+        assert!(
+            !fallbacks.iter().any(|(code, _)| code == "policy_changed"),
+            "{document}: {fallbacks:?}"
+        );
+    }
+    assert!(project.pending().iter().all(|d| d != "src/README.md"));
+    project.canonical_loop();
+    // A registration for a brand-new file makes nothing pending.
+    project.write("docs/templates/new-guide.md", "# New guide\n");
+    project.write(
+        "memoria.toml",
+        project.read_string("memoria.toml").replace(
+            "    \"docs/templates/release-notes.md\",\n",
+            "    \"docs/templates/release-notes.md\",\n    \"docs/templates/new-guide.md\",\n",
+        ),
+    );
+    assert!(project.pending().is_empty(), "{:?}", project.pending());
+    // It is unused, which only lint reports.
+    assert_eq!(project.lint_diagnostics("section_guidance_unused").len(), 2);
+}
+
+#[test]
+fn the_agent_instructions_cookbook_matches_a_real_run() {
+    let cookbook = fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("docs/cookbooks/agent-instructions/README.md"),
+    )
+    .unwrap_or_default();
+    let print = std::env::var_os("MEMORIA_PRINT_COOKBOOK").is_some();
+    let mut captured: Vec<(&str, String)> = Vec::new();
+    let project = Project::agent_instructions();
+    let save = project.packets.path().to_str().unwrap().to_string();
+
+    // The files the cookbook shows are the fixture files.
+    for path in [
+        "memoria.toml",
+        "AGENTS.md",
+        "docs/templates/agent-commands.md",
+        "docs/templates/agent-rules.md",
+        "justfile",
+    ] {
+        if !print {
+            assert_eq!(
+                format!("{}\n", cookbook_block(&cookbook, "file", path)),
+                project.read_string(path),
+                "{path}"
+            );
+        }
+    }
+
+    // Scenario 1: a command changes.
+    project.write(
+        "justfile",
+        project
+            .read_string("justfile")
+            .replace("    cargo test", "    cargo nextest run"),
+    );
+    captured.push(("plan", cookbook_run(&project, &["review"])));
+    assert_eq!(
+        project.pending(),
+        vec!["AGENTS.md", "CLAUDE.md", "README.md"]
+    );
+    captured.push((
+        "review-agents",
+        cookbook_run(&project, &["review", "AGENTS.md"]),
+    ));
+    captured.push((
+        "guidance-agents",
+        cookbook_run(&project, &["guidance", "AGENTS.md"]),
+    ));
+    let edit = |file: &str| {
+        project.write(
+            file,
+            project.read_string(file).replace(
+                "It runs `cargo test`, and it succeeds when every test passes.",
+                "It runs `cargo nextest run`, and it succeeds when every test passes. It needs `cargo-nextest`.",
+            ),
+        );
+    };
+    edit("AGENTS.md");
+    captured.push((
+        "save-agents",
+        cookbook_run(&project, &["review", "AGENTS.md", "--save", &save]),
+    ));
+    let saved = |document: &str| -> String {
+        let prefix = format!("memoria-manifest-{document}-");
+        let mut names: Vec<String> = fs::read_dir(project.packets.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(&prefix))
+            .collect();
+        assert_eq!(names.len(), 1, "{names:?}");
+        project
+            .packets
+            .path()
+            .join(names.pop().unwrap())
+            .to_str()
+            .unwrap()
+            .to_string()
+    };
+    let agents_packet = saved("AGENTS.md");
+    captured.push((
+        "ack-agents",
+        cookbook_run(
+            &project,
+            &[
+                "ack",
+                "AGENTS.md",
+                "--packet",
+                &agents_packet,
+                "--reviewer",
+                "docs-agent",
+                "--result",
+                "updated",
+                "--note",
+                "The test command is now cargo nextest run, and the section names the cargo-nextest tool.",
+            ],
+        ),
+    ));
+    edit("CLAUDE.md");
+    captured.push((
+        "save-claude",
+        cookbook_run(&project, &["review", "CLAUDE.md", "--save", &save]),
+    ));
+    let claude_packet = saved("CLAUDE.md");
+    assert_ne!(
+        fs::read(&agents_packet).unwrap(),
+        fs::read(&claude_packet).unwrap()
+    );
+    captured.push((
+        "ack-claude",
+        cookbook_run(
+            &project,
+            &[
+                "ack",
+                "CLAUDE.md",
+                "--packet",
+                &claude_packet,
+                "--reviewer",
+                "docs-agent",
+                "--result",
+                "updated",
+                "--note",
+                "The test command is now cargo nextest run, and the section names the cargo-nextest tool.",
+            ],
+        ),
+    ));
+    // README.md mentions no command, so its prose stays correct.
+    project.ack_ok("README.md");
+    assert!(project.pending().is_empty());
+    project.commit_all("nextest");
+
+    // Scenario 2: only a guide changes.
+    project.append(
+        "docs/templates/agent-commands.md",
+        "Name the tool that a command needs when the project does not install it.\n",
+    );
+    captured.push((
+        "changed-guide",
+        cookbook_run(&project, &["guidance", "--changed"]),
+    ));
+    captured.push(("plan-after-guide", cookbook_run(&project, &["review"])));
+    assert!(project.pending().is_empty());
+    let config = project.read_string("memoria.toml");
+    project.write(
+        "memoria.toml",
+        config.replace(
+            "Use short sentences,",
+            "Use short sentences and plain words,",
+        ),
+    );
+    captured.push((
+        "changed-global",
+        cookbook_run(&project, &["guidance", "--changed"]),
+    ));
+    project.write("memoria.toml", &config);
+    captured.push((
+        "invalidate-agents",
+        cookbook_run(
+            &project,
+            &[
+                "invalidate",
+                "doc:AGENTS.md",
+                "--reason",
+                "The command guide now asks for the tool that a command needs.",
+            ],
+        ),
+    ));
+    assert_eq!(project.pending(), vec!["AGENTS.md"]);
+    project.ack_ok("AGENTS.md");
+    project.commit_all("guide");
+
+    // Scenario 3: a guide path that is not registered.
+    let agents = project.read_string("AGENTS.md");
+    project.write(
+        "AGENTS.md",
+        agents.replace(
+            "docs/templates/agent-rules.md",
+            "docs/templates/agent-rule.md",
+        ),
+    );
+    captured.push(("broken", cookbook_run(&project, &["lint"])));
+    project.write("AGENTS.md", &agents);
+    captured.push(("fixed", cookbook_run(&project, &["lint"])));
+
+    for (key, text) in &captured {
+        if print {
+            println!("<<<{key}\n{text}\n>>>");
+        } else {
+            assert_eq!(&cookbook_block(&cookbook, "output", key), text, "{key}");
+        }
+    }
+}

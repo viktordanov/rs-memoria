@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1062" height="378" viewBox="0 0 1062 378" role="img" aria-labelledby="title desc">
+<title id="title">A docs page sees code changes only through the summaries that it imports</title>
+<desc id="desc">Two panels. Left, docs/guide.md only links src/auth/login.rs, which is outside its scope. When login.rs changes from 30 to 15 minutes, src/auth/README.md is pending and docs/guide.md stays current, so the guide drifts. Right, src/auth/README.md covers login.rs and exports a summary, and docs/guide.md imports it. src/ is still outside the guide&#x27;s scope, but a change to the summary makes the guide wait and then become pending. Other code edits never reach the guide.</desc>
+<style>.bg{fill:#f4f0e6}.ink{fill:#24211b}.muted{fill:#8a8170}.accent{fill:#c2410c}.line{stroke:#24211b}.line-muted{stroke:#8a8170}.line-accent{stroke:#c2410c}@media (prefers-color-scheme: dark){.bg{fill:#13120f}.ink{fill:#e8e3d4}.muted{fill:#7f7867}.accent{fill:#f59e0b}.line{stroke:#e8e3d4}.line-muted{stroke:#7f7867}.line-accent{stroke:#f59e0b}}.line,.line-muted,.line-accent{stroke-width:1.5;fill:none;stroke-linecap:square}text{font-family:ui-monospace,"SFMono-Regular","JetBrains Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;font-size:15px;white-space:pre}</style>
+<defs><pattern id="d1-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/></pattern><pattern id="d2-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/><rect x="2" y="2" width="2" height="2" class="accent"/></pattern><pattern id="d3-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/><rect x="2" y="0" width="2" height="2" class="accent"/><rect x="2" y="2" width="2" height="2" class="accent"/></pattern><pattern id="d1-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/></pattern><pattern id="d2-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/><rect x="2" y="2" width="2" height="2" class="muted"/></pattern><pattern id="d3-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/><rect x="2" y="0" width="2" height="2" class="muted"/><rect x="2" y="2" width="2" height="2" class="muted"/></pattern><pattern id="d1-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/></pattern><pattern id="d2-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/><rect x="2" y="2" width="2" height="2" class="ink"/></pattern><pattern id="d3-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/><rect x="2" y="0" width="2" height="2" class="ink"/><rect x="2" y="2" width="2" height="2" class="ink"/></pattern></defs>
+<rect class="bg" width="1062" height="378" rx="8"/>
+<rect x="27" y="37" width="9" height="16" fill="url(#d1-accent)"/>
+<rect x="36" y="37" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="45" y="37" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="54" y="37" width="9" height="16" class="accent"/>
+<rect x="540" y="37" width="9" height="16" class="accent"/>
+<rect x="549" y="37" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="558" y="37" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="567" y="37" width="9" height="16" fill="url(#d1-accent)"/>
+<rect x="747" y="109" width="36" height="16" fill="url(#d3-ink)"/>
+<rect x="54" y="127" width="36" height="16" fill="url(#d1-ink)"/>
+<rect x="54" y="181" width="36" height="16" fill="url(#d3-ink)"/>
+<rect x="576" y="181" width="36" height="16" fill="url(#d1-ink)"/>
+<rect x="54" y="199" width="36" height="16" fill="url(#d1-ink)"/>
+<rect x="18" y="325" width="36" height="16" fill="url(#d3-ink)"/>
+<rect x="297" y="325" width="36" height="16" fill="url(#d1-ink)"/>
+<path class="line" d="M22.5 81L27 81M22.5 81L22.5 90M31.5 81L36 81M31.5 81L27 81M409.5 81L414 81M409.5 81L405 81M418.5 81L423 81M418.5 81L414 81M427.5 81L432 81M427.5 81L423 81M436.5 81L441 81M436.5 81L432 81M445.5 81L450 81M445.5 81L441 81M454.5 81L459 81M454.5 81L450 81M463.5 81L468 81M463.5 81L459 81M472.5 81L477 81M472.5 81L468 81M481.5 81L486 81M481.5 81L477 81M490.5 81L495 81M490.5 81L486 81M499.5 81L504 81M499.5 81L495 81M508.5 81L513 81M508.5 81L504 81M517.5 81L513 81M517.5 81L517.5 90M544.5 81L549 81M544.5 81L544.5 90M553.5 81L558 81M553.5 81L549 81M913.5 81L918 81M913.5 81L909 81M922.5 81L927 81M922.5 81L918 81M931.5 81L936 81M931.5 81L927 81M940.5 81L945 81M940.5 81L936 81M949.5 81L954 81M949.5 81L945 81M958.5 81L963 81M958.5 81L954 81M967.5 81L972 81M967.5 81L963 81M976.5 81L981 81M976.5 81L972 81M985.5 81L990 81M985.5 81L981 81M994.5 81L999 81M994.5 81L990 81M1003.5 81L1008 81M1003.5 81L999 81M1012.5 81L1017 81M1012.5 81L1008 81M1021.5 81L1026 81M1021.5 81L1017 81M1030.5 81L1035 81M1030.5 81L1026 81M1039.5 81L1035 81M1039.5 81L1039.5 90M22.5 99L22.5 90M22.5 99L22.5 108M517.5 99L517.5 90M517.5 99L517.5 108M544.5 99L544.5 90M544.5 99L544.5 108M1039.5 99L1039.5 90M1039.5 99L1039.5 108M22.5 117L22.5 108M22.5 117L22.5 126M175.5 117L180 117M175.5 117L171 117M184.5 117L189 117M184.5 117L180 117M247.5 117L252 117M247.5 117L243 117M256.5 117L261 117M256.5 117L252 117M517.5 117L517.5 108M517.5 117L517.5 126M544.5 117L544.5 108M544.5 117L544.5 126M1039.5 117L1039.5 108M1039.5 117L1039.5 126M22.5 135L22.5 126M22.5 135L22.5 144M517.5 135L517.5 126M517.5 135L517.5 144M544.5 135L544.5 126M544.5 135L544.5 144M580.5 135L580.5 126M580.5 135L585 135M589.5 135L594 135M589.5 135L585 135M760.5 135L765 135M760.5 135L756 135M769.5 135L774 135M769.5 135L765 135M778.5 135L774 135M778.5 135L778.5 144M1039.5 135L1039.5 126M1039.5 135L1039.5 144M22.5 153L22.5 144M22.5 153L22.5 162M517.5 153L517.5 144M517.5 153L517.5 162M544.5 153L544.5 144M544.5 153L544.5 162M778.5 153L778.5 144M778.5 153L778.5 162M1039.5 153L1039.5 144M1039.5 153L1039.5 162M22.5 171L22.5 162M22.5 171L22.5 180M517.5 171L517.5 162M517.5 171L517.5 180M544.5 171L544.5 162M544.5 171L544.5 180M697.5 171L702 171M697.5 171L693 171M706.5 171L711 171M706.5 171L702 171M715.5 171L720 171M715.5 171L711 171M724.5 171L729 171M724.5 171L720 171M733.5 171L738 171M733.5 171L729 171M742.5 171L747 171M742.5 171L738 171M751.5 171L756 171M751.5 171L747 171M760.5 171L765 171M760.5 171L756 171M769.5 171L774 171M769.5 171L765 171M778.5 171L778.5 162M778.5 171L774 171M1039.5 171L1039.5 162M1039.5 171L1039.5 180M22.5 189L22.5 180M22.5 189L22.5 198M517.5 189L517.5 180M517.5 189L517.5 198M544.5 189L544.5 180M544.5 189L544.5 198M1039.5 189L1039.5 180M1039.5 189L1039.5 198M22.5 207L22.5 198M22.5 207L22.5 216M517.5 207L517.5 198M517.5 207L517.5 216M544.5 207L544.5 198M544.5 207L544.5 216M1039.5 207L1039.5 198M1039.5 207L1039.5 216M22.5 225L22.5 216M22.5 225L22.5 234M517.5 225L517.5 216M517.5 225L517.5 234M544.5 225L544.5 216M544.5 225L544.5 234M1039.5 225L1039.5 216M1039.5 225L1039.5 234M22.5 243L22.5 234M22.5 243L22.5 252M517.5 243L517.5 234M517.5 243L517.5 252M544.5 243L544.5 234M544.5 243L544.5 252M1039.5 243L1039.5 234M1039.5 243L1039.5 252M22.5 261L22.5 252M22.5 261L22.5 270M517.5 261L517.5 252M517.5 261L517.5 270M544.5 261L544.5 252M544.5 261L544.5 270M1039.5 261L1039.5 252M1039.5 261L1039.5 270M22.5 279L22.5 270M22.5 279L22.5 288M517.5 279L517.5 270M517.5 279L517.5 288M544.5 279L544.5 270M544.5 279L544.5 288M1039.5 279L1039.5 270M1039.5 279L1039.5 288M22.5 297L22.5 288M22.5 297L27 297M31.5 297L36 297M31.5 297L27 297M40.5 297L45 297M40.5 297L36 297M49.5 297L54 297M49.5 297L45 297M58.5 297L63 297M58.5 297L54 297M67.5 297L72 297M67.5 297L63 297M76.5 297L81 297M76.5 297L72 297M85.5 297L90 297M85.5 297L81 297M94.5 297L99 297M94.5 297L90 297M103.5 297L108 297M103.5 297L99 297M112.5 297L117 297M112.5 297L108 297M121.5 297L126 297M121.5 297L117 297M130.5 297L135 297M130.5 297L126 297M139.5 297L144 297M139.5 297L135 297M148.5 297L153 297M148.5 297L144 297M157.5 297L162 297M157.5 297L153 297M166.5 297L171 297M166.5 297L162 297M175.5 297L180 297M175.5 297L171 297M184.5 297L189 297M184.5 297L180 297M193.5 297L198 297M193.5 297L189 297M202.5 297L207 297M202.5 297L198 297M211.5 297L216 297M211.5 297L207 297M220.5 297L225 297M220.5 297L216 297M229.5 297L234 297M229.5 297L225 297M238.5 297L243 297M238.5 297L234 297M247.5 297L252 297M247.5 297L243 297M256.5 297L261 297M256.5 297L252 297M265.5 297L270 297M265.5 297L261 297M274.5 297L279 297M274.5 297L270 297M283.5 297L288 297M283.5 297L279 297M292.5 297L297 297M292.5 297L288 297M301.5 297L306 297M301.5 297L297 297M310.5 297L315 297M310.5 297L306 297M319.5 297L324 297M319.5 297L315 297M328.5 297L333 297M328.5 297L324 297M337.5 297L342 297M337.5 297L333 297M346.5 297L351 297M346.5 297L342 297M355.5 297L360 297M355.5 297L351 297M364.5 297L369 297M364.5 297L360 297M373.5 297L378 297M373.5 297L369 297M382.5 297L387 297M382.5 297L378 297M391.5 297L396 297M391.5 297L387 297M400.5 297L405 297M400.5 297L396 297M409.5 297L414 297M409.5 297L405 297M418.5 297L423 297M418.5 297L414 297M427.5 297L432 297M427.5 297L423 297M436.5 297L441 297M436.5 297L432 297M445.5 297L450 297M445.5 297L441 297M454.5 297L459 297M454.5 297L450 297M463.5 297L468 297M463.5 297L459 297M472.5 297L477 297M472.5 297L468 297M481.5 297L486 297M481.5 297L477 297M490.5 297L495 297M490.5 297L486 297M499.5 297L504 297M499.5 297L495 297M508.5 297L513 297M508.5 297L504 297M517.5 297L517.5 288M517.5 297L513 297M544.5 297L544.5 288M544.5 297L549 297M553.5 297L558 297M553.5 297L549 297M562.5 297L567 297M562.5 297L558 297M571.5 297L576 297M571.5 297L567 297M580.5 297L585 297M580.5 297L576 297M589.5 297L594 297M589.5 297L585 297M598.5 297L603 297M598.5 297L594 297M607.5 297L612 297M607.5 297L603 297M616.5 297L621 297M616.5 297L612 297M625.5 297L630 297M625.5 297L621 297M634.5 297L639 297M634.5 297L630 297M643.5 297L648 297M643.5 297L639 297M652.5 297L657 297M652.5 297L648 297M661.5 297L666 297M661.5 297L657 297M670.5 297L675 297M670.5 297L666 297M679.5 297L684 297M679.5 297L675 297M688.5 297L693 297M688.5 297L684 297M697.5 297L702 297M697.5 297L693 297M706.5 297L711 297M706.5 297L702 297M715.5 297L720 297M715.5 297L711 297M724.5 297L729 297M724.5 297L720 297M733.5 297L738 297M733.5 297L729 297M742.5 297L747 297M742.5 297L738 297M751.5 297L756 297M751.5 297L747 297M760.5 297L765 297M760.5 297L756 297M769.5 297L774 297M769.5 297L765 297M778.5 297L783 297M778.5 297L774 297M787.5 297L792 297M787.5 297L783 297M796.5 297L801 297M796.5 297L792 297M805.5 297L810 297M805.5 297L801 297M814.5 297L819 297M814.5 297L810 297M823.5 297L828 297M823.5 297L819 297M832.5 297L837 297M832.5 297L828 297M841.5 297L846 297M841.5 297L837 297M850.5 297L855 297M850.5 297L846 297M859.5 297L864 297M859.5 297L855 297M868.5 297L873 297M868.5 297L864 297M877.5 297L882 297M877.5 297L873 297M886.5 297L891 297M886.5 297L882 297M895.5 297L900 297M895.5 297L891 297M904.5 297L909 297M904.5 297L900 297M913.5 297L918 297M913.5 297L909 297M922.5 297L927 297M922.5 297L918 297M931.5 297L936 297M931.5 297L927 297M940.5 297L945 297M940.5 297L936 297M949.5 297L954 297M949.5 297L945 297M958.5 297L963 297M958.5 297L954 297M967.5 297L972 297M967.5 297L963 297M976.5 297L981 297M976.5 297L972 297M985.5 297L990 297M985.5 297L981 297M994.5 297L999 297M994.5 297L990 297M1003.5 297L1008 297M1003.5 297L999 297M1012.5 297L1017 297M1012.5 297L1008 297M1021.5 297L1026 297M1021.5 297L1017 297M1030.5 297L1035 297M1030.5 297L1026 297M1039.5 297L1039.5 288M1039.5 297L1035 297M526.5 333L531 333M526.5 333L522 333M535.5 333L540 333M535.5 333L531 333M787.5 333L792 333M787.5 333L783 333M796.5 333L801 333M796.5 333L792 333"/>
+<polygon points="270,117 261,112.5 261,121.5" class="accent"/>
+<polygon points="684,171 693,166.5 693,175.5" class="accent"/>
+<polygon points="549,333 540,328.5 540,337.5" class="accent"/>
+<polygon points="774,333 783,328.5 783,337.5" class="accent"/>
+<text class="ink" x="81" y="48.96">A</text>
+<text class="ink" x="99 108 117 126 135 144 153" y="48.96">CENTRAL</text>
+<text class="ink" x="171 180 189 198 207" y="48.96">DOCS/</text>
+<text class="ink" x="225 234 243 252" y="48.96">PAGE</text>
+<text class="ink" x="270" y="48.96">·</text>
+<text class="ink" x="288 297 306 315" y="48.96">WHAT</text>
+<text class="ink" x="333 342" y="48.96">IT</text>
+<text class="ink" x="360 369 378" y="48.96">CAN</text>
+<text class="ink" x="396 405 414" y="48.96">AND</text>
+<text class="ink" x="432 441 450 459 468 477" y="48.96">CANNOT</text>
+<text class="ink" x="495 504 513" y="48.96">SEE</text>
+<text class="ink" x="45 54 63 72 81 90 99" y="84.96">PITFALL</text>
+<text class="ink" x="117" y="84.96">·</text>
+<text class="ink" x="135 144 153" y="84.96">THE</text>
+<text class="ink" x="171 180 189 198 207" y="84.96">GUIDE</text>
+<text class="ink" x="225 234 243 252" y="84.96">ONLY</text>
+<text class="ink" x="270 279 288 297 306" y="84.96">LINKS</text>
+<text class="ink" x="324 333 342" y="84.96">THE</text>
+<text class="ink" x="360 369 378 387" y="84.96">CODE</text>
+<text class="ink" x="567 576 585 594 603 612 621" y="84.96">PATTERN</text>
+<text class="ink" x="639" y="84.96">·</text>
+<text class="ink" x="657 666 675" y="84.96">THE</text>
+<text class="ink" x="693 702 711 720 729" y="84.96">GUIDE</text>
+<text class="ink" x="747 756 765 774 783 792 801" y="84.96">IMPORTS</text>
+<text class="ink" x="819" y="84.96">A</text>
+<text class="ink" x="837 846 855 864 873 882 891" y="84.96">SUMMARY</text>
+<text class="ink" x="36 45 54 63 72 81 90 99 108 117 126 135 144" y="120.96">docs/guide.md</text>
+<text class="ink" x="198 207 216 225" y="120.96">link</text>
+<text class="muted" x="288 297 306 315 324 333 342 351 360 369 378 387 396 405 414 423 432 441 450 459" y="120.96">../src/auth/login.rs</text>
+<text class="ink" x="558 567 576 585 594 603 612 621 630 639 648 657 666 675 684 693 702 711" y="120.96">src/auth/README.md</text>
+<text class="ink" x="792 801 810 819 828 837 846 855 864 873 882 891 900 909 918 927 936" y="120.96">src/auth/login.rs</text>
+<text class="ink" x="99 108 117 126" y="138.96">src/</text>
+<text class="ink" x="144 153" y="138.96">is</text>
+<text class="ink" x="171 180 189 198 207 216 225" y="138.96">outside</text>
+<text class="ink" x="243 252 261" y="138.96">its</text>
+<text class="ink" x="279 288 297 306 315" y="138.96">scope</text>
+<text class="accent" x="612 621 630 639 648 657" y="138.96">export</text>
+<text class="ink" x="684 693 702 711 720 729 738" y="138.96">summary</text>
+<text class="accent" x="801 810 819 828 837 846" y="156.96">import</text>
+<text class="muted" x="882 891 900 909 918 927 936 945" y="156.96">#summary</text>
+<text class="ink" x="36 45 54 63 72 81 90 99 108 117 126 135 144 153 162 171 180" y="174.96">src/auth/login.rs</text>
+<text class="ink" x="198 207 216 225 234 243 252 261" y="174.96">changes:</text>
+<text class="ink" x="279 288" y="174.96">30</text>
+<text class="ink" x="306" y="174.96">→</text>
+<text class="ink" x="324 333" y="174.96">15</text>
+<text class="ink" x="351 360 369 378 387 396 405" y="174.96">minutes</text>
+<text class="ink" x="558 567 576 585 594 603 612 621 630 639 648 657 666" y="174.96">docs/guide.md</text>
+<text class="ink" x="99 108 117 126 135 144 153 162 171 180 189 198 207 216 225 234 243 252" y="192.96">src/auth/README.md</text>
+<text class="accent" x="324 333 342 351 360 369 378" y="192.96">pending</text>
+<text class="ink" x="621 630 639 648" y="192.96">src/</text>
+<text class="ink" x="666 675" y="192.96">is</text>
+<text class="ink" x="693 702 711 720 729" y="192.96">still</text>
+<text class="ink" x="747 756 765 774 783 792 801" y="192.96">outside</text>
+<text class="ink" x="819 828 837" y="192.96">its</text>
+<text class="ink" x="855 864 873 882 891" y="192.96">scope</text>
+<text class="ink" x="99 108 117 126 135 144 153 162 171 180 189 198 207" y="210.96">docs/guide.md</text>
+<text class="accent" x="324 333 342 351 360 369 378" y="210.96">current</text>
+<text class="ink" x="558 567 576 585" y="228.96">When</text>
+<text class="ink" x="603 612 621" y="228.96">the</text>
+<text class="ink" x="639 648 657 666 675 684 693" y="228.96">summary</text>
+<text class="ink" x="711 720 729 738 747 756 765 774" y="228.96">changes,</text>
+<text class="ink" x="792 801 810" y="228.96">the</text>
+<text class="ink" x="828 837 846 855 864" y="228.96">guide</text>
+<text class="accent" x="891 900 909 918 927" y="228.96">waits</text>
+<text class="ink" x="36 45 54" y="246.96">The</text>
+<text class="ink" x="72 81 90 99 108" y="246.96">guide</text>
+<text class="ink" x="126 135 144 153 162" y="246.96">still</text>
+<text class="ink" x="180 189 198 207" y="246.96">says</text>
+<text class="ink" x="225 234" y="246.96">30</text>
+<text class="ink" x="252 261 270 279 288 297 306 315" y="246.96">minutes,</text>
+<text class="ink" x="333 342 351" y="246.96">and</text>
+<text class="ink" x="369 378" y="246.96">no</text>
+<text class="ink" x="558 567 576" y="246.96">for</text>
+<text class="ink" x="594 603 612" y="246.96">the</text>
+<text class="ink" x="630 639 648 657 666 675 684" y="246.96">README,</text>
+<text class="ink" x="702 711 720 729" y="246.96">then</text>
+<text class="ink" x="747 756" y="246.96">it</text>
+<text class="ink" x="774 783" y="246.96">is</text>
+<text class="accent" x="810 819 828 837 846 855 864" y="246.96">pending</text>
+<text class="ink" x="36 45 54 63 72 81" y="264.96">review</text>
+<text class="ink" x="99 108 117 126" y="264.96">asks</text>
+<text class="ink" x="144 153 162 171 180 189" y="264.96">anyone</text>
+<text class="ink" x="207 216" y="264.96">to</text>
+<text class="ink" x="234 243 252 261" y="264.96">read</text>
+<text class="ink" x="279 288" y="264.96">it</text>
+<text class="ink" x="306 315 324 333 342 351" y="264.96">again.</text>
+<text class="ink" x="558 567 576 585 594" y="264.96">Other</text>
+<text class="ink" x="612 621 630 639" y="264.96">code</text>
+<text class="ink" x="657 666 675 684 693" y="264.96">edits</text>
+<text class="ink" x="711 720 729 738 747" y="264.96">never</text>
+<text class="ink" x="765 774 783 792 801" y="264.96">reach</text>
+<text class="ink" x="819 828 837" y="264.96">the</text>
+<text class="ink" x="855 864 873 882 891 900" y="264.96">guide.</text>
+<text class="ink" x="63 72" y="336.96">in</text>
+<text class="ink" x="90 99 108" y="336.96">the</text>
+<text class="ink" x="126 135 144 153 162 171 180 189 198 207" y="336.96">document&#x27;s</text>
+<text class="ink" x="225 234 243 252 261" y="336.96">scope</text>
+<text class="ink" x="342 351 360 369 378 387 396" y="336.96">outside</text>
+<text class="ink" x="414 423 432" y="336.96">its</text>
+<text class="ink" x="450 459 468 477 486" y="336.96">scope</text>
+<text class="ink" x="558 567 576 585 594" y="336.96">link:</text>
+<text class="ink" x="612 621 630 639 648 657 666 675 684 693" y="336.96">navigation</text>
+<text class="ink" x="711 720 729 738" y="336.96">only</text>
+<text class="accent" x="819 828 837 846 855 864" y="336.96">import</text>
+<text class="ink" x="891 900 909 918 927 936 945" y="336.96">carries</text>
+<text class="ink" x="963 972 981 990 999 1008 1017 1026 1035" y="336.96">freshness</text>
+</svg>

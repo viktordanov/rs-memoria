@@ -91,6 +91,7 @@ An acknowledgement is the saved result of that review.
 The executable encodes the artifact before it selects the output format, so the artifact limits apply equally to human text and JSON.
 Only the JSON artifact supports acknowledgement.
 Human text supports reading.
+`presentation/text.rs` renders `memoria guidance` as two labelled layers, project guidance and section guides, when a section guide applies.
 
 `--save DIR` writes the encoded JSON artifact into a directory outside the Git worktree, after the limits pass.
 The saved bytes are the bytes that `--format json` prints for the same snapshot.
@@ -99,7 +100,8 @@ With `--save`, the JSON output is a receipt that names the saved file, and the h
 The default human view in `presentation/review.rs` is change-first.
 It shows the header, the scope and its handoffs, the baseline, what changed with each relationship and its verified hunk, semantic requests, co-covering documents, export consumers, how to read, and three next steps.
 The hunks come from the same snapshot as the artifact, and only the human view shows them, bounded to 40 lines for one change and 160 in total.
-`--details` adds tokens, digests, per-input sizes and hashes, and counts, and shows all computed hunks. The evidence budget can omit hunks without a reason, even with `--details`.
+When section guides apply, a suggested section ends with `· guide: <path>`, and the guidance line counts the section guides. A document without guides keeps the 0.8 lines.
+`--details` adds tokens, digests, per-input sizes and hashes, counts, and at most 10 section guide paths, and shows all computed hunks. The evidence budget can omit hunks without a reason, even with `--details`.
 
 Source evidence: [main.rs](main.rs) and [presentation/review.rs](presentation/review.rs).
 <!-- /memoria:section -->
@@ -154,7 +156,7 @@ The executable also owns usage errors and errors during output delivery.
 | [presentation/json.rs](presentation/json.rs) | JSON envelope |
 
 An agent skill is a set of instruction files for an agent.
-`main.rs` embeds the four files of `skills/memoria/` at build time as `SKILL_PACKAGE`.
+`main.rs` embeds the five files of `skills/memoria/` at build time as `SKILL_PACKAGE`.
 The installer receives that embedded package through `FsSkillStore`, which records a hash for each file.
 A later edit to a source skill file requires a new binary build to change the installed text.
 

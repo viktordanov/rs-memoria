@@ -4,9 +4,10 @@
 use std::collections::BTreeMap;
 
 use memoria_application::ports::{
-    MarkdownCodec, MarkdownIssue, ParsedDocument, ParsedImport, ParsedLink, ParsedSection,
+    MarkdownCodec, MarkdownIssue, ParsedDocument, ParsedGuide, ParsedImport, ParsedLink,
+    ParsedSection,
 };
-use memoria_domain::section::validate_section_path;
+use memoria_domain::section::{validate_guidance_path, validate_section_path};
 use memoria_domain::{ByteRange, DocumentId, Export, ExportId, SourceLocation};
 use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd};
 
@@ -19,10 +20,15 @@ enum Marker {
     ExportClose,
     ImportOpen(String),
     ImportClose,
-    /// Advisory section: the `id` attribute and the authored `files` tokens.
+    /// Advisory section: the `id` attribute, the authored `files` tokens,
+    /// and the optional `guidance` token. `problem` holds an `id` or `files`
+    /// error found while the `guidance` token parsed: the section's advice is
+    /// withdrawn, but its guide still applies.
     SectionOpen {
         id: String,
         files: Vec<String>,
+        guidance: Option<String>,
+        problem: Option<String>,
     },
     SectionClose,
 }
@@ -30,19 +36,61 @@ enum Marker {
 /// A marker problem, routed to the structural or the advisory channel.
 ///
 /// Section problems never invalidate a README. They withdraw its focused
-/// advice and leave the reviewer with the full baseline.
+/// advice and leave the reviewer with the full baseline. A malformed
+/// `guidance` attribute is structural instead: dropping it would remove a
+/// guide from review context in silence.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum MarkerError {
     Structural(String),
     Section(String),
+    Guidance(String),
 }
 
 impl MarkerError {
     fn message(self) -> String {
         match self {
-            MarkerError::Structural(m) | MarkerError::Section(m) => m,
+            MarkerError::Structural(m) | MarkerError::Section(m) | MarkerError::Guidance(m) => m,
         }
     }
+}
+
+/// The byte index of the first `guidance` attribute name outside a
+/// double-quoted value: at the start or after whitespace, and followed by
+/// optional spaces or tabs and `=`. Text inside a quoted value, such as the
+/// source `files="guidance=rules.md"`, never counts.
+fn guidance_attribute(text: &str) -> Option<usize> {
+    const NAME: &str = "guidance";
+    let mut quoted = false;
+    let mut previous: Option<char> = None;
+    // Character offsets only: a byte inside a multi-byte character is never a
+    // slice boundary.
+    for (index, c) in text.char_indices() {
+        let before = previous.replace(c);
+        if c == '"' {
+            quoted = !quoted;
+            continue;
+        }
+        if quoted || !text[index..].starts_with(NAME) {
+            continue;
+        }
+        // Any whitespace separates attributes here, including U+00A0, so a
+        // wrongly separated guide is still reported.
+        if before.is_some_and(|b| !b.is_whitespace()) {
+            continue;
+        }
+        if text[index + NAME.len()..]
+            .trim_start_matches([' ', '\t'])
+            .starts_with('=')
+        {
+            return Some(index);
+        }
+    }
+    None
+}
+
+/// Whether a section-like line tries to name a section guide.
+fn mentions_guidance(line: &str) -> bool {
+    guidance_attribute(line).is_some()
 }
 
 fn line_of(text: &str, offset: usize) -> SourceLocation {
@@ -101,12 +149,113 @@ fn parse_section_files(raw: &str) -> Result<Vec<String>, String> {
     Ok(files)
 }
 
+/// Parse the `id` and optional `files` attributes of a section marker. A
+/// guide-only section (`guided`, with no `files`) has no sources.
+fn parse_section_attributes(attrs: &str, guided: bool) -> Result<(String, Vec<String>), String> {
+    let Some(rest) = attrs.strip_prefix("id=\"") else {
+        return Err("section marker requires `id=\"ID\"` as its first attribute".to_string());
+    };
+    let Some((id, rest)) = rest.split_once('"') else {
+        return Err("section marker attribute id is not closed".to_string());
+    };
+    if guided && rest.is_empty() {
+        if id.is_empty() {
+            return Err("section marker attributes are malformed".to_string());
+        }
+        return Ok((id.to_string(), Vec::new()));
+    }
+    let Some(files) = rest
+        .strip_prefix(" files=\"")
+        .and_then(|s| s.strip_suffix('"'))
+    else {
+        return Err(if guided {
+            "section marker allows only `files=\"PATH[ PATH...]\"` between `id` and `guidance`"
+                .to_string()
+        } else {
+            "section marker requires `files=\"PATH[ PATH...]\"` as its second attribute, a last `guidance=\"PATH\"` attribute, or both".to_string()
+        });
+    };
+    if id.is_empty() || files.contains('"') {
+        return Err("section marker attributes are malformed".to_string());
+    }
+    let files = parse_section_files(files)?;
+    Ok((id.to_string(), files))
+}
+
+/// Parse the attribute list of an opening section marker. The fixed order is
+/// `id`, then optional `files`, then optional `guidance`; at least one of
+/// `files` and `guidance` is present.
+fn parse_section_open(rest: &str) -> Result<Marker, MarkerError> {
+    const GUIDANCE: &str = " guidance=\"";
+    let (attrs, guidance) = if let Some(name) = guidance_attribute(rest) {
+        if name == 0 || !rest[..name].ends_with(' ') {
+            return Err(MarkerError::Guidance(
+                "section marker must write its guide as a last ` guidance=\"PATH\"` attribute after `id` and `files`".to_string(),
+            ));
+        }
+        if !rest[name..].starts_with(&GUIDANCE[1..]) {
+            return Err(MarkerError::Guidance(
+                "section marker attribute guidance must be written exactly `guidance=\"PATH\"`, with no space around `=`".to_string(),
+            ));
+        }
+        let index = name - 1;
+        let value = &rest[index + GUIDANCE.len()..];
+        let Some(value) = value.strip_suffix('"') else {
+            return Err(MarkerError::Guidance(
+                "section marker attribute guidance is not closed".to_string(),
+            ));
+        };
+        if value.contains('"') {
+            return Err(MarkerError::Guidance(
+                "a section names exactly one guide, in a `guidance` attribute that must be the marker's last attribute".to_string(),
+            ));
+        }
+        if rest[..index].ends_with(' ') {
+            return Err(MarkerError::Guidance(
+                "section marker attributes must be separated by exactly one space".to_string(),
+            ));
+        }
+        if let Err(err) = validate_guidance_path(value) {
+            return Err(MarkerError::Guidance(format!(
+                "section guide path {value:?}: {err}"
+            )));
+        }
+        (&rest[..index], Some(value.to_string()))
+    } else {
+        (rest, None)
+    };
+    match parse_section_attributes(attrs, guidance.is_some()) {
+        Ok((id, files)) => Ok(Marker::SectionOpen {
+            id,
+            files,
+            guidance,
+            problem: None,
+        }),
+        Err(message) => match guidance {
+            // The guide still applies; only the section's advice is withdrawn.
+            Some(guidance) => Ok(Marker::SectionOpen {
+                id: attrs
+                    .strip_prefix("id=\"")
+                    .and_then(|rest| rest.split_once('"'))
+                    .map(|(id, _)| id.to_string())
+                    .unwrap_or_default(),
+                files: Vec::new(),
+                guidance: Some(guidance),
+                problem: Some(message),
+            }),
+            None => Err(MarkerError::Section(message)),
+        },
+    }
+}
+
 /// Parse one marker line. `Ok(None)` when the line is not a marker at all.
 fn parse_marker(line: &str) -> Result<Option<Marker>, MarkerError> {
     let trimmed = line.trim_end_matches([' ', '\t', '\r']);
     let section_like = looks_like_section(line);
     let wrap = |message: String| {
-        if section_like {
+        if section_like && mentions_guidance(line) {
+            MarkerError::Guidance(message)
+        } else if section_like {
             MarkerError::Section(message)
         } else {
             MarkerError::Structural(message)
@@ -117,7 +266,7 @@ fn parse_marker(line: &str) -> Result<Option<Marker>, MarkerError> {
             return Err(wrap("marker must have the exact form `<!-- memoria:... -->` or `<!-- /memoria:... -->` at column zero".to_string()));
         }
         if section_like {
-            return Err(MarkerError::Section("section marker must have the exact form `<!-- memoria:section id=\"ID\" files=\"PATH\" -->` at column zero".to_string()));
+            return Err(wrap("section marker must have the exact form `<!-- memoria:section id=\"ID\" files=\"PATH\" -->` at column zero".to_string()));
         }
         return Ok(None);
     }
@@ -139,35 +288,7 @@ fn parse_marker(line: &str) -> Result<Option<Marker>, MarkerError> {
         return Err(wrap(format!("unknown closing marker {inner:?}")));
     }
     if let Some(rest) = inner.strip_prefix("memoria:section ") {
-        // Attribute order is fixed: `id` then `files`, each double-quoted.
-        let Some(rest) = rest.strip_prefix("id=\"") else {
-            return Err(MarkerError::Section(
-                "section marker requires `id=\"ID\"` as its first attribute".to_string(),
-            ));
-        };
-        let Some((id, rest)) = rest.split_once('"') else {
-            return Err(MarkerError::Section(
-                "section marker attribute id is not closed".to_string(),
-            ));
-        };
-        let Some(files) = rest
-            .strip_prefix(" files=\"")
-            .and_then(|s| s.strip_suffix('"'))
-        else {
-            return Err(MarkerError::Section(
-                "section marker requires `files=\"PATH[ PATH...]\"` as its second and last attribute".to_string(),
-            ));
-        };
-        if id.is_empty() || files.contains('"') {
-            return Err(MarkerError::Section(
-                "section marker attributes are malformed".to_string(),
-            ));
-        }
-        let files = parse_section_files(files).map_err(MarkerError::Section)?;
-        return Ok(Some(Marker::SectionOpen {
-            id: id.to_string(),
-            files,
-        }));
+        return parse_section_open(rest).map(Some);
     }
     let (kind, attribute) = match inner.strip_prefix("memoria:export ") {
         Some(rest) => ("export", rest),
@@ -502,9 +623,22 @@ impl MarkdownCodec for PulldownMarkdownCodec {
         struct OpenSection {
             id: String,
             files: Vec<String>,
+            guidance: Option<String>,
+            problem: bool,
             body_start: usize,
             location: SourceLocation,
         }
+        // A guide reference survives every section problem once its token
+        // parsed. The line range falls back to the marker line.
+        let guide_at = |token: &str, id: &str, location: SourceLocation| ParsedGuide {
+            token: token.to_string(),
+            section: id.to_string(),
+            heading: String::new(),
+            first_line: location.line,
+            last_line: location.line,
+            location,
+        };
+        let mut guides: Vec<ParsedGuide> = Vec::new();
         let mut open: Option<Open> = None;
         let mut open_section: Option<OpenSection> = None;
         // Set when an opening section marker was refused, so its matching
@@ -544,6 +678,15 @@ impl MarkdownCodec for PulldownMarkdownCodec {
                     section_recovering = !line.contains("/memoria:section");
                     continue;
                 }
+                Err(MarkerError::Guidance(message)) => {
+                    parsed.issues.push(MarkdownIssue {
+                        code: "section_guidance_invalid",
+                        message,
+                        location: Some(location),
+                    });
+                    section_recovering = !line.contains("/memoria:section");
+                    continue;
+                }
                 Err(err) => {
                     parsed.issues.push(MarkdownIssue {
                         code: "marker_malformed",
@@ -554,10 +697,22 @@ impl MarkdownCodec for PulldownMarkdownCodec {
                 }
             };
             match marker {
-                Marker::SectionOpen { id, files } => {
+                Marker::SectionOpen {
+                    id,
+                    files,
+                    guidance,
+                    problem,
+                } => {
+                    // A refused opening marker still names its guide.
+                    let refuse_guide = |guides: &mut Vec<ParsedGuide>| {
+                        if let Some(token) = &guidance {
+                            guides.push(guide_at(token, &id, location));
+                        }
+                    };
                     // Sections never nest, and never begin inside an export
                     // or import block whose body a provider owns.
                     if let Some(previous) = &open_section {
+                        refuse_guide(&mut guides);
                         section_issue(
                             &mut parsed.section_issues,
                             format!(
@@ -570,6 +725,7 @@ impl MarkdownCodec for PulldownMarkdownCodec {
                         continue;
                     }
                     if let Some(previous) = &open {
+                        refuse_guide(&mut guides);
                         section_issue(
                             &mut parsed.section_issues,
                             format!(
@@ -582,6 +738,7 @@ impl MarkdownCodec for PulldownMarkdownCodec {
                         continue;
                     }
                     if !has_newline {
+                        refuse_guide(&mut guides);
                         section_issue(
                             &mut parsed.section_issues,
                             "an opening section marker must be followed by a line ending".into(),
@@ -589,9 +746,14 @@ impl MarkdownCodec for PulldownMarkdownCodec {
                         );
                         continue;
                     }
+                    if let Some(message) = &problem {
+                        section_issue(&mut parsed.section_issues, message.clone(), location);
+                    }
                     open_section = Some(OpenSection {
                         id,
                         files,
+                        guidance,
+                        problem: problem.is_some(),
                         body_start: offset,
                         location,
                     });
@@ -610,6 +772,9 @@ impl MarkdownCodec for PulldownMarkdownCodec {
                         continue;
                     };
                     if let Some(inner) = &open {
+                        if let Some(token) = &current.guidance {
+                            guides.push(guide_at(token, &current.id, current.location));
+                        }
                         section_issue(
                             &mut parsed.section_issues,
                             format!(
@@ -618,6 +783,22 @@ impl MarkdownCodec for PulldownMarkdownCodec {
                             ),
                             current.location,
                         );
+                        continue;
+                    }
+                    let body = ByteRange::new(current.body_start, line_start);
+                    // The guide applies whatever else is wrong with the section.
+                    if let Some(token) = &current.guidance {
+                        let mut guide = guide_at(token, &current.id, current.location);
+                        guide.heading =
+                            leading_heading(&text[body.start..body.end]).unwrap_or_default();
+                        if body.end > body.start {
+                            guide.first_line = line_of(text, body.start).line;
+                            guide.last_line = line_of(text, body.end.saturating_sub(1)).line;
+                        }
+                        guides.push(guide);
+                    }
+                    if current.problem {
+                        // Already reported at the opening marker.
                         continue;
                     }
                     if section_ids.contains(&current.id) {
@@ -636,7 +817,6 @@ impl MarkdownCodec for PulldownMarkdownCodec {
                         );
                         continue;
                     }
-                    let body = ByteRange::new(current.body_start, line_start);
                     let heading = match leading_heading(&text[body.start..body.end]) {
                         Ok(heading) => heading,
                         Err(message) => {
@@ -652,6 +832,7 @@ impl MarkdownCodec for PulldownMarkdownCodec {
                     sections.push(ParsedSection {
                         id: current.id,
                         files: current.files,
+                        guidance: current.guidance,
                         heading,
                         body,
                         first_line: line_of(text, body.start).line,
@@ -752,6 +933,9 @@ impl MarkdownCodec for PulldownMarkdownCodec {
             });
         }
         if let Some(current) = open_section {
+            if let Some(token) = &current.guidance {
+                guides.push(guide_at(token, &current.id, current.location));
+            }
             section_issue(
                 &mut parsed.section_issues,
                 "section is never closed".into(),
@@ -759,6 +943,7 @@ impl MarkdownCodec for PulldownMarkdownCodec {
             );
         }
         parsed.exports = exports;
+        parsed.guides = guides;
         // One invalid mapping withdraws the whole README's advice. Partial
         // advice cannot narrow a review, because a reader cannot tell which
         // mapping the author meant to write.
@@ -958,6 +1143,97 @@ mod tests {
             assert!(parsed.sections.is_empty(), "{text:?}");
             assert!(parsed.issues.is_empty(), "{text:?}: {:?}", parsed.issues);
         }
+    }
+
+    #[test]
+    fn guidance_assignment_spacing_is_structural_and_quoted_values_are_inert() {
+        // R-001: a malformed `guidance` assignment never drops the guide with
+        // only a warning.
+        for marker in [
+            "<!-- memoria:section id=\"a\" files=\"x.rs\" guidance =\"g.md\" -->",
+            "<!-- memoria:section id=\"a\" files=\"x.rs\" guidance = \"g.md\" -->",
+            "<!-- memoria:section id=\"a\" files=\"x.rs\" guidance\t=\"g.md\" -->",
+            "<!-- memoria:section id=\"a\" guidance =\"g.md\" -->",
+        ] {
+            let parsed = parse(&format!("{marker}\n# T\n<!-- /memoria:section -->\n"));
+            assert!(
+                parsed
+                    .issues
+                    .iter()
+                    .any(|i| i.code == "section_guidance_invalid"),
+                "{marker:?}: {:?} {:?}",
+                parsed.issues,
+                parsed.section_issues
+            );
+        }
+        // R-002: `guidance=` inside a quoted `files` value is a literal path.
+        let parsed = parse(
+            "<!-- memoria:section id=\"commands\" files=\"guidance=rules.md\" -->\n## Commands\nRead the rules.\n<!-- /memoria:section -->\n",
+        );
+        assert!(parsed.issues.is_empty(), "{:?}", parsed.issues);
+        assert!(
+            parsed.section_issues.is_empty(),
+            "{:?}",
+            parsed.section_issues
+        );
+        assert_eq!(parsed.sections[0].files, vec!["guidance=rules.md"]);
+        assert_eq!(parsed.sections[0].guidance, None);
+        assert!(parsed.guides.is_empty());
+        // The same value beside a real guide keeps both apart.
+        let parsed = parse(
+            "<!-- memoria:section id=\"commands\" files=\"guidance=rules.md\" guidance=\"g.md\" -->\n## Commands\nText.\n<!-- /memoria:section -->\n",
+        );
+        assert!(parsed.issues.is_empty(), "{:?}", parsed.issues);
+        assert_eq!(parsed.sections[0].files, vec!["guidance=rules.md"]);
+        assert_eq!(parsed.sections[0].guidance.as_deref(), Some("g.md"));
+    }
+
+    #[test]
+    fn non_ascii_marker_text_is_scanned_by_character() {
+        // R-003: U+00A0 before `guidance` is a malformed separator, reported
+        // structurally, never a panic.
+        let parsed = parse(
+            "<!-- memoria:section id=\"commands\" files=\"source.txt\"\u{a0}guidance=\"guide.md\" -->\n## Commands\nText.\n<!-- /memoria:section -->\n",
+        );
+        assert!(
+            parsed
+                .issues
+                .iter()
+                .any(|i| i.code == "section_guidance_invalid"),
+            "{:?}",
+            parsed.issues
+        );
+        // An unquoted non-ASCII id without a guide stays advisory.
+        let parsed = parse(
+            "<!-- memoria:section id=\u{e9} files=\"source.txt\" -->\n## Commands\nText.\n<!-- /memoria:section -->\n",
+        );
+        assert!(parsed.issues.is_empty(), "{:?}", parsed.issues);
+        assert!(
+            parsed
+                .section_issues
+                .iter()
+                .all(|i| i.code == "section_mapping_invalid")
+                && !parsed.section_issues.is_empty()
+        );
+        // Controls: a quoted Unicode path parses, and a fenced malformed
+        // marker stays inert.
+        let parsed = parse(
+            "<!-- memoria:section id=\"commands\" files=\"\u{e9}.txt\" -->\n## Commands\nText.\n<!-- /memoria:section -->\n",
+        );
+        assert!(parsed.issues.is_empty() && parsed.section_issues.is_empty());
+        assert_eq!(parsed.sections[0].files, vec!["\u{e9}.txt"]);
+        let parsed =
+            parse("```markdown\n<!-- memoria:section id=\u{e9} files=\"source.txt\" -->\n```\n");
+        assert!(parsed.issues.is_empty() && parsed.section_issues.is_empty());
+        // Non-ASCII text anywhere before a valid guide still parses.
+        let parsed = parse(
+            "<!-- memoria:section id=\"commands\" files=\"\u{e9}.txt\" guidance=\"gu\u{ef}de.md\" -->\n## Commands\nText.\n<!-- /memoria:section -->\n",
+        );
+        assert!(parsed.issues.is_empty(), "{:?}", parsed.issues);
+        assert_eq!(
+            parsed.sections[0].guidance.as_deref(),
+            Some("gu\u{ef}de.md")
+        );
     }
 
     #[test]

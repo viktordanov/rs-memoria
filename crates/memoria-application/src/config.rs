@@ -12,6 +12,10 @@ pub struct RootConfig {
     pub guidance: Vec<String>,
     /// Guidance files, relative to this configuration file.
     pub guidance_files: Vec<String>,
+    /// Registered section guides, relative to this configuration file. A
+    /// registration reserves the file. It applies to a document only through
+    /// a section marker that names it.
+    pub section_guidance_files: Vec<String>,
     pub missing_import_hint: bool,
 }
 
@@ -22,6 +26,7 @@ impl Default for RootConfig {
             include: vec![],
             guidance: vec![],
             guidance_files: vec![],
+            section_guidance_files: vec![],
             missing_import_hint: true,
         }
     }
@@ -34,6 +39,32 @@ pub struct SidecarConfig {
     pub include: Vec<String>,
     pub guidance: Vec<String>,
     pub guidance_files: Vec<String>,
+}
+
+/// Why a `README.memoria.toml` sidecar was refused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SidecarRejection {
+    /// The sidecar does not parse or validate (`sidecar_invalid`).
+    Invalid(String),
+    /// The sidecar sets a key that only the root `memoria.toml` may set
+    /// (`configuration_invalid`).
+    RootOnlyKey(String),
+}
+
+impl SidecarRejection {
+    /// The diagnostic code the snapshot reports.
+    pub fn code(&self) -> &'static str {
+        match self {
+            SidecarRejection::Invalid(_) => "sidecar_invalid",
+            SidecarRejection::RootOnlyKey(_) => "configuration_invalid",
+        }
+    }
+
+    pub fn message(&self) -> &str {
+        match self {
+            SidecarRejection::Invalid(message) | SidecarRejection::RootOnlyKey(message) => message,
+        }
+    }
 }
 
 /// The template written by `memoria init --apply`.

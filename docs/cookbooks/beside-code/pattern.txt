@@ -1,0 +1,20 @@
+title: A marked page beside the code shares its folder with the README
+desc: The root README links billing/README.md and deploy/README.md, which hands each folder off. In billing/, README.md and design.md both cover invoice.rs and tax.rs, and two sections of design.md point at those files. notes.md has no marker, so it is a source of both documents. In deploy/, README.md and runbook.md both cover deploy.sh and config.toml, and two sections of runbook.md point at them.
+---
+                        «░░▒▒▓▓██» DOCUMENTS BESIDE THE CODE «██▓▓▒▒░░»
+
+                                           README.md
+                                               │ ‹a link to each folder README hands that folder off›
+                       ┌───────────────────────┴────────────────────────┐
+                       ▼                                                ▼
+┌─ billing/ ─────────────────────────────────┐   ┌─ deploy/ ──────────────────────────────────┐
+│                                            │   │                                            │
+│ README.md ──┬──▶ ▒▒▒▒ invoice.rs           │   │ README.md ───┬──▶ ▒▒▒▒ deploy.sh           │
+│ design.md ──┘    ▒▒▒▒ tax.rs               │   │ runbook.md ──┘    ▒▒▒▒ config.toml         │
+│  ├─ «section» invoice ──▶ invoice.rs       │   │  ├─ «section» release ───▶ deploy.sh       │
+│  └─ «section» tax ──────▶ tax.rs           │   │  └─ «section» settings ──▶ config.toml     │
+│ notes.md   ‹no marker: a source of both›   │   │                                            │
+│                                            │   │                                            │
+└────────────────────────────────────────────┘   └────────────────────────────────────────────┘
+
+ ▒▒▒▒ covered by both documents of the folder    «section» advice: the part to read    ──▶ covers or describes

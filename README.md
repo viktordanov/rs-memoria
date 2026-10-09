@@ -10,11 +10,25 @@ Memoria turns that into a review queue. It records fingerprints of the exact inp
 
 ## Contents
 
+- [Use cases](#use-cases)
 - [Purpose](#what-memoria-does-and-does-not-do) and [documentation strategy](#your-documentation-strategy)
 - [Quick start](#quick-start)
 - [Review workflow](#the-review-workflow) and [project guidance](#project-documentation-guidance)
 - [Command-line interface](#command-line-interface) and [task guides](#find-the-right-guide)
 - [Self-hosting and development](#self-hosting-and-development)
+
+## Use cases
+
+People and agents write the documents. Memoria keeps them current: it finds the ones to review again and records each review. The [cookbooks](docs/cookbooks/README.md) show each use case in a small, tested project.
+
+| When you need to… | Memoria… | Read |
+| --- | --- | --- |
+| Find every explanation that a feature change touches | Makes each document whose scope holds a changed file pending, in review order. | [Review workflow](docs/workflow.md) |
+| Block a merge until the documentation reviews are done | Fails `memoria check` in CI while a review is pending. | [GitHub Actions](docs/github-actions.md) |
+| Give an agent one bounded review handoff | Saves what changed, what to read, and which guidance applies in one artifact. The agent skill teaches the procedure. | [Agent integrations](docs/agents.md) |
+| Keep `AGENTS.md` and `CLAUDE.md` current | Tracks each file, and adds shared writing rules to the review of each section that names them. | [Agent instructions cookbook](docs/cookbooks/agent-instructions/README.md) |
+| Repeat one summary in several documents | Copies an export into each import with `memoria render`, and schedules the provider's review first. | [Concepts](docs/concepts.md) |
+| Review documents after a decision that changed no file | Records a review request with your reason. | [Review workflow](docs/workflow.md) |
 
 ## What Memoria does and does not do
 
@@ -27,13 +41,6 @@ What Memoria will never do:
 - Write or edit your prose. Only `memoria render` changes document text, and only inside explicitly declared import blocks.
 - Judge whether an explanation is good, complete, or true. A person or an agent does that.
 - Decide what a document should be about. That choice is yours, and Memoria works with whichever one you make.
-
-It earns its keep when:
-
-- A feature changes and you need to find every explanation it touches.
-- CI must block a merge until the required documentation reviews are done.
-- An agent needs the relevant source, the project's writing goals, and the review history in one bounded handoff.
-- A policy or architecture decision calls for review even though no source file changed.
 
 ## Your documentation strategy
 
@@ -251,6 +258,8 @@ memoria invalidate subtree:src --reason 'The workflow explanation has new requir
 
 That is deliberate. A wording tweak should not silently invalidate a hundred reviews, and Memoria will never do it for you.
 
+Some rules apply to one kind of section only, such as the command list in an `AGENTS.md`. Put them in a section guide: register the file once in `section_guidance_files`, and name it in each section marker that needs it with a `guidance="PATH"` attribute. A guide edit then reaches only the documents that name it, and project guidance still wins a conflict. The [agent instructions cookbook](docs/cookbooks/agent-instructions/README.md) walks through a complete example.
+
 ## Command-line interface
 
 This is the complete top-level interface. The command entry-point documentation owns this snapshot, and Memoria imports it here.
@@ -309,6 +318,8 @@ The first command is a preview. It works in any project, even one Memoria has ne
 | If you want to… | Read… |
 | --- | --- |
 | Learn the ideas behind scopes, handoffs, and imports | [Concepts](docs/concepts.md) |
+| See complete, tested uses of Memoria in small projects | [Cookbooks](docs/cookbooks/README.md) |
+| Keep `AGENTS.md` and `CLAUDE.md` current with shared section guides | [Agent instructions cookbook](docs/cookbooks/agent-instructions/README.md) |
 | Complete a documentation review | [Review workflow](docs/workflow.md) |
 | Look up a command or failure | [Command reference](docs/cli.md) |
 | Understand the committed state file | [Committed state](docs/state.md) |
@@ -321,7 +332,7 @@ Start with the concepts, then the workflow, if you are new. The command referenc
 
 ## Self-hosting and development
 
-Memoria is its own first real project. This repository has six READMEs and one opted-in guide, [the review workflow](docs/workflow.md). The root README imports short summaries from the other five READMEs and imports the review cycle from the guide. Because the root links and imports the guide, it hands `docs/` to the guide, which covers the other pages there. `memoria.lock` records the evidence each explanation was checked against.
+Memoria is its own first real project. This repository has eleven READMEs and one opted-in guide, [the review workflow](docs/workflow.md). The root README imports short summaries from five other READMEs and imports the review cycle from the guide. Because the root links and imports the guide, it hands `docs/` to the guide, which covers the other pages there. The guide hands `docs/cookbooks/` to the [cookbook index](docs/cookbooks/README.md), which hands each cookbook folder to its own README. `memoria.lock` records the evidence each explanation was checked against.
 
 Every review names the guidance in `memoria.toml`, and `memoria guidance` prints it. It asks documentation agents to load the `simple-english` and `i-have-adhd` skills, applies Simplified Technical English in its pragmatic mode, gives guides such as this page a concept-led voice, and establishes Mermaid as the diagram format. Those are this project's choices, not defaults Memoria imposes: `memoria init --apply` writes an empty guidance list.
 
@@ -417,6 +428,8 @@ python3 -m unittest discover -s tests/setup_action -p 'test_*.py'
 ./scripts/build-linux-release.sh --target x86_64-unknown-linux-gnu --output dist-a
 ./scripts/check-github-workflow-template.sh --binary ./target/release/memoria --output /tmp/generated.yml
 ```
+
+Each diagram in the cookbooks has a `.txt` source beside its SVG. After you edit a source, render it again with `python3 scripts/ascii-diagram.py <SOURCE>.txt`. `python3 scripts/ascii-diagram.py --check docs/cookbooks/*.txt docs/cookbooks/*/*.txt` fails when an SVG is not the current render of its source. CI does not run this check yet.
 
 </details>
 
