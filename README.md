@@ -10,11 +10,11 @@
 
 <p align="center"><img src="docs/assets/memoria-title.svg" width="820" alt="MEMORIA: never ship stale docs again. An edit to src/auth/login.rs makes src/auth/README.md pending while README.md and AGENTS.md stay current. memoria review lists that one document and the next command, and memoria review src/auth/README.md shows the change: SESSION_MINUTES went from 30 to 15, which the README must now say."></p>
 
-**Memoria keeps a project's documentation current as its code changes. When a file changes, it tells you which explanations to review, what to read, and in which order, then records each review against the exact bytes that the reviewer saw.**
+**Memoria is CI for your docs.** When the code changes, it tells you which documents need another look and shows you what changed. `memoria check` fails your build until someone has reviewed them.
 
-Documentation drift rarely announces itself. A feature changes, the tests move on, and the explanation that once made sense quietly becomes misleading. In a large repository, even finding the documents that deserve another look can be harder than fixing them, and the documents are written by people and by agents alike.
+Every repository has docs that were right once: a README, an `AGENTS.md`, a design note. Then the code moves on, nobody notices, and people and agents keep trusting the old explanation. Memoria ties each document to the code in its folder, so a change there puts that document back in a review queue.
 
-Memoria turns that into a review queue. People and agents still write and judge every explanation: Memoria does not write documentation, and it does not decide whether an explanation is correct. It decides which explanations have not been checked against their current inputs.
+You and your agents still write and judge every word. Memoria never writes docs or decides whether they are good. It makes sure nobody skips the check, and it records each review against the exact code that the reviewer saw.
 
 ## Install
 

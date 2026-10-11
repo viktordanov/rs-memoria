@@ -37,7 +37,7 @@ PAD = 2  # cells of padding on every side
 PIXEL = 2.0  # one dither pixel, in SVG units
 
 LIGHT = {"bg": "#f4f0e6", "ink": "#24211b", "muted": "#8a8170", "accent": "#c2410c"}
-DARK = {"bg": "#13120f", "ink": "#e8e3d4", "muted": "#7f7867", "accent": "#f59e0b"}
+DARK = {"bg": "#111111", "ink": "#e8e3d4", "muted": "#7f7867", "accent": "#f59e0b"}
 
 
 def palette_rules(colors):
