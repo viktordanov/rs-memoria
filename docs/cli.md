@@ -49,7 +49,8 @@ Neither command changes files.
 | `--root <directory>` | The directory must equal the Git worktree root. |
 | `--format human\|json` | Human text is the default. JSON produces one envelope on stdout. |
 | `--verbose` | Also print advisory hints and mutation progress notes on stderr. JSON output is the same with or without it. |
-| `--help`, `--version` | These arguments produce plain text. |
+| `--color auto\|always\|never` | Color human output. `auto`, the default, colors a stream only when it is a terminal, `NO_COLOR` is unset or empty, and `TERM` is not `dumb`. `always` colors a pipe too. JSON is never colored. Color adds escape sequences only: without them the text is the same bytes. |
+| `--help`, `--version` | These arguments print text. On a terminal, help uses the same colors as other human output. |
 
 Commands discover the worktree root from the current directory.
 Document and scope paths are relative to the project root.
@@ -267,6 +268,26 @@ Source evidence: [Git command construction](../crates/memoria-infrastructure/src
 </details>
 
 ## Inspection commands
+
+### `memoria onboard [review|agent|ci]`
+
+`memoria onboard` is the starting point for a person or an agent. It prints what Memoria is, the state of the current project, one next command, and links to the guides for this release. It writes nothing and needs no installed skill.
+
+The project block reports three facts, each with the command that completes it:
+
+| Row | Values |
+| --- | --- |
+| `Memoria` | `not set up`, the document count with `all current` or the number pending, or `needs attention` with the first error code. |
+| `Agent skill` | `not installed`, or each installed local skill with its state, for example `claude · outdated`. |
+| `CI check` | `not installed`, or the managed workflow path with its state. |
+
+Outside a Git repository, the hub omits the project block. Each topic is a short static guide: `review` gives the five review steps, `agent` the skill and the `Stop` hook, and `ci` the GitHub Actions check. Every view stays under about 1,000 tokens.
+
+JSON output contains `data.topic` (`null` for the hub), `data.project` (`null` outside a project or for a topic), `data.version`, and the exact human text in `data.text`. `data.project.setup.state` is `missing`, `configured`, or `broken`.
+
+### Color
+
+Human output is colored on a terminal. Memoria commands use the amber accent, paths a warm white, labels and separators a muted grey, pending and outdated states a gold, current states a green, and review hunks green for added lines and red for removed lines. `MEMORIA_THEME=light` or `dark` selects the palette; otherwise a light `COLORFGBG` background selects the light one. `COLORTERM=truecolor` or `24bit` selects 24-bit colors, and other terminals get the nearest of 256 colors. Pipes, files, CI logs, and agents read plain text unless `--color always` is given.
 
 ### Shell completions
 

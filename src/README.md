@@ -31,11 +31,14 @@ This arrangement keeps the public command list with the command entry point.
 
 <!-- memoria:export id="cli-help" -->
 ```text
+Memoria 0.9.2 — CI for your docs
+
 Keep a project's documented mental model connected to its code.
 
 Usage: memoria [OPTIONS] <COMMAND>
 
 Commands:
+  onboard       Start here: what Memoria is, where this project stands, and the next step
   completions   Print a shell completion script without project discovery or installation
   explain       Explain why one document is current, pending, or waiting, with verified local Git evidence
   packet        Read exact sections from a saved full export without project discovery
@@ -58,8 +61,12 @@ Options:
       --root <DIRECTORY>  Project root. Must be the Git worktree root. Defaults to discovery from the current directory
       --format <FORMAT>   Output format [default: human] [possible values: human, json]
       --verbose           Also print advisory hints and progress notes. JSON always carries every diagnostic
+      --color <COLOR>     Color human output on a terminal (auto), always, or never. NO_COLOR turns auto off. JSON is never colored [default: auto] [possible values: auto, always, never]
   -h, --help              Print help
   -V, --version           Print version
+
+Start here: memoria onboard
+Guides:     https://github.com/viktordanov/rs-memoria/tree/v0.9.2/docs
 ```
 <!-- /memoria:export -->
 

@@ -4,7 +4,7 @@ This file records user-visible changes in Memoria. The project maintainer owns r
 
 Contents:
 
-- [Unreleased](#unreleased)
+- [0.9.2](#092---2026-10-11)
 - [0.9.1](#091---2026-10-11)
 - [0.9.0](#090---2026-10-11)
 - [Migration to 0.9.0](#migration-to-090)
@@ -20,7 +20,29 @@ Contents:
 - [0.3.0](#030---2026-09-09)
 - [0.2.0](#020).
 
-## Unreleased
+## 0.9.2 - 2026-10-11
+
+No state, configuration, token, or saved-artifact format changes from 0.9.1. Replace the executable everywhere you run it, then run `memoria agent upgrade` for each installed skill: its text does not change, but its recorded version does.
+
+### Start with `memoria onboard`
+
+`memoria onboard` is the starting point for a person or an agent. It needs no installed skill and writes nothing. It prints:
+
+- what Memoria is, in three sentences;
+- where this project stands: setup, the installed agent skill, and the CI check, each with the one command that completes it;
+- the next step: `memoria init`, `memoria review`, or nothing to do;
+- a link to the concepts guide for this release.
+
+`memoria onboard review`, `memoria onboard agent`, and `memoria onboard ci` explain the review steps, the skill and the `Stop` hook, and the GitHub Actions check. Every view stays under about 1,000 tokens, and every command that a view prints is tested against the real grammar. JSON output carries the project state and the exact text.
+
+### Color on a terminal
+
+Human output is now colored when it goes to a terminal. Memoria commands use an amber accent, paths a warm white, labels and separators a muted grey, pending and outdated states a gold, current states a green, and review hunks green and red.
+
+- Only a terminal gets color. Pipes, files, CI logs, and agents read the same plain bytes as before.
+- `NO_COLOR` (non-empty) or `TERM=dumb` turns color off. The new global option `--color auto|always|never` overrides both. JSON is never colored.
+- `MEMORIA_THEME=light` or `dark` selects the palette. Without it, a light `COLORFGBG` background selects the light palette. `COLORTERM=truecolor` or `24bit` selects 24-bit colors; other terminals get the nearest of 256 colors.
+- A script that reads human output through a pseudo-terminal now sees escape sequences. Add `--color never`, set `NO_COLOR=1`, or read `--format json`.
 
 ### Development
 

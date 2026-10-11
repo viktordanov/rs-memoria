@@ -20,7 +20,7 @@ The two integrations do different work:
 - The **skill** teaches an agent the review procedure. It is a package of five Markdown files that the agent reads: `SKILL.md` with the five review stages, and four reference files that it loads only when it needs them (`review-details.md`, `saved-exports.md`, `integrations.md`, and `section-guidance.md`). One body serves Codex and Claude.
 - The **hook** reports the current documentation state at the end of an agent turn. It is one command entry in the client's configuration.
 
-Both are optional. Memoria works completely without them.
+Both are optional. Memoria works completely without them. An agent with neither can start with `memoria onboard`: it prints what Memoria is, where the project stands, and the next command, in under about 1,000 tokens. `memoria onboard agent` describes these two integrations.
 
 The preferred command names are `memoria integrations skill ...` and `memoria integrations hook ...`. The `memoria agent ...` names in this guide remain supported, with the same arguments, data, diagnostics, and exit statuses. The [integrations guide](integrations.md) maps the two spellings and describes the third branch, `memoria integrations github`.
 

@@ -8,6 +8,26 @@ pub enum Format {
     Json,
 }
 
+/// When human output uses color. `auto` colors a terminal unless NO_COLOR is
+/// set or TERM is dumb; `always` also colors a pipe; `never` never colors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ColorChoice {
+    Auto,
+    Always,
+    Never,
+}
+
+/// A topic of `memoria onboard`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum OnboardTopic {
+    /// The review cycle, step by step.
+    Review,
+    /// The agent skill and the Stop hook.
+    Agent,
+    /// The GitHub Actions check.
+    Ci,
+}
+
 #[derive(Debug, Parser)]
 #[command(name = "memoria", version, about = "Keep a project's documented mental model connected to its code.", long_about = None)]
 pub struct Cli {
@@ -20,12 +40,21 @@ pub struct Cli {
     /// Also print advisory hints and progress notes. JSON always carries every diagnostic.
     #[arg(long, global = true)]
     pub verbose: bool,
+    /// Color human output on a terminal (auto), always, or never. NO_COLOR turns auto off. JSON is never colored.
+    #[arg(long, global = true, value_enum, default_value_t = ColorChoice::Auto)]
+    pub color: ColorChoice,
     #[command(subcommand)]
     pub command: Command,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Start here: what Memoria is, where this project stands, and the next step.
+    Onboard {
+        /// Go deeper into one topic.
+        #[arg(value_enum)]
+        topic: Option<OnboardTopic>,
+    },
     /// Print a shell completion script without project discovery or installation.
     Completions { shell: CompletionShell },
     /// Explain why one document is current, pending, or waiting, with verified local Git evidence.
@@ -428,6 +457,7 @@ impl Command {
                 GithubCommand::Upgrade(_) => "integrations github upgrade",
                 GithubCommand::Uninstall(_) => "integrations github uninstall",
             },
+            Command::Onboard { .. } => "onboard",
             Command::Completions { .. } => "completions",
             Command::Explain { .. } => "explain",
             Command::State {

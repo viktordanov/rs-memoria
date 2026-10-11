@@ -6,7 +6,6 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use clap::Parser as _;
 use memoria_application::error::{AppError, Detail, Diagnostic, Outcome};
 use memoria_application::ports::{
     AgentScope, AgentTarget, PacketSource, Progress, Services, SkillOperation, WorkflowOperation,
@@ -24,6 +23,7 @@ use presentation::cli::{
     AgentCommand, Cli, Command, Format, GithubCommand, HookCommand, IntegrationsCommand, Scope,
     StateCommand, Target,
 };
+use presentation::style::{ColorEnv, Painter};
 use presentation::{json, text};
 
 /// The canonical agent skill package, embedded at build time. One body
@@ -205,6 +205,35 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
             true,
         );
     }
+    if let Command::Onboard { topic } = &cli.command {
+        // A topic is static. The hub reads the project when there is one,
+        // and still answers outside a Git repository.
+        let static_view = match topic {
+            Some(topic) => Some((Some(*topic), presentation::onboard::topic(*topic))),
+            None => match discover_root(cli.root.as_deref()) {
+                Err(error)
+                    if error
+                        .diagnostics
+                        .iter()
+                        .any(|d| d.code == "git_unavailable") =>
+                {
+                    Some((
+                        None,
+                        presentation::onboard::hub(None, home_dir().as_deref()),
+                    ))
+                }
+                _ => None,
+            },
+        };
+        if let Some((topic, human)) = static_view {
+            return Ok(CommandOutput {
+                data: onboard_detail(topic, Detail::Null, &human),
+                human,
+                diagnostics: vec![],
+                raw_json: None,
+            });
+        }
+    }
     let git = discover_root(cli.root.as_deref())?;
     let root = git.root().to_path_buf();
     let files = FsProjectFiles::new(root.clone());
@@ -291,6 +320,12 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
             command: StateCommand::Diff { .. },
         } => unreachable!("early dispatch"),
         Command::Packet { .. } => unreachable!("early dispatch"),
+        Command::Onboard { .. } => {
+            let outcome = usecases::onboard::run(&services)?;
+            let human = presentation::onboard::hub(Some(&outcome.data), home_dir().as_deref());
+            let data = onboard_detail(None, outcome.data.to_detail(), &human);
+            Ok(output(outcome, data, human))
+        }
         Command::Explain { document, full } => {
             let outcome = usecases::explain::run(&services, document)?;
             let data = outcome.data.to_detail();
@@ -614,6 +649,74 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
     }
 }
 
+/// Parse the arguments with the branded, colored help. Clap colors help
+/// and usage errors only on a terminal, and `--color` overrides that.
+fn parse(args: &[String]) -> Result<Cli, clap::Error> {
+    use clap::{CommandFactory as _, FromArgMatches as _};
+    let env = ColorEnv::from_process();
+    let mut previous: Option<&str> = None;
+    let mut color = clap::ColorChoice::Auto;
+    for arg in args.iter().skip(1) {
+        let value = arg
+            .strip_prefix("--color=")
+            .or_else(|| (previous == Some("--color")).then_some(arg.as_str()));
+        match value {
+            Some("always") => color = clap::ColorChoice::Always,
+            Some("never") => color = clap::ColorChoice::Never,
+            Some(_) => color = clap::ColorChoice::Auto,
+            None => {}
+        }
+        previous = Some(arg.as_str());
+    }
+    let command = Cli::command()
+        .styles(presentation::style::help_styles(&env))
+        .before_help(presentation::style::help_title(&env))
+        .after_help(presentation::style::help_footer(&env))
+        .color(color);
+    command
+        .try_get_matches_from(args)
+        .and_then(|matches| Cli::from_arg_matches(&matches))
+}
+
+/// The onboarding response: the topic, the project state when one was
+/// read, and the exact text, so an agent can read either.
+fn onboard_detail(
+    topic: Option<presentation::cli::OnboardTopic>,
+    project: Detail,
+    human: &str,
+) -> Detail {
+    use presentation::cli::OnboardTopic;
+    Detail::map()
+        .with(
+            "topic",
+            match topic {
+                None => Detail::Null,
+                Some(OnboardTopic::Review) => Detail::Text("review".into()),
+                Some(OnboardTopic::Agent) => Detail::Text("agent".into()),
+                Some(OnboardTopic::Ci) => Detail::Text("ci".into()),
+            },
+        )
+        .with("project", project)
+        .text("version", env!("CARGO_PKG_VERSION"))
+        .text("text", human)
+        .build()
+}
+
+fn home_dir() -> Option<String> {
+    std::env::var("HOME").ok().filter(|home| !home.is_empty())
+}
+
+/// The painters for stdout and stderr. Each stream decides on its own, so a
+/// redirected stdout stays plain while diagnostics on a terminal keep color.
+fn painters(cli: &Cli) -> (Painter, Painter) {
+    use std::io::IsTerminal as _;
+    let env = ColorEnv::from_process();
+    (
+        Painter::decide(cli.color, cli.format, std::io::stdout().is_terminal(), &env),
+        Painter::decide(cli.color, cli.format, std::io::stderr().is_terminal(), &env),
+    )
+}
+
 /// The default time a state mutation waits for another one to finish.
 const DEFAULT_LOCK_WAIT_MS: u64 = 10_000;
 /// The longest wait `MEMORIA_LOCK_WAIT_MS` accepts.
@@ -742,6 +845,7 @@ fn run_global_agent(
     cli: &Cli,
     (args, operation): (&presentation::cli::AgentArgs, SkillOperation),
 ) -> ExitCode {
+    let (out_painter, err_painter) = painters(cli);
     let mut stdout = std::io::stdout().lock();
     let deliver_result = |stdout: &mut std::io::StdoutLock<'_>,
                           result: Result<
@@ -762,12 +866,12 @@ fn run_global_agent(
                     Format::Human => {
                         eprint!(
                             "{}",
-                            presentation::human::render_diagnostics(
+                            err_painter.paint(&presentation::human::render_diagnostics(
                                 &human_diagnostics(cli, &outcome.diagnostics),
                                 presentation::human::HumanOptions::stderr()
-                            )
+                            ))
                         );
-                        text::agent(&outcome.data).into_bytes()
+                        out_painter.paint(&text::agent(&outcome.data)).into_bytes()
                     }
                 };
                 (0u8, payload)
@@ -780,16 +884,17 @@ fn run_global_agent(
                     Format::Human => {
                         eprint!(
                             "{}",
-                            presentation::human::render_diagnostics(
+                            err_painter.paint(&presentation::human::render_diagnostics(
                                 &error.diagnostics,
                                 presentation::human::HumanOptions::stderr()
-                            )
+                            ))
                         );
-                        format!(
-                            "memoria agent failed with exit status {}\n",
-                            error.class.code()
-                        )
-                        .into_bytes()
+                        out_painter
+                            .paint(&format!(
+                                "memoria agent failed with exit status {}\n",
+                                error.class.code()
+                            ))
+                            .into_bytes()
                     }
                 };
                 (error.class.code() as u8, payload)
@@ -893,7 +998,8 @@ fn json_requested(args: &[String]) -> bool {
 
 /// The command name for a usage-error envelope: the first known command word.
 fn command_word(args: &[String]) -> &'static str {
-    const KNOWN: [&str; 17] = [
+    const KNOWN: [&str; 18] = [
+        "onboard",
         "completions",
         "packet",
         "explain",
@@ -1170,7 +1276,7 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let cli = match Cli::try_parse_from(&args) {
+    let cli = match parse(&args) {
         Ok(cli) => cli,
         Err(err) => {
             // Help and version print to stdout with exit 0; usage errors exit 2.
@@ -1223,6 +1329,7 @@ fn main() -> ExitCode {
     } = &cli.command
     {
         let inspector = LockStateInspector::new(None, invocation_dir());
+        let (out_painter, err_painter) = painters(&cli);
         let mut stdout = std::io::stdout().lock();
         let (code, payload) = match usecases::state_inspect::run_file(&inspector, path) {
             Ok(outcome) => {
@@ -1231,7 +1338,9 @@ fn main() -> ExitCode {
                         json::envelope("state inspect", true, &outcome.data.to_detail(), &[])
                             .into_bytes()
                     }
-                    Format::Human => text::state_inspect(&outcome.data).into_bytes(),
+                    Format::Human => out_painter
+                        .paint(&text::state_inspect(&outcome.data))
+                        .into_bytes(),
                 };
                 (0u8, payload)
             }
@@ -1244,16 +1353,17 @@ fn main() -> ExitCode {
                     Format::Human => {
                         eprint!(
                             "{}",
-                            presentation::human::render_diagnostics(
+                            err_painter.paint(&presentation::human::render_diagnostics(
                                 &error.diagnostics,
                                 presentation::human::HumanOptions::stderr()
-                            )
+                            ))
                         );
-                        format!(
-                            "memoria state inspect failed with exit status {}\n",
-                            error.class.code()
-                        )
-                        .into_bytes()
+                        out_painter
+                            .paint(&format!(
+                                "memoria state inspect failed with exit status {}\n",
+                                error.class.code()
+                            ))
+                            .into_bytes()
                     }
                 };
                 (error.class.code() as u8, payload)
@@ -1302,6 +1412,7 @@ fn main() -> ExitCode {
         return run_hook(*target, *protocol, configuration_root);
     }
     let command_name = cli.command.name();
+    let (out_painter, err_painter) = painters(&cli);
     let mut stdout = std::io::stdout().lock();
     let (mut code, payload): (u8, Vec<u8>) = match run(&cli) {
         Ok(result) => {
@@ -1314,12 +1425,12 @@ fn main() -> ExitCode {
                 Format::Human => {
                     eprint!(
                         "{}",
-                        presentation::human::render_diagnostics(
+                        err_painter.paint(&presentation::human::render_diagnostics(
                             &human_diagnostics(&cli, &result.diagnostics),
                             presentation::human::HumanOptions::stderr()
-                        )
+                        ))
                     );
-                    result.human.into_bytes()
+                    out_painter.paint(&result.human).into_bytes()
                 }
             };
             (0, payload)
@@ -1333,16 +1444,17 @@ fn main() -> ExitCode {
                 Format::Human => {
                     eprint!(
                         "{}",
-                        presentation::human::render_diagnostics(
+                        err_painter.paint(&presentation::human::render_diagnostics(
                             &human_diagnostics(&cli, &error.diagnostics),
                             presentation::human::HumanOptions::stderr()
-                        )
+                        ))
                     );
-                    format!(
-                        "memoria {command_name} failed with exit status {}\n",
-                        error.class.code()
-                    )
-                    .into_bytes()
+                    out_painter
+                        .paint(&format!(
+                            "memoria {command_name} failed with exit status {}\n",
+                            error.class.code()
+                        ))
+                        .into_bytes()
                 }
             };
             (error.class.code() as u8, payload)

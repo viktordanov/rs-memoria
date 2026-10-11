@@ -13,6 +13,7 @@ mod history;
 pub mod init;
 pub mod invalidate;
 pub mod lint;
+pub mod onboard;
 pub mod packet_view;
 pub mod plan;
 pub mod prepare_review;

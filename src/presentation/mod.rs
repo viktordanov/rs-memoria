@@ -4,6 +4,8 @@
 pub mod cli;
 pub mod human;
 pub mod json;
+pub mod onboard;
+pub mod style;
 pub mod text;
 
 pub mod review;
