@@ -1,0 +1,20 @@
+title: Each README covers its own folder, and the root holds only the imported summaries
+desc: The root README covers compose.yaml. Below it, services/api/README.md covers services/api/, services/web/README.md covers services/web/, and libs/shared/README.md covers libs/shared/. The api and web READMEs each export a summary, and the root imports both summaries. The root links libs/shared/README.md, which hands that folder over but carries no summary.
+---
+«░▒▓█» EACH README COVERS ITS OWN FOLDER «█▓▒░»
+
+ ┌──────────────────────────────────────────────────────────────────────────────────────┐
+ │ README.md                                                                            │
+ │ ▓▓▓▓ compose.yaml                 holds a copy of each imported«summary»             │
+ └────────────────────────────────────────────────────────────────────────┬─────────────┘
+              ▲                             ▲                            ‹│›
+              │ «imports summary»           │ «imports summary»          ‹│› ‹link›
+              │                             │                            ‹│› ‹no summary›
+              │                             │                             ▼
+ ┌────────────┴─────────────┐  ┌────────────┴─────────────┐  ┌──────────────────────────┐
+ │ services/api/README.md   │  │ services/web/README.md   │  │ libs/shared/README.md    │
+ │ ▓▓▓▓ services/api/       │  │ ▓▓▓▓ services/web/       │  │ ▓▓▓▓ libs/shared/        │
+ │ exports«summary»         │  │ exports«summary»         │  │‹no export›               │
+ └──────────────────────────┘  └──────────────────────────┘  └──────────────────────────┘
+
+ ▓▓▓▓ files that README covers

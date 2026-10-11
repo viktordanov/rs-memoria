@@ -1,18 +1,16 @@
-title: Two agent instruction files share two section guides
-desc: AGENTS.md and CLAUDE.md each have a commands section that maps justfile and Cargo.toml and a guide-only boundaries section. Each commands section names the agent-commands guide and each boundaries section names the agent-rules guide. memoria.toml registers both guides, which are never sources or documents.
+title: Both agent instruction files name the same two section guides
+desc: AGENTS.md and CLAUDE.md each have a commands section and a boundaries section. Both commands sections name the guide docs/templates/agent-commands.md, which asks for the command, directory, when to run it, and its success signal. Both boundaries sections name docs/templates/agent-rules.md, which asks for the rule, its reason, and a safe alternative.
 ---
-«░▒▓█» AGENT INSTRUCTION FILES · ONE SET OF RULES FOR EVERY AGENT FILE «█▓▒░»
+«░▒▓█» TWO AGENT FILES · TWO SHARED SECTION GUIDES «█▓▒░»
 
-AGENTS.md ─┬─ «commands»   ──▶ ▓▓▓▓ justfile  Cargo.toml
-           └─ «boundaries» ──▶ ‹guide-only: no files›
-
-CLAUDE.md ─┬─ «commands»   ──▶ ▓▓▓▓ justfile  Cargo.toml
-           └─ «boundaries» ──▶ ‹guide-only: no files›
-
-guidance="…"  each section names one guide:
-  «commands»   ──▶ docs/templates/agent-commands.md   ‹command, directory, when, success›
-  «boundaries» ──▶ docs/templates/agent-rules.md      ‹rule, reason, safe alternative›
-
-memoria.toml  section_guidance_files ─▶ registers both guides ‹never sources, never documents›
-
-▓▓▓▓ files the section describes   «section» Memoria section marker   ──▶ names
+ AGENTS.md                    ‹docs/templates/›                  CLAUDE.md
+┌──────────────┐           ┌─────────────────────────┐           ┌──────────────┐
+│«commands»    ├─ names ──▶│ agent-commands.md       │◀── names ─┤«commands»    │
+│              │           │‹command, directory,›    │           │              │
+│              │           │‹when, success signal›   │           │              │
+│              │           └─────────────────────────┘           │              │
+│              │           ┌─────────────────────────┐           │              │
+│«boundaries»  ├─ names ──▶│ agent-rules.md          │◀── names ─┤«boundaries»  │
+│              │           │‹rule, reason,›          │           │              │
+│              │           │‹safe alternative›       │           │              │
+└──────────────┘           └─────────────────────────┘           └──────────────┘

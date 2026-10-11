@@ -1,16 +1,16 @@
 title: A section guide edit reaches only the documents that name the guide
-desc: Two panels. Editing project guidance in memoria.toml lists all four documents in memoria guidance --changed. Editing the agent-commands section guide lists only AGENTS.md and CLAUDE.md, and README.md and src/README.md stay unchanged. Neither edit makes a document pending.
+desc: Two panels compare what memoria guidance --changed lists after one edit. After an edit to project guidance in memoria.toml, it lists all four documents, because every document applies project guidance. After an edit to the agent-commands.md section guide, it lists only AGENTS.md and CLAUDE.md, because only they name that guide. README.md and src/README.md are not listed.
 ---
-«░▒▓█» WHAT ONE GUIDANCE EDIT REACHES «█▓▒░»
+«░▒▓█» WHAT memoria guidance --changed LISTS AFTER ONE EDIT «█▓▒░»
 
-┌─ EDIT PROJECT GUIDANCE (memoria.toml) ─────┐  ┌─ EDIT A SECTION GUIDE (agent-commands.md) ─┐
-│                                            │  │                                            │
-│ AGENTS.md       ▓▓▓▓ «guidance changed»    │  │ AGENTS.md       ▓▓▓▓ «guidance changed»    │
-│ CLAUDE.md       ▓▓▓▓ «guidance changed»    │  │ CLAUDE.md       ▓▓▓▓ «guidance changed»    │
-│ README.md       ▓▓▓▓ «guidance changed»    │  │ README.md       ░░░░ ‹unchanged›           │
-│ src/README.md   ▓▓▓▓ «guidance changed»    │  │ src/README.md   ░░░░ ‹unchanged›           │
-│                                            │  │                                            │
-│ Every document saw the old rule.           │  │ Only the documents that name the guide.    │
-└────────────────────────────────────────────┘  └────────────────────────────────────────────┘
-
-Neither edit makes a document pending. memoria guidance --changed lists ▓▓▓▓ documents for your decision.
+┌─ EDIT PROJECT GUIDANCE ─────────────┐   ┌─ EDIT ONE SECTION GUIDE ────────────┐
+│‹memoria.toml›                       │   │‹docs/templates/agent-commands.md›   │
+│                                     │   │                                     │
+│ AGENTS.md       «listed»            │   │ AGENTS.md       «listed»            │
+│ CLAUDE.md       «listed»            │   │ CLAUDE.md       «listed»            │
+│ README.md       «listed»            │   │ README.md       ‹not listed›        │
+│ src/README.md   «listed»            │   │ src/README.md   ‹not listed›        │
+│                                     │   │                                     │
+│ Every document applies it.          │   │ Only AGENTS.md and CLAUDE.md        │
+│                                     │   │ name it.                            │
+└─────────────────────────────────────┘   └─────────────────────────────────────┘

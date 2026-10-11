@@ -1,0 +1,21 @@
+title: Central guidance reaches every README, and a sidecar adds rules for one folder only
+desc: The guidance in memoria.toml and the guidance file docs/writing-guide.md apply to all four READMEs: README.md, services/api/README.md, services/web/README.md, and libs/shared/README.md. The sidecar services/api/README.memoria.toml adds guidance to services/api/README.md only.
+---
+«░▒▓█» ONE PLACE HOLDS THE RULES FOR EVERY README «█▓▒░»
+
+ ┌────────────────────────────────────────────────────────────────────────────────────┐
+ │ memoria.toml          ‹[documentation] guidance›                                   │
+ │ docs/writing-guide.md ‹named in guidance_files›                                    │
+ └──────────────────────────────────────────┬─────────────────────────────────────────┘
+                                            │ «guidance»for every README
+          ┌─────────────────────┬───────────┴─────────┬─────────────────────┐
+          ▼                     ▼                     ▼                     ▼
+ ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+ │ README.md        │  │ services/api/    │  │ services/web/    │  │ libs/shared/     │
+ │                  │  │ README.md        │  │ README.md        │  │ README.md        │
+ └──────────────────┘  └──────────────────┘  └──────────────────┘  └──────────────────┘
+                                ▲
+                                │ «guidance»for services/api/ only
+              ┌─────────────────┴─────────────────┐
+              │ services/api/README.memoria.toml  │
+              └───────────────────────────────────┘

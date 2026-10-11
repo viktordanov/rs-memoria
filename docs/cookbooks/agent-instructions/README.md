@@ -34,9 +34,9 @@ It makes no claim about reading cost or token savings.
 
 ## The project
 
-The project counts the words in a text file. Two agent instruction files share two section guides:
+The project counts the words in a text file. Its two agent instruction files have the same two sections, and each section names a shared section guide that holds its writing rules:
 
-![Two agent instruction files share two section guides: each commands section maps justfile and Cargo.toml, and each boundaries section is guide-only.](pattern.svg)
+![Both agent instruction files name the same two section guides: each commands section names agent-commands.md, and each boundaries section names agent-rules.md.](pattern.svg)
 
 The file tree:
 
@@ -445,8 +445,6 @@ Documents you leave alone stay listed here until their next review. Do not ackno
 
 The list holds exactly the two documents that name the guide.
 
-![A section guide edit reaches only the documents that name the guide, while a project guidance edit reaches every document.](guidance-reach.svg)
-
 For contrast, the same kind of edit in project guidance reaches every document. This output comes from a one-word edit to the `guidance` text in `memoria.toml`:
 
 <!-- cookbook-output: changed-global -->
@@ -469,6 +467,10 @@ Decide which documents this change affects. Memoria records nothing until you ac
   3. For each affected document or folder: memoria invalidate doc:<DOCUMENT> --reason "<what changed>" (or subtree:<DIRECTORY>), then review it
 Documents you leave alone stay listed here until their next review. Do not acknowledge them to clear this list.
 ```
+
+Side by side, the two lists show the reach of each kind of edit:
+
+![A section guide edit reaches only the documents that name the guide: an edit to project guidance lists all four documents, and an edit to agent-commands.md lists only AGENTS.md and CLAUDE.md.](guidance-reach.svg)
 
 3. Decide which documents the guide change affects. In this example, the new rule affects `AGENTS.md`: its command list must name tools. Request its review:
 

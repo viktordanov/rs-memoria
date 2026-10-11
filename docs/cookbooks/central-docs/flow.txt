@@ -1,19 +1,17 @@
-title: A summary change travels from the code to the docs page through one import
-desc: Six steps in two columns. 1, login.rs changes and src/auth/README.md is pending while docs/guide.md stays current. 2, the README edits its exported summary, and the guide waits with input changed. 3, the README is acknowledged and the guide is pending, render first. 4, memoria render copies the summary into the import body. 5, the guide is reviewed with imports_changed. 6, the guide is acknowledged and current. If the summary stays the same, the flow stops after step 1.
+title: When the summary changes, the README is reviewed first, then the guide is rendered and reviewed
+desc: Two columns, src/auth/README.md on the left and docs/guide.md on the right, and four steps in order. 1, the README reviewer edits the exported summary: the README is pending, and the guide becomes pending but waits for the README. 2, the README is reviewed and acknowledged: the README is current, and the guide is still pending but ready, after a render. 3, memoria render copies the new summary into the guide's import block. 4, the guide is reviewed and acknowledged: the guide is current.
 ---
-«░▒▓█» HOW ONE SUMMARY CHANGE TRAVELS «█▓▒░»
+«░▒▓█» A SUMMARY CHANGE: THE README FIRST, THEN THE GUIDE «█▓▒░»
 
-           src/auth/README.md                            docs/guide.md
-           ▓▓▓▓ ‹covers src/auth/›                       ░░░░ ‹covers no source›
+                         src/auth/README.md                   docs/guide.md
+                         ──────────────────                   ─────────────
 
-1 code    «pending»                                     «current»
-          ‹login.rs: 30 → 15›
-2 edit    «pending»               summary changed ──▶   «waiting»
-          ‹export: 15 minutes›                          ‹input changed: #summary›
-3 ack     «current»                                     «pending» ‹render first›
-4 render                          copy the summary ──▶  ‹import body: 15 minutes›
-5 review                                                «pending» ‹imports_changed›
-6 ack                                                   «current»
+1 edit the summary      «pending»      ── new summary ──▶    «pending»
+                                                             ‹waits for the README›
 
-If the README review keeps the summary the same, the flow stops at step 1 with «no-update»
-The guide then stays «current»
+2 review the README     «current»      ── unblocks ─────▶    «pending»
+                                                             ‹ready after a render›
+
+3 memoria render                       ── copies it ────▶     import block: new summary
+
+4 review the guide                                           «current»

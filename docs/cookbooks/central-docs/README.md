@@ -211,7 +211,9 @@ A section names only files in the document's own scope. It never adds a file to 
 
 ## The pattern: import a summary from beside the code
 
-![A docs page sees code changes only through the summaries that it imports: a link to the code leaves the guide current after a change, and an import of the README summary makes it wait and then become pending.](scope.svg)
+The pattern gives a code change one way into `docs/`. The README beside the code covers `login.rs`, so every code edit makes that README pending. The guide imports the README's summary, so only an edit to that summary makes the guide pending. The guide's link to the code stays navigation only.
+
+![A code change reaches the docs page only through the imported summary: any edit to login.rs makes src/auth/README.md pending, and only an edit to its exported summary crosses into docs/ and makes docs/guide.md pending. The guide's link to login.rs carries no change.](scope.svg)
 
 ### Export the summary beside the code
 
@@ -339,7 +341,9 @@ The guide was never pending. One code edit cost one README review.
 
 ## A code change that changes the summary
 
-![A summary change travels from the code to the docs page through one import: the README is pending, the guide waits, the README is acknowledged, render copies the summary, and the guide is reviewed and acknowledged.](flow.svg)
+When the summary changes, both documents need a review, in a fixed order. The README is reviewed first, because the guide waits for it. Then `memoria render` copies the new summary into the guide, and the guide is reviewed last.
+
+![When the summary changes, the README is reviewed first, then the guide is rendered and reviewed: 1, the README edits its summary and the guide becomes pending but waits; 2, the README review makes the README current and unblocks the guide; 3, memoria render copies the summary into the import block; 4, the guide review makes the guide current.](flow.svg)
 
 Sessions now end after 15 minutes:
 

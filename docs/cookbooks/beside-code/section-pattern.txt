@@ -1,0 +1,11 @@
+title: A literal path breaks when its file is renamed, and a pattern follows renamed and new files
+desc: The release section of deploy/runbook.md can map files in two ways. The literal path deploy.sh matches nothing after the rename to release.sh, so lint warns section_mapping_invalid. The pattern *.sh matches the renamed release.sh and the new rollback.sh with no edit to the marker.
+---
+            «░░▒▒▓▓██» A PATTERN FOLLOWS RENAMED AND NEW FILES «██▓▓▒▒░░»
+
+  ‹the release section maps›   ‹what it matches in deploy/›
+
+  files="deploy.sh"  ────────▶ nothing ‹(now release.sh)› ──▶ lint: «section_mapping_invalid»
+
+  files="*.sh"       ──────┬─▶ release.sh  ‹the renamed script›
+                           └─▶ rollback.sh ‹the new script, with no edit to the marker›

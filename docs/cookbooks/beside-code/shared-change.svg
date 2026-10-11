@@ -1,111 +1,64 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="945" height="432" viewBox="0 0 945 432" role="img" aria-labelledby="title desc">
-<title id="title">One change to tax.rs makes every document in billing/ pending, and one section is suggested</title>
-<desc id="desc">billing/tax.rs changes. billing/README.md, billing/design.md, and billing/notes.md all cover billing/, so all three become pending and each gets its own review. design.md maps a section to tax.rs, so its review is a focused candidate that suggests the tax section. README.md and notes.md have no section that maps tax.rs, so their reviews are full baselines. Every review still reads the whole document.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="810" height="270" viewBox="0 0 810 270" role="img" aria-labelledby="title desc">
+<title id="title">One change to tax.rs asks for three reviews, one for each document in billing/</title>
+<desc id="desc">billing/tax.rs changes. billing/README.md, billing/design.md, and billing/notes.md all cover billing/, so all three become pending and each gets its own review. Only design.md has a section that maps tax.rs, so only its review is a focused candidate that suggests the tax section. The other two reviews are full baselines. Every review still reads the whole document.</desc>
 <style>.bg{fill:#f4f0e6}.ink{fill:#24211b}.muted{fill:#8a8170}.accent{fill:#c2410c}.line{stroke:#24211b}.line-muted{stroke:#8a8170}.line-accent{stroke:#c2410c}@media (prefers-color-scheme: dark){.bg{fill:#13120f}.ink{fill:#e8e3d4}.muted{fill:#7f7867}.accent{fill:#f59e0b}.line{stroke:#e8e3d4}.line-muted{stroke:#7f7867}.line-accent{stroke:#f59e0b}}.line,.line-muted,.line-accent{stroke-width:1.5;fill:none;stroke-linecap:square}text{font-family:ui-monospace,"SFMono-Regular","JetBrains Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;font-size:15px;white-space:pre}</style>
 <defs><pattern id="d1-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/></pattern><pattern id="d2-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/><rect x="2" y="2" width="2" height="2" class="accent"/></pattern><pattern id="d3-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/><rect x="2" y="0" width="2" height="2" class="accent"/><rect x="2" y="2" width="2" height="2" class="accent"/></pattern><pattern id="d1-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/></pattern><pattern id="d2-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/><rect x="2" y="2" width="2" height="2" class="muted"/></pattern><pattern id="d3-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/><rect x="2" y="0" width="2" height="2" class="muted"/><rect x="2" y="2" width="2" height="2" class="muted"/></pattern><pattern id="d1-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/></pattern><pattern id="d2-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/><rect x="2" y="2" width="2" height="2" class="ink"/></pattern><pattern id="d3-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/><rect x="2" y="0" width="2" height="2" class="ink"/><rect x="2" y="2" width="2" height="2" class="ink"/></pattern></defs>
-<rect class="bg" width="945" height="432" rx="8"/>
-<rect x="225" y="37" width="18" height="16" fill="url(#d1-accent)"/>
-<rect x="243" y="37" width="18" height="16" fill="url(#d2-accent)"/>
-<rect x="261" y="37" width="18" height="16" fill="url(#d3-accent)"/>
-<rect x="279" y="37" width="18" height="16" class="accent"/>
-<rect x="648" y="37" width="18" height="16" class="accent"/>
-<rect x="666" y="37" width="18" height="16" fill="url(#d3-accent)"/>
-<rect x="684" y="37" width="18" height="16" fill="url(#d2-accent)"/>
-<rect x="702" y="37" width="18" height="16" fill="url(#d1-accent)"/>
-<rect x="477" y="199" width="36" height="16" fill="url(#d2-ink)"/>
-<rect x="477" y="217" width="36" height="16" fill="url(#d2-ink)"/>
-<rect x="477" y="235" width="36" height="16" fill="url(#d3-ink)"/>
-<rect x="27" y="379" width="36" height="16" fill="url(#d3-ink)"/>
-<rect x="252" y="379" width="36" height="16" fill="url(#d2-ink)"/>
-<path class="line" d="M58.5 99L58.5 90M58.5 99L58.5 108M58.5 117L58.5 108M58.5 117L63 117M58.5 117L58.5 126M67.5 117L72 117M67.5 117L63 117M76.5 117L81 117M76.5 117L72 117M373.5 117L378 117M373.5 117L369 117M382.5 117L387 117M382.5 117L378 117M58.5 135L58.5 126M58.5 135L58.5 144M58.5 153L58.5 144M58.5 153L63 153M58.5 153L58.5 162M67.5 153L72 153M67.5 153L63 153M76.5 153L81 153M76.5 153L72 153M373.5 153L378 153M373.5 153L369 153M382.5 153L387 153M382.5 153L378 153M589.5 153L594 153M589.5 153L585 153M598.5 153L603 153M598.5 153L594 153M607.5 153L603 153M607.5 153L607.5 162M58.5 171L58.5 162M58.5 171L58.5 180M58.5 189L58.5 180M58.5 189L58.5 198M463.5 189L468 189M463.5 189L463.5 198M472.5 189L477 189M472.5 189L468 189M652.5 189L657 189M652.5 189L648 189M661.5 189L666 189M661.5 189L657 189M670.5 189L675 189M670.5 189L666 189M679.5 189L684 189M679.5 189L675 189M688.5 189L693 189M688.5 189L684 189M697.5 189L702 189M697.5 189L693 189M706.5 189L711 189M706.5 189L702 189M715.5 189L720 189M715.5 189L711 189M724.5 189L729 189M724.5 189L720 189M733.5 189L738 189M733.5 189L729 189M742.5 189L747 189M742.5 189L738 189M751.5 189L756 189M751.5 189L747 189M760.5 189L765 189M760.5 189L756 189M769.5 189L774 189M769.5 189L765 189M778.5 189L783 189M778.5 189L774 189M787.5 189L792 189M787.5 189L783 189M796.5 189L801 189M796.5 189L792 189M805.5 189L810 189M805.5 189L801 189M814.5 189L819 189M814.5 189L810 189M823.5 189L828 189M823.5 189L819 189M832.5 189L837 189M832.5 189L828 189M841.5 189L846 189M841.5 189L837 189M850.5 189L855 189M850.5 189L846 189M859.5 189L864 189M859.5 189L855 189M868.5 189L873 189M868.5 189L864 189M877.5 189L882 189M877.5 189L873 189M886.5 189L891 189M886.5 189L882 189M895.5 189L900 189M895.5 189L891 189M904.5 189L909 189M904.5 189L900 189M913.5 189L918 189M913.5 189L909 189M922.5 189L918 189M922.5 189L922.5 198M58.5 207L58.5 198M58.5 207L58.5 216M463.5 207L463.5 198M463.5 207L463.5 216M922.5 207L922.5 198M922.5 207L922.5 216M58.5 225L58.5 216M58.5 225L58.5 234M463.5 225L463.5 216M463.5 225L463.5 234M922.5 225L922.5 216M922.5 225L922.5 234M58.5 243L58.5 234M58.5 243L58.5 252M463.5 243L463.5 234M463.5 243L463.5 252M922.5 243L922.5 234M922.5 243L922.5 252M58.5 261L58.5 252M58.5 261L58.5 270M463.5 261L463.5 252M463.5 261L468 261M472.5 261L477 261M472.5 261L468 261M481.5 261L486 261M481.5 261L477 261M490.5 261L495 261M490.5 261L486 261M499.5 261L504 261M499.5 261L495 261M508.5 261L513 261M508.5 261L504 261M517.5 261L522 261M517.5 261L513 261M526.5 261L531 261M526.5 261L522 261M535.5 261L540 261M535.5 261L531 261M544.5 261L549 261M544.5 261L540 261M553.5 261L558 261M553.5 261L549 261M562.5 261L567 261M562.5 261L558 261M571.5 261L576 261M571.5 261L567 261M580.5 261L585 261M580.5 261L576 261M589.5 261L594 261M589.5 261L585 261M598.5 261L603 261M598.5 261L594 261M607.5 261L612 261M607.5 261L603 261M616.5 261L621 261M616.5 261L612 261M625.5 261L630 261M625.5 261L621 261M634.5 261L639 261M634.5 261L630 261M643.5 261L648 261M643.5 261L639 261M652.5 261L657 261M652.5 261L648 261M661.5 261L666 261M661.5 261L657 261M670.5 261L675 261M670.5 261L666 261M679.5 261L684 261M679.5 261L675 261M688.5 261L693 261M688.5 261L684 261M697.5 261L702 261M697.5 261L693 261M706.5 261L711 261M706.5 261L702 261M715.5 261L720 261M715.5 261L711 261M724.5 261L729 261M724.5 261L720 261M733.5 261L738 261M733.5 261L729 261M742.5 261L747 261M742.5 261L738 261M751.5 261L756 261M751.5 261L747 261M760.5 261L765 261M760.5 261L756 261M769.5 261L774 261M769.5 261L765 261M778.5 261L783 261M778.5 261L774 261M787.5 261L792 261M787.5 261L783 261M796.5 261L801 261M796.5 261L792 261M805.5 261L810 261M805.5 261L801 261M814.5 261L819 261M814.5 261L810 261M823.5 261L828 261M823.5 261L819 261M832.5 261L837 261M832.5 261L828 261M841.5 261L846 261M841.5 261L837 261M850.5 261L855 261M850.5 261L846 261M859.5 261L864 261M859.5 261L855 261M868.5 261L873 261M868.5 261L864 261M877.5 261L882 261M877.5 261L873 261M886.5 261L891 261M886.5 261L882 261M895.5 261L900 261M895.5 261L891 261M904.5 261L909 261M904.5 261L900 261M913.5 261L918 261M913.5 261L909 261M922.5 261L922.5 252M922.5 261L918 261M58.5 279L58.5 270M58.5 279L58.5 288M58.5 297L58.5 288M58.5 297L63 297M67.5 297L72 297M67.5 297L63 297M76.5 297L81 297M76.5 297L72 297M373.5 297L378 297M373.5 297L369 297M382.5 297L387 297M382.5 297L378 297"/>
-<polygon points="90,117 81,112.5 81,121.5" class="accent"/>
-<polygon points="396,117 387,112.5 387,121.5" class="accent"/>
-<polygon points="90,153 81,148.5 81,157.5" class="accent"/>
-<polygon points="396,153 387,148.5 387,157.5" class="accent"/>
-<polygon points="607.5,175.5 603,166.5 612,166.5" class="accent"/>
-<polygon points="810,243 819,238.5 819,247.5" class="accent"/>
-<polygon points="90,297 81,292.5 81,301.5" class="accent"/>
-<polygon points="396,297 387,292.5 387,301.5" class="accent"/>
-<text class="ink" x="315 324 333" y="48.96">ONE</text>
-<text class="ink" x="351 360 369 378 387 396" y="48.96">CHANGE</text>
-<text class="ink" x="414 423" y="48.96">TO</text>
-<text class="ink" x="441 450 459 468 477 486 495" y="48.96">TAX.RS,</text>
-<text class="ink" x="513 522 531 540 549" y="48.96">THREE</text>
-<text class="ink" x="567 576 585 594 603 612 621" y="48.96">REVIEWS</text>
-<text class="ink" x="27 36 45 54 63 72 81 90 99 108 117 126 135 144" y="84.96">billing/tax.rs</text>
-<text class="accent" x="180 189 198 207 216 225 234" y="84.96">changed</text>
-<text class="ink" x="99 108 117 126 135 144 153 162 171 180 189 198 207 216 225 234 243" y="120.96">billing/README.md</text>
-<text class="accent" x="288 297 306 315 324 333 342" y="120.96">pending</text>
-<text class="accent" x="414 423 432 441" y="120.96">full</text>
-<text class="accent" x="459 468 477 486 495 504 513 522" y="120.96">baseline</text>
-<text class="muted" x="612 621" y="120.96">no</text>
-<text class="muted" x="639 648 657 666 675 684 693" y="120.96">section</text>
-<text class="muted" x="711 720 729 738" y="120.96">maps</text>
-<text class="muted" x="756 765 774 783 792 801" y="120.96">tax.rs</text>
-<text class="ink" x="99 108 117 126 135 144 153 162 171 180 189 198 207 216 225 234 243" y="156.96">billing/design.md</text>
-<text class="accent" x="288 297 306 315 324 333 342" y="156.96">pending</text>
-<text class="accent" x="414 423 432 441 450 459 468" y="156.96">focused</text>
-<text class="accent" x="486 495 504 513 522 531 540 549 558" y="156.96">candidate</text>
-<text class="ink" x="486 495 504 513 522 531 540 549 558 567 576 585 594 603 612 621 630" y="192.96">billing/design.md</text>
-<text class="ink" x="522" y="210.96">#</text>
-<text class="ink" x="540 549 558 567 576 585 594" y="210.96">Billing</text>
-<text class="ink" x="612 621 630 639 648 657" y="210.96">design</text>
-<text class="ink" x="522 531" y="228.96">##</text>
-<text class="ink" x="549 558 567 576 585 594 603" y="228.96">Invoice</text>
-<text class="ink" x="621 630 639 648 657" y="228.96">lines</text>
-<text class="muted" x="693 702 711 720 729 738 747" y="228.96">section</text>
-<text class="muted" x="765 774 783 792 801 810 819" y="228.96">invoice</text>
-<text class="ink" x="522 531" y="246.96">##</text>
-<text class="ink" x="549 558 567" y="246.96">Tax</text>
-<text class="accent" x="693 702 711 720 729 738 747" y="246.96">section</text>
-<text class="accent" x="765 774 783" y="246.96">tax</text>
-<text class="ink" x="828 837 846 855 864 873 882 891 900" y="246.96">suggested</text>
-<text class="ink" x="99 108 117 126 135 144 153 162 171 180 189 198 207 216 225 234" y="300.96">billing/notes.md</text>
-<text class="accent" x="288 297 306 315 324 333 342" y="300.96">pending</text>
-<text class="accent" x="414 423 432 441" y="300.96">full</text>
-<text class="accent" x="459 468 477 486 495 504 513 522" y="300.96">baseline</text>
-<text class="muted" x="612 621" y="300.96">no</text>
-<text class="muted" x="639 648 657 666 675 684 693" y="300.96">section</text>
-<text class="muted" x="711 720 729 738" y="300.96">maps</text>
-<text class="muted" x="756 765 774 783 792 801" y="300.96">tax.rs</text>
-<text class="ink" x="27 36 45 54" y="336.96">Each</text>
-<text class="ink" x="72 81 90 99 108 117 126 135" y="336.96">document</text>
-<text class="ink" x="153 162 171 180" y="336.96">gets</text>
-<text class="ink" x="198 207 216" y="336.96">its</text>
-<text class="ink" x="234 243 252" y="336.96">own</text>
-<text class="ink" x="270 279 288 297 306 315 324" y="336.96">review,</text>
-<text class="ink" x="342 351 360" y="336.96">its</text>
-<text class="ink" x="378 387 396" y="336.96">own</text>
-<text class="ink" x="414 423 432 441 450 459 468 477 486" y="336.96">artifact,</text>
-<text class="ink" x="504 513 522" y="336.96">and</text>
-<text class="ink" x="540 549 558" y="336.96">its</text>
-<text class="ink" x="576 585 594" y="336.96">own</text>
-<text class="ink" x="612 621 630 639" y="336.96">ack.</text>
-<text class="ink" x="27 36 45 54 63" y="354.96">Every</text>
-<text class="ink" x="81 90 99 108 117 126" y="354.96">review</text>
-<text class="ink" x="144 153 162 171 180" y="354.96">reads</text>
-<text class="ink" x="198 207 216" y="354.96">the</text>
-<text class="ink" x="234 243 252 261 270" y="354.96">whole</text>
-<text class="ink" x="288 297 306 315 324 333 342 351 360" y="354.96">document.</text>
-<text class="ink" x="378" y="354.96">A</text>
-<text class="ink" x="396 405 414 423 432 441 450 459 468" y="354.96">suggested</text>
-<text class="ink" x="486 495 504 513 522 531 540" y="354.96">section</text>
-<text class="ink" x="558 567 576 585" y="354.96">only</text>
-<text class="ink" x="603 612 621 630" y="354.96">says</text>
-<text class="ink" x="648 657 666 675 684" y="354.96">where</text>
-<text class="ink" x="702 711" y="354.96">to</text>
-<text class="ink" x="729 738 747 756 765 774" y="354.96">start.</text>
-<text class="ink" x="72 81 90 99 108 117 126 135 144" y="390.96">suggested</text>
-<text class="ink" x="162 171 180 189 198 207 216" y="390.96">section</text>
-<text class="ink" x="297 306 315" y="390.96">the</text>
-<text class="ink" x="333 342 351 360" y="390.96">rest</text>
-<text class="ink" x="378 387" y="390.96">of</text>
-<text class="ink" x="405 414 423" y="390.96">the</text>
-<text class="ink" x="441 450 459 468 477 486 495 504 513" y="390.96">document:</text>
-<text class="ink" x="531 540 549" y="390.96">the</text>
-<text class="ink" x="567 576 585 594 603 612 621 630 639 648 657 666 675 684" y="390.96">whole-document</text>
-<text class="ink" x="702 711 720 729" y="390.96">pass</text>
-<text class="ink" x="747 756 765 774 783" y="390.96">reads</text>
-<text class="ink" x="801 810" y="390.96">it</text>
-<text class="ink" x="828 837 846" y="390.96">too</text>
+<rect class="bg" width="810" height="270" rx="8"/>
+<rect x="162" y="37" width="18" height="16" fill="url(#d1-accent)"/>
+<rect x="180" y="37" width="18" height="16" fill="url(#d2-accent)"/>
+<rect x="198" y="37" width="18" height="16" fill="url(#d3-accent)"/>
+<rect x="216" y="37" width="18" height="16" class="accent"/>
+<rect x="585" y="37" width="18" height="16" class="accent"/>
+<rect x="603" y="37" width="18" height="16" fill="url(#d3-accent)"/>
+<rect x="621" y="37" width="18" height="16" fill="url(#d2-accent)"/>
+<rect x="639" y="37" width="18" height="16" fill="url(#d1-accent)"/>
+<path class="line" d="M67.5 99L67.5 90M67.5 99L67.5 108M67.5 117L67.5 108M67.5 117L72 117M67.5 117L67.5 126M76.5 117L81 117M76.5 117L72 117M85.5 117L90 117M85.5 117L81 117M67.5 135L67.5 126M67.5 135L67.5 144M67.5 153L67.5 144M67.5 153L72 153M67.5 153L67.5 162M76.5 153L81 153M76.5 153L72 153M85.5 153L90 153M85.5 153L81 153M67.5 171L67.5 162M67.5 171L67.5 180M67.5 189L67.5 180M67.5 189L72 189M76.5 189L81 189M76.5 189L72 189M85.5 189L90 189M85.5 189L81 189"/>
+<polygon points="99,117 90,112.5 90,121.5" class="accent"/>
+<polygon points="99,153 90,148.5 90,157.5" class="accent"/>
+<polygon points="99,189 90,184.5 90,193.5" class="accent"/>
+<text class="ink" x="252 261 270" y="48.96">ONE</text>
+<text class="ink" x="288 297 306 315 324 333" y="48.96">CHANGE</text>
+<text class="ink" x="351 360" y="48.96">TO</text>
+<text class="ink" x="378 387 396 405 414 423 432" y="48.96">TAX.RS,</text>
+<text class="ink" x="450 459 468 477 486" y="48.96">THREE</text>
+<text class="ink" x="504 513 522 531 540 549 558" y="48.96">REVIEWS</text>
+<text class="ink" x="36 45 54 63 72 81 90 99 108 117 126 135 144 153" y="84.96">billing/tax.rs</text>
+<text class="accent" x="189 198 207 216 225 234 243" y="84.96">changed</text>
+<text class="ink" x="108 117 126 135 144 153 162 171 180 189 198 207 216 225 234 243 252" y="120.96">billing/README.md</text>
+<text class="accent" x="297 306 315 324 333 342 351" y="120.96">pending</text>
+<text class="ink" x="396 405 414 423" y="120.96">full</text>
+<text class="ink" x="441 450 459 468 477 486 495 504" y="120.96">baseline</text>
+<text class="muted" x="585 594" y="120.96">no</text>
+<text class="muted" x="612 621 630 639 648 657 666" y="120.96">section</text>
+<text class="muted" x="684 693 702 711" y="120.96">maps</text>
+<text class="muted" x="729 738 747 756 765 774" y="120.96">tax.rs</text>
+<text class="ink" x="108 117 126 135 144 153 162 171 180 189 198 207 216 225 234 243 252" y="156.96">billing/design.md</text>
+<text class="accent" x="297 306 315 324 333 342 351" y="156.96">pending</text>
+<text class="ink" x="396 405 414 423 432 441 450" y="156.96">focused</text>
+<text class="ink" x="468 477 486 495 504 513 522 531 540" y="156.96">candidate</text>
+<text class="ink" x="576 585 594 603 612 621 630 639" y="156.96">suggests</text>
+<text class="accent" x="666 675 684 693 702 711 720" y="156.96">section</text>
+<text class="accent" x="738 747 756" y="156.96">tax</text>
+<text class="ink" x="108 117 126 135 144 153 162 171 180 189 198 207 216 225 234 243" y="192.96">billing/notes.md</text>
+<text class="accent" x="297 306 315 324 333 342 351" y="192.96">pending</text>
+<text class="ink" x="396 405 414 423" y="192.96">full</text>
+<text class="ink" x="441 450 459 468 477 486 495 504" y="192.96">baseline</text>
+<text class="muted" x="585 594" y="192.96">no</text>
+<text class="muted" x="612 621 630 639 648 657 666" y="192.96">section</text>
+<text class="muted" x="684 693 702 711" y="192.96">maps</text>
+<text class="muted" x="729 738 747 756 765 774" y="192.96">tax.rs</text>
+<text class="ink" x="36 45 54 63 72" y="228.96">Every</text>
+<text class="ink" x="90 99 108 117 126 135" y="228.96">review</text>
+<text class="ink" x="153 162 171 180 189" y="228.96">still</text>
+<text class="ink" x="207 216 225 234 243" y="228.96">reads</text>
+<text class="ink" x="261 270 279" y="228.96">the</text>
+<text class="ink" x="297 306 315 324 333" y="228.96">whole</text>
+<text class="ink" x="351 360 369 378 387 396 405 414 423" y="228.96">document.</text>
+<text class="ink" x="441" y="228.96">A</text>
+<text class="ink" x="459 468 477 486 495 504 513 522 531" y="228.96">suggested</text>
+<text class="ink" x="549 558 567 576 585 594 603" y="228.96">section</text>
+<text class="ink" x="621 630" y="228.96">is</text>
+<text class="ink" x="648 657 666 675 684" y="228.96">where</text>
+<text class="ink" x="702 711" y="228.96">to</text>
+<text class="ink" x="729 738 747 756 765 774" y="228.96">start.</text>
 </svg>

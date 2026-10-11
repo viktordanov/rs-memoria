@@ -1,28 +1,34 @@
-title: Four ways to document a project with Memoria
-desc: Four panels. One, AGENTS.md and CLAUDE.md at the root cover justfile and Cargo.toml and name shared section guides. Two, a README tree where the api and web READMEs cover their folders and the root README imports their summaries, with central guidance from memoria.toml. Three, a design document beside the code shares its folder's coverage with the README and maps a section to invoice.rs. Four, a page in a central docs folder cannot see src changes and gets them only through an import from src/README.md.
+title: Where a document lives decides which documents one code change reaches
+desc: Four small file trees, one for each pattern, each with one edited file. Agent instruction files: an edit to justfile makes AGENTS.md, CLAUDE.md, and the root README.md pending, because all three live at the root. README tree: an edit to services/api/src/orders.rs makes only services/api/README.md pending; the root README imports its summary and is reviewed only if that summary changes. Beside the code: an edit to billing/tax.rs makes billing/README.md and billing/design.md pending, because both live in billing/. Central docs site: an edit to src/auth/login.rs makes only src/auth/README.md pending; docs/guide.md imports its summary and is reviewed only if that summary changes.
 ---
-                    «░░▒▒▓▓██» MEMORIA · FOUR WAYS TO DOCUMENT A PROJECT «██▓▓▒▒░░»
+            «░▒▓█» ONE EDITED FILE · WHICH DOCUMENTS MUST BE REVIEWED «█▓▒░»
 
-┌─ 1 · AGENT INSTRUCTION FILES ──────────────────┐  ┌─ 2 · README TREE + CENTRAL GUIDELINES ─────────┐
-│                                                │  │                                                │
-│ AGENTS.md ──┬──▶ «commands» ▓▓▓▓ justfile      │  │ README.md ◀── import ──┬──────┐                │
-│ CLAUDE.md ──┤               ▓▓▓▓ Cargo.toml    │  │  ├─ api/README.md ─────┘      │  ▓▓▓▓ api/     │
-│             └──▶ guides ‹docs/templates/›      │  │  └─ web/README.md ────────────┘  ▓▓▓▓ web/     │
-│                                                │  │ memoria.toml ──▶ «guidance» for every review   │
-│ Two root files share one set of rules.         │  │                                                │
-│ A guide edit reaches only these two.           │  │ Each folder explains itself. The root          │
-│                                                │  │ imports their summaries and waits for them.    │
-└────────────────────────────────────────────────┘  └────────────────────────────────────────────────┘
+┌─ 1 · AGENT INSTRUCTION FILES ───────────┐  ┌─ 2 · README TREE ───────────────────────┐
+│                                         │  │                                         │
+│  ./                                     │  │  ./                                     │
+│  ├─ AGENTS.md         «pending»         │  │  ├─ README.md   waits  ◀── import ─┐    │
+│  ├─ CLAUDE.md         «pending»         │  │  └─ services/api/                  │    │
+│  ├─ README.md         «pending»         │  │     ├─ README.md  «pending» ───────┘    │
+│  └─ justfile          ▓▓ edited         │  │     └─ src/orders.rs  ▓▓ edited         │
+│                                         │  │                                         │
+│                                         │  │                                         │
+│  Each root document covers the edit,    │  │  Only the folder README is reviewed.    │
+│  so each one is reviewed.               │  │  The root waits: it is reviewed only    │
+│                                         │  │  if the imported summary changes.       │
+└─────────────────────────────────────────┘  └─────────────────────────────────────────┘
 
-┌─ 3 · DOCUMENTS BESIDE THE CODE ────────────────┐  ┌─ 4 · A CENTRAL DOCS/ SITE ─────────────────────┐
-│                                                │  │                                                │
-│ billing/README.md   ▓▓▓▓ billing/*.rs          │  │ docs/guide.md  ░░░░ ‹src/ is not in scope›     │
-│ billing/design.md   ▓▓▓▓ billing/*.rs          │  │       ▲                                        │
-│  └─ «section» ──▶ invoice.rs                   │  │       └─ import ── src/README.md               │
-│                                                │  │                    ▓▓▓▓ src/*.rs               │
-│ A marker opts a page in. It shares its         │  │                                                │
-│ folder with the README, and a section          │  │ A page in docs/ sees code changes only         │
-│ points the review at one part of it.           │  │ through what it imports.                       │
-└────────────────────────────────────────────────┘  └────────────────────────────────────────────────┘
+┌─ 3 · BESIDE THE CODE ───────────────────┐  ┌─ 4 · CENTRAL DOCS/ SITE ────────────────┐
+│                                         │  │                                         │
+│  ./                                     │  │  ./                                     │
+│  └─ billing/                            │  │  ├─ docs/                               │
+│     ├─ README.md      «pending»         │  │  │  └─ guide.md   waits  ◀── import ─┐  │
+│     ├─ design.md      «pending»         │  │  └─ src/auth/                        │  │
+│     └─ tax.rs         ▓▓ edited         │  │     ├─ README.md  «pending» ─────────┘  │
+│                                         │  │     └─ login.rs       ▓▓ edited         │
+│                                         │  │                                         │
+│  Each tracked page in the folder covers │  │  Only the README beside the code is     │
+│  the edit, so each one is reviewed.     │  │  reviewed. The guide is reviewed only   │
+│                                         │  │  if the imported summary changes.       │
+└─────────────────────────────────────────┘  └─────────────────────────────────────────┘
 
-▓▓▓▓ covered by the document   ░░░░ outside its scope   ──▶ names or reads   ◀── import: carries freshness
+▓▓ the edited file   «pending» reviewed now   ◀── import: reviewed if the summary changes

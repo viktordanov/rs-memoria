@@ -53,7 +53,9 @@ project/
     └── config.toml
 ```
 
-![A marked page beside the code shares its folder with the README, and its sections point at the files they describe.](pattern.svg)
+`billing/design.md` sits beside `billing/README.md`, and its marker makes it a second document for the same folder. Both documents cover every file in `billing/`, including the unmarked `billing/notes.md`. `deploy/` has the same shape:
+
+![A marked page beside the code covers its folder, just like the README there: README.md and design.md both cover invoice.rs, tax.rs, and the unmarked notes.md.](pattern.svg)
 
 At the start, every document is current.
 The test fixture is [`tests/fixtures/beside-code`](../../../tests/fixtures/beside-code/), where the README files carry placeholder names.
@@ -361,7 +363,9 @@ Billing changes how it rounds tax. The VAT now rounds to the nearest cent, and a
  }
 ```
 
-![One change to tax.rs makes every document in billing/ pending, and one section is suggested.](shared-change.svg)
+By now three documents cover `billing/`, because the last scenario opted in `billing/notes.md`. The change reaches all three, and only the page with a section for `tax.rs` gets a suggestion:
+
+![One change to tax.rs asks for three reviews, one for each document in billing/. Only billing/design.md has a section for tax.rs, so only its review suggests a section.](shared-change.svg)
 
 ### See what is pending
 
@@ -589,6 +593,10 @@ Memoria compares the files that a mapping names, not its text. `*.sh` names `rel
 ## A pattern follows a new file
 
 The team adds `deploy/rollback.sh`, which returns the server to the previous release. Nobody edits the runbook marker.
+
+The `release` section now maps the pattern `*.sh`. The literal path `deploy.sh` broke at the rename, because it named one file. The pattern names every shell script in the folder, so it already matches the new one:
+
+![A literal path breaks when its file is renamed, and a pattern follows renamed and new files: files="*.sh" matches release.sh and the new rollback.sh with no edit.](section-pattern.svg)
 
 1. Run `memoria review`:
 

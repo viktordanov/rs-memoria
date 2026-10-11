@@ -64,7 +64,9 @@ project/
 At the start, every document is current.
 The test fixture is [`tests/fixtures/readme-tree`](../../../tests/fixtures/readme-tree/), where the README and sidecar files carry placeholder names.
 
-![A README tree with central guidelines: the root README imports the api and web summaries and links the shared library README, and central guidance applies to every README.](pattern.svg)
+Each README covers the files in its own folder. The root README covers only `compose.yaml`, and it holds a copy of each service summary that it imports:
+
+![Each README covers its own folder, and the root holds only the imported summaries: services/api/README.md and services/web/README.md each export a summary that the root README imports, and the root links libs/shared/README.md, which hands that folder over but carries no summary.](scopes.svg)
 
 ### Each folder explains itself
 
@@ -190,7 +192,10 @@ guidance = [
 ]
 ```
 
-The sidecar guidance applies to documents in `services/api/` and below. No other README sees it.
+The sidecar guidance applies to documents in `services/api/` and below. No other README sees it, while the root guidance reaches all four READMEs:
+
+![Central guidance reaches every README, and a sidecar adds rules for one folder only: memoria.toml and docs/writing-guide.md give guidance to all four READMEs, and services/api/README.memoria.toml adds guidance to services/api/README.md alone.](guidance.svg)
+
 Run `memoria guidance services/api/README.md` to see every layer in the order that a review applies it:
 
 <!-- cookbook-output: guidance-api -->
@@ -227,7 +232,11 @@ Root guidance comes first, then the sidecar. Memoria does not override, deduplic
 
 ## A change that keeps the summary true
 
-![Only a changed summary carries a code change to the root README: a refactor stops at the service README, and a behavior change reaches the root through render and a second review.](propagation.svg)
+Every code change in a folder starts the same way, because Memoria cannot tell a rename from a behavior change. The folder README becomes pending, and its reviewer decides whether the exported summary is still true. That answer decides whether the root README needs a review too:
+
+![A code change reaches the root README only when the exported summary changes: if the summary stays true, the reviewer records no-update and the root stays current after one review; if the summary changes, the reviewer edits it, memoria render copies it into the root, and the root gets its own review.](propagation.svg)
+
+This section follows the left path. [The next section](#a-change-that-changes-the-summary) follows the right path.
 
 A developer renames the `items` field in `services/api/src/orders.rs` to `by_id`. The behavior of the API does not change.
 

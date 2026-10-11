@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="873" height="216" viewBox="0 0 873 216" role="img" aria-labelledby="title desc">
+<title id="title">A literal path breaks when its file is renamed, and a pattern follows renamed and new files</title>
+<desc id="desc">The release section of deploy/runbook.md can map files in two ways. The literal path deploy.sh matches nothing after the rename to release.sh, so lint warns section_mapping_invalid. The pattern *.sh matches the renamed release.sh and the new rollback.sh with no edit to the marker.</desc>
+<style>.bg{fill:#f4f0e6}.ink{fill:#24211b}.muted{fill:#8a8170}.accent{fill:#c2410c}.line{stroke:#24211b}.line-muted{stroke:#8a8170}.line-accent{stroke:#c2410c}@media (prefers-color-scheme: dark){.bg{fill:#13120f}.ink{fill:#e8e3d4}.muted{fill:#7f7867}.accent{fill:#f59e0b}.line{stroke:#e8e3d4}.line-muted{stroke:#7f7867}.line-accent{stroke:#f59e0b}}.line,.line-muted,.line-accent{stroke-width:1.5;fill:none;stroke-linecap:square}text{font-family:ui-monospace,"SFMono-Regular","JetBrains Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;font-size:15px;white-space:pre}</style>
+<defs><pattern id="d1-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/></pattern><pattern id="d2-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/><rect x="2" y="2" width="2" height="2" class="accent"/></pattern><pattern id="d3-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/><rect x="2" y="0" width="2" height="2" class="accent"/><rect x="2" y="2" width="2" height="2" class="accent"/></pattern><pattern id="d1-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/></pattern><pattern id="d2-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/><rect x="2" y="2" width="2" height="2" class="muted"/></pattern><pattern id="d3-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/><rect x="2" y="0" width="2" height="2" class="muted"/><rect x="2" y="2" width="2" height="2" class="muted"/></pattern><pattern id="d1-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/></pattern><pattern id="d2-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/><rect x="2" y="2" width="2" height="2" class="ink"/></pattern><pattern id="d3-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/><rect x="2" y="0" width="2" height="2" class="ink"/><rect x="2" y="2" width="2" height="2" class="ink"/></pattern></defs>
+<rect class="bg" width="873" height="216" rx="8"/>
+<rect x="135" y="37" width="18" height="16" fill="url(#d1-accent)"/>
+<rect x="153" y="37" width="18" height="16" fill="url(#d2-accent)"/>
+<rect x="171" y="37" width="18" height="16" fill="url(#d3-accent)"/>
+<rect x="189" y="37" width="18" height="16" class="accent"/>
+<rect x="594" y="37" width="18" height="16" class="accent"/>
+<rect x="612" y="37" width="18" height="16" fill="url(#d3-accent)"/>
+<rect x="630" y="37" width="18" height="16" fill="url(#d2-accent)"/>
+<rect x="648" y="37" width="18" height="16" fill="url(#d1-accent)"/>
+<path class="line" d="M211.5 117L216 117M211.5 117L207 117M220.5 117L225 117M220.5 117L216 117M229.5 117L234 117M229.5 117L225 117M238.5 117L243 117M238.5 117L234 117M247.5 117L252 117M247.5 117L243 117M256.5 117L261 117M256.5 117L252 117M265.5 117L270 117M265.5 117L261 117M274.5 117L279 117M274.5 117L270 117M544.5 117L549 117M544.5 117L540 117M553.5 117L558 117M553.5 117L549 117M211.5 153L216 153M211.5 153L207 153M220.5 153L225 153M220.5 153L216 153M229.5 153L234 153M229.5 153L225 153M238.5 153L243 153M238.5 153L234 153M247.5 153L252 153M247.5 153L243 153M256.5 153L261 153M256.5 153L252 153M265.5 153L270 153M265.5 153L261 153M265.5 153L265.5 162M274.5 153L279 153M274.5 153L270 153M265.5 171L265.5 162M265.5 171L270 171M274.5 171L279 171M274.5 171L270 171"/>
+<polygon points="288,117 279,112.5 279,121.5" class="accent"/>
+<polygon points="567,117 558,112.5 558,121.5" class="accent"/>
+<polygon points="288,153 279,148.5 279,157.5" class="accent"/>
+<polygon points="288,171 279,166.5 279,175.5" class="accent"/>
+<text class="ink" x="225" y="48.96">A</text>
+<text class="ink" x="243 252 261 270 279 288 297" y="48.96">PATTERN</text>
+<text class="ink" x="315 324 333 342 351 360 369" y="48.96">FOLLOWS</text>
+<text class="ink" x="387 396 405 414 423 432 441" y="48.96">RENAMED</text>
+<text class="ink" x="459 468 477" y="48.96">AND</text>
+<text class="ink" x="495 504 513" y="48.96">NEW</text>
+<text class="ink" x="531 540 549 558 567" y="48.96">FILES</text>
+<text class="muted" x="45 54 63" y="84.96">the</text>
+<text class="muted" x="81 90 99 108 117 126 135" y="84.96">release</text>
+<text class="muted" x="153 162 171 180 189 198 207" y="84.96">section</text>
+<text class="muted" x="225 234 243 252" y="84.96">maps</text>
+<text class="muted" x="306 315 324 333" y="84.96">what</text>
+<text class="muted" x="351 360" y="84.96">it</text>
+<text class="muted" x="378 387 396 405 414 423 432" y="84.96">matches</text>
+<text class="muted" x="450 459" y="84.96">in</text>
+<text class="muted" x="477 486 495 504 513 522 531" y="84.96">deploy/</text>
+<text class="ink" x="36 45 54 63 72 81 90 99 108 117 126 135 144 153 162 171 180" y="120.96">files=&quot;deploy.sh&quot;</text>
+<text class="ink" x="297 306 315 324 333 342 351" y="120.96">nothing</text>
+<text class="muted" x="378 387 396 405" y="120.96">(now</text>
+<text class="muted" x="423 432 441 450 459 468 477 486 495 504 513" y="120.96">release.sh)</text>
+<text class="ink" x="576 585 594 603 612" y="120.96">lint:</text>
+<text class="accent" x="639 648 657 666 675 684 693 702 711 720 729 738 747 756 765 774 783 792 801 810 819 828 837" y="120.96">section_mapping_invalid</text>
+<text class="ink" x="36 45 54 63 72 81 90 99 108 117 126 135" y="156.96">files=&quot;*.sh&quot;</text>
+<text class="ink" x="297 306 315 324 333 342 351 360 369 378" y="156.96">release.sh</text>
+<text class="muted" x="414 423 432" y="156.96">the</text>
+<text class="muted" x="450 459 468 477 486 495 504" y="156.96">renamed</text>
+<text class="muted" x="522 531 540 549 558 567" y="156.96">script</text>
+<text class="ink" x="297 306 315 324 333 342 351 360 369 378 387" y="174.96">rollback.sh</text>
+<text class="muted" x="414 423 432" y="174.96">the</text>
+<text class="muted" x="450 459 468" y="174.96">new</text>
+<text class="muted" x="486 495 504 513 522 531 540" y="174.96">script,</text>
+<text class="muted" x="558 567 576 585" y="174.96">with</text>
+<text class="muted" x="603 612" y="174.96">no</text>
+<text class="muted" x="630 639 648 657" y="174.96">edit</text>
+<text class="muted" x="675 684" y="174.96">to</text>
+<text class="muted" x="702 711 720" y="174.96">the</text>
+<text class="muted" x="738 747 756 765 774 783" y="174.96">marker</text>
+</svg>

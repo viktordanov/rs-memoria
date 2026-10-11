@@ -1,91 +1,50 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="882" height="342" viewBox="0 0 882 342" role="img" aria-labelledby="title desc">
-<title id="title">Two agent instruction files share two section guides</title>
-<desc id="desc">AGENTS.md and CLAUDE.md each have a commands section that maps justfile and Cargo.toml and a guide-only boundaries section. Each commands section names the agent-commands guide and each boundaries section names the agent-rules guide. memoria.toml registers both guides, which are never sources or documents.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="765" height="306" viewBox="0 0 765 306" role="img" aria-labelledby="title desc">
+<title id="title">Both agent instruction files name the same two section guides</title>
+<desc id="desc">AGENTS.md and CLAUDE.md each have a commands section and a boundaries section. Both commands sections name the guide docs/templates/agent-commands.md, which asks for the command, directory, when to run it, and its success signal. Both boundaries sections name docs/templates/agent-rules.md, which asks for the rule, its reason, and a safe alternative.</desc>
 <style>.bg{fill:#f4f0e6}.ink{fill:#24211b}.muted{fill:#8a8170}.accent{fill:#c2410c}.line{stroke:#24211b}.line-muted{stroke:#8a8170}.line-accent{stroke:#c2410c}@media (prefers-color-scheme: dark){.bg{fill:#13120f}.ink{fill:#e8e3d4}.muted{fill:#7f7867}.accent{fill:#f59e0b}.line{stroke:#e8e3d4}.line-muted{stroke:#7f7867}.line-accent{stroke:#f59e0b}}.line,.line-muted,.line-accent{stroke-width:1.5;fill:none;stroke-linecap:square}text{font-family:ui-monospace,"SFMono-Regular","JetBrains Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;font-size:15px;white-space:pre}</style>
 <defs><pattern id="d1-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/></pattern><pattern id="d2-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/><rect x="2" y="2" width="2" height="2" class="accent"/></pattern><pattern id="d3-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/><rect x="2" y="0" width="2" height="2" class="accent"/><rect x="2" y="2" width="2" height="2" class="accent"/></pattern><pattern id="d1-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/></pattern><pattern id="d2-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/><rect x="2" y="2" width="2" height="2" class="muted"/></pattern><pattern id="d3-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/><rect x="2" y="0" width="2" height="2" class="muted"/><rect x="2" y="2" width="2" height="2" class="muted"/></pattern><pattern id="d1-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/></pattern><pattern id="d2-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/><rect x="2" y="2" width="2" height="2" class="ink"/></pattern><pattern id="d3-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/><rect x="2" y="0" width="2" height="2" class="ink"/><rect x="2" y="2" width="2" height="2" class="ink"/></pattern></defs>
-<rect class="bg" width="882" height="342" rx="8"/>
+<rect class="bg" width="765" height="306" rx="8"/>
 <rect x="27" y="37" width="9" height="16" fill="url(#d1-accent)"/>
 <rect x="36" y="37" width="9" height="16" fill="url(#d2-accent)"/>
 <rect x="45" y="37" width="9" height="16" fill="url(#d3-accent)"/>
 <rect x="54" y="37" width="9" height="16" class="accent"/>
-<rect x="666" y="37" width="9" height="16" class="accent"/>
-<rect x="675" y="37" width="9" height="16" fill="url(#d3-accent)"/>
-<rect x="684" y="37" width="9" height="16" fill="url(#d2-accent)"/>
-<rect x="693" y="37" width="9" height="16" fill="url(#d1-accent)"/>
-<rect x="297" y="73" width="36" height="16" fill="url(#d3-ink)"/>
-<rect x="297" y="127" width="36" height="16" fill="url(#d3-ink)"/>
-<rect x="18" y="289" width="36" height="16" fill="url(#d3-ink)"/>
-<path class="line" d="M112.5 81L117 81M112.5 81L108 81M121.5 81L126 81M121.5 81L117 81M121.5 81L121.5 90M130.5 81L135 81M130.5 81L126 81M265.5 81L270 81M265.5 81L261 81M274.5 81L279 81M274.5 81L270 81M121.5 99L121.5 90M121.5 99L126 99M130.5 99L135 99M130.5 99L126 99M265.5 99L270 99M265.5 99L261 99M274.5 99L279 99M274.5 99L270 99M112.5 135L117 135M112.5 135L108 135M121.5 135L126 135M121.5 135L117 135M121.5 135L121.5 144M130.5 135L135 135M130.5 135L126 135M265.5 135L270 135M265.5 135L261 135M274.5 135L279 135M274.5 135L270 135M121.5 153L121.5 144M121.5 153L126 153M130.5 153L135 153M130.5 153L126 153M265.5 153L270 153M265.5 153L261 153M274.5 153L279 153M274.5 153L270 153M157.5 207L162 207M157.5 207L153 207M166.5 207L171 207M166.5 207L162 207M157.5 225L162 225M157.5 225L153 225M166.5 225L171 225M166.5 225L162 225M355.5 261L360 261M355.5 261L351 261M652.5 297L657 297M652.5 297L648 297M661.5 297L666 297M661.5 297L657 297"/>
-<polygon points="288,81 279,76.5 279,85.5" class="accent"/>
-<polygon points="288,99 279,94.5 279,103.5" class="accent"/>
-<polygon points="288,135 279,130.5 279,139.5" class="accent"/>
-<polygon points="288,153 279,148.5 279,157.5" class="accent"/>
-<polygon points="180,207 171,202.5 171,211.5" class="accent"/>
-<polygon points="180,225 171,220.5 171,229.5" class="accent"/>
-<polygon points="369,261 360,256.5 360,265.5" class="accent"/>
-<polygon points="675,297 666,292.5 666,301.5" class="accent"/>
-<text class="ink" x="81 90 99 108 117" y="48.96">AGENT</text>
-<text class="ink" x="135 144 153 162 171 180 189 198 207 216 225" y="48.96">INSTRUCTION</text>
-<text class="ink" x="243 252 261 270 279" y="48.96">FILES</text>
-<text class="ink" x="297" y="48.96">·</text>
-<text class="ink" x="315 324 333" y="48.96">ONE</text>
-<text class="ink" x="351 360 369" y="48.96">SET</text>
-<text class="ink" x="387 396" y="48.96">OF</text>
-<text class="ink" x="414 423 432 441 450" y="48.96">RULES</text>
-<text class="ink" x="468 477 486" y="48.96">FOR</text>
-<text class="ink" x="504 513 522 531 540" y="48.96">EVERY</text>
-<text class="ink" x="558 567 576 585 594" y="48.96">AGENT</text>
-<text class="ink" x="612 621 630 639" y="48.96">FILE</text>
-<text class="ink" x="18 27 36 45 54 63 72 81 90" y="84.96">AGENTS.md</text>
-<text class="accent" x="153 162 171 180 189 198 207 216" y="84.96">commands</text>
-<text class="ink" x="342 351 360 369 378 387 396 405" y="84.96">justfile</text>
-<text class="ink" x="432 441 450 459 468 477 486 495 504 513" y="84.96">Cargo.toml</text>
-<text class="accent" x="153 162 171 180 189 198 207 216 225 234" y="102.96">boundaries</text>
-<text class="muted" x="306 315 324 333 342 351 360 369 378 387 396" y="102.96">guide-only:</text>
-<text class="muted" x="414 423" y="102.96">no</text>
-<text class="muted" x="441 450 459 468 477" y="102.96">files</text>
-<text class="ink" x="18 27 36 45 54 63 72 81 90" y="138.96">CLAUDE.md</text>
-<text class="accent" x="153 162 171 180 189 198 207 216" y="138.96">commands</text>
-<text class="ink" x="342 351 360 369 378 387 396 405" y="138.96">justfile</text>
-<text class="ink" x="432 441 450 459 468 477 486 495 504 513" y="138.96">Cargo.toml</text>
-<text class="accent" x="153 162 171 180 189 198 207 216 225 234" y="156.96">boundaries</text>
-<text class="muted" x="306 315 324 333 342 351 360 369 378 387 396" y="156.96">guide-only:</text>
-<text class="muted" x="414 423" y="156.96">no</text>
-<text class="muted" x="441 450 459 468 477" y="156.96">files</text>
-<text class="ink" x="18 27 36 45 54 63 72 81 90 99 108 117" y="192.96">guidance=&quot;…&quot;</text>
-<text class="ink" x="144 153 162 171" y="192.96">each</text>
-<text class="ink" x="189 198 207 216 225 234 243" y="192.96">section</text>
-<text class="ink" x="261 270 279 288 297" y="192.96">names</text>
-<text class="ink" x="315 324 333" y="192.96">one</text>
-<text class="ink" x="351 360 369 378 387 396" y="192.96">guide:</text>
-<text class="accent" x="45 54 63 72 81 90 99 108" y="210.96">commands</text>
-<text class="ink" x="189 198 207 216 225 234 243 252 261 270 279 288 297 306 315 324 333 342 351 360 369 378 387 396 405 414 423 432 441 450 459 468" y="210.96">docs/templates/agent-commands.md</text>
-<text class="muted" x="513 522 531 540 549 558 567 576" y="210.96">command,</text>
-<text class="muted" x="594 603 612 621 630 639 648 657 666 675" y="210.96">directory,</text>
-<text class="muted" x="693 702 711 720 729" y="210.96">when,</text>
-<text class="muted" x="747 756 765 774 783 792 801" y="210.96">success</text>
-<text class="accent" x="45 54 63 72 81 90 99 108 117 126" y="228.96">boundaries</text>
-<text class="ink" x="189 198 207 216 225 234 243 252 261 270 279 288 297 306 315 324 333 342 351 360 369 378 387 396 405 414 423 432 441" y="228.96">docs/templates/agent-rules.md</text>
-<text class="muted" x="513 522 531 540 549" y="228.96">rule,</text>
-<text class="muted" x="567 576 585 594 603 612 621" y="228.96">reason,</text>
-<text class="muted" x="639 648 657 666" y="228.96">safe</text>
-<text class="muted" x="684 693 702 711 720 729 738 747 756 765 774" y="228.96">alternative</text>
-<text class="ink" x="18 27 36 45 54 63 72 81 90 99 108 117" y="264.96">memoria.toml</text>
-<text class="ink" x="144 153 162 171 180 189 198 207 216 225 234 243 252 261 270 279 288 297 306 315 324 333" y="264.96">section_guidance_files</text>
-<text class="ink" x="378 387 396 405 414 423 432 441 450" y="264.96">registers</text>
-<text class="ink" x="468 477 486 495" y="264.96">both</text>
-<text class="ink" x="513 522 531 540 549 558" y="264.96">guides</text>
-<text class="muted" x="585 594 603 612 621" y="264.96">never</text>
-<text class="muted" x="639 648 657 666 675 684 693 702" y="264.96">sources,</text>
-<text class="muted" x="720 729 738 747 756" y="264.96">never</text>
-<text class="muted" x="774 783 792 801 810 819 828 837 846" y="264.96">documents</text>
-<text class="ink" x="63 72 81 90 99" y="300.96">files</text>
-<text class="ink" x="117 126 135" y="300.96">the</text>
-<text class="ink" x="153 162 171 180 189 198 207" y="300.96">section</text>
-<text class="ink" x="225 234 243 252 261 270 279 288 297" y="300.96">describes</text>
-<text class="accent" x="342 351 360 369 378 387 396" y="300.96">section</text>
-<text class="ink" x="423 432 441 450 459 468 477" y="300.96">Memoria</text>
-<text class="ink" x="495 504 513 522 531 540 549" y="300.96">section</text>
-<text class="ink" x="567 576 585 594 603 612" y="300.96">marker</text>
-<text class="ink" x="684 693 702 711 720" y="300.96">names</text>
+<rect x="486" y="37" width="9" height="16" class="accent"/>
+<rect x="495" y="37" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="504" y="37" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="513" y="37" width="9" height="16" fill="url(#d1-accent)"/>
+<path class="line" d="M22.5 99L27 99M22.5 99L22.5 108M31.5 99L36 99M31.5 99L27 99M40.5 99L45 99M40.5 99L36 99M49.5 99L54 99M49.5 99L45 99M58.5 99L63 99M58.5 99L54 99M67.5 99L72 99M67.5 99L63 99M76.5 99L81 99M76.5 99L72 99M85.5 99L90 99M85.5 99L81 99M94.5 99L99 99M94.5 99L90 99M103.5 99L108 99M103.5 99L99 99M112.5 99L117 99M112.5 99L108 99M121.5 99L126 99M121.5 99L117 99M130.5 99L135 99M130.5 99L126 99M139.5 99L144 99M139.5 99L135 99M148.5 99L153 99M148.5 99L144 99M157.5 99L153 99M157.5 99L157.5 108M265.5 99L270 99M265.5 99L265.5 108M274.5 99L279 99M274.5 99L270 99M283.5 99L288 99M283.5 99L279 99M292.5 99L297 99M292.5 99L288 99M301.5 99L306 99M301.5 99L297 99M310.5 99L315 99M310.5 99L306 99M319.5 99L324 99M319.5 99L315 99M328.5 99L333 99M328.5 99L324 99M337.5 99L342 99M337.5 99L333 99M346.5 99L351 99M346.5 99L342 99M355.5 99L360 99M355.5 99L351 99M364.5 99L369 99M364.5 99L360 99M373.5 99L378 99M373.5 99L369 99M382.5 99L387 99M382.5 99L378 99M391.5 99L396 99M391.5 99L387 99M400.5 99L405 99M400.5 99L396 99M409.5 99L414 99M409.5 99L405 99M418.5 99L423 99M418.5 99L414 99M427.5 99L432 99M427.5 99L423 99M436.5 99L441 99M436.5 99L432 99M445.5 99L450 99M445.5 99L441 99M454.5 99L459 99M454.5 99L450 99M463.5 99L468 99M463.5 99L459 99M472.5 99L477 99M472.5 99L468 99M481.5 99L486 99M481.5 99L477 99M490.5 99L495 99M490.5 99L486 99M499.5 99L495 99M499.5 99L499.5 108M607.5 99L612 99M607.5 99L607.5 108M616.5 99L621 99M616.5 99L612 99M625.5 99L630 99M625.5 99L621 99M634.5 99L639 99M634.5 99L630 99M643.5 99L648 99M643.5 99L639 99M652.5 99L657 99M652.5 99L648 99M661.5 99L666 99M661.5 99L657 99M670.5 99L675 99M670.5 99L666 99M679.5 99L684 99M679.5 99L675 99M688.5 99L693 99M688.5 99L684 99M697.5 99L702 99M697.5 99L693 99M706.5 99L711 99M706.5 99L702 99M715.5 99L720 99M715.5 99L711 99M724.5 99L729 99M724.5 99L720 99M733.5 99L738 99M733.5 99L729 99M742.5 99L738 99M742.5 99L742.5 108M22.5 117L22.5 108M22.5 117L22.5 126M157.5 117L157.5 108M157.5 117L162 117M157.5 117L157.5 126M166.5 117L171 117M166.5 117L162 117M238.5 117L243 117M238.5 117L234 117M247.5 117L252 117M247.5 117L243 117M265.5 117L265.5 108M265.5 117L265.5 126M499.5 117L499.5 108M499.5 117L499.5 126M517.5 117L522 117M517.5 117L513 117M526.5 117L531 117M526.5 117L522 117M598.5 117L603 117M598.5 117L594 117M607.5 117L607.5 108M607.5 117L603 117M607.5 117L607.5 126M742.5 117L742.5 108M742.5 117L742.5 126M22.5 135L22.5 126M22.5 135L22.5 144M157.5 135L157.5 126M157.5 135L157.5 144M265.5 135L265.5 126M265.5 135L265.5 144M499.5 135L499.5 126M499.5 135L499.5 144M607.5 135L607.5 126M607.5 135L607.5 144M742.5 135L742.5 126M742.5 135L742.5 144M22.5 153L22.5 144M22.5 153L22.5 162M157.5 153L157.5 144M157.5 153L157.5 162M265.5 153L265.5 144M265.5 153L265.5 162M499.5 153L499.5 144M499.5 153L499.5 162M607.5 153L607.5 144M607.5 153L607.5 162M742.5 153L742.5 144M742.5 153L742.5 162M22.5 171L22.5 162M22.5 171L22.5 180M157.5 171L157.5 162M157.5 171L157.5 180M265.5 171L265.5 162M265.5 171L270 171M274.5 171L279 171M274.5 171L270 171M283.5 171L288 171M283.5 171L279 171M292.5 171L297 171M292.5 171L288 171M301.5 171L306 171M301.5 171L297 171M310.5 171L315 171M310.5 171L306 171M319.5 171L324 171M319.5 171L315 171M328.5 171L333 171M328.5 171L324 171M337.5 171L342 171M337.5 171L333 171M346.5 171L351 171M346.5 171L342 171M355.5 171L360 171M355.5 171L351 171M364.5 171L369 171M364.5 171L360 171M373.5 171L378 171M373.5 171L369 171M382.5 171L387 171M382.5 171L378 171M391.5 171L396 171M391.5 171L387 171M400.5 171L405 171M400.5 171L396 171M409.5 171L414 171M409.5 171L405 171M418.5 171L423 171M418.5 171L414 171M427.5 171L432 171M427.5 171L423 171M436.5 171L441 171M436.5 171L432 171M445.5 171L450 171M445.5 171L441 171M454.5 171L459 171M454.5 171L450 171M463.5 171L468 171M463.5 171L459 171M472.5 171L477 171M472.5 171L468 171M481.5 171L486 171M481.5 171L477 171M490.5 171L495 171M490.5 171L486 171M499.5 171L499.5 162M499.5 171L495 171M607.5 171L607.5 162M607.5 171L607.5 180M742.5 171L742.5 162M742.5 171L742.5 180M22.5 189L22.5 180M22.5 189L22.5 198M157.5 189L157.5 180M157.5 189L157.5 198M265.5 189L270 189M265.5 189L265.5 198M274.5 189L279 189M274.5 189L270 189M283.5 189L288 189M283.5 189L279 189M292.5 189L297 189M292.5 189L288 189M301.5 189L306 189M301.5 189L297 189M310.5 189L315 189M310.5 189L306 189M319.5 189L324 189M319.5 189L315 189M328.5 189L333 189M328.5 189L324 189M337.5 189L342 189M337.5 189L333 189M346.5 189L351 189M346.5 189L342 189M355.5 189L360 189M355.5 189L351 189M364.5 189L369 189M364.5 189L360 189M373.5 189L378 189M373.5 189L369 189M382.5 189L387 189M382.5 189L378 189M391.5 189L396 189M391.5 189L387 189M400.5 189L405 189M400.5 189L396 189M409.5 189L414 189M409.5 189L405 189M418.5 189L423 189M418.5 189L414 189M427.5 189L432 189M427.5 189L423 189M436.5 189L441 189M436.5 189L432 189M445.5 189L450 189M445.5 189L441 189M454.5 189L459 189M454.5 189L450 189M463.5 189L468 189M463.5 189L459 189M472.5 189L477 189M472.5 189L468 189M481.5 189L486 189M481.5 189L477 189M490.5 189L495 189M490.5 189L486 189M499.5 189L495 189M499.5 189L499.5 198M607.5 189L607.5 180M607.5 189L607.5 198M742.5 189L742.5 180M742.5 189L742.5 198M22.5 207L22.5 198M22.5 207L22.5 216M157.5 207L157.5 198M157.5 207L162 207M157.5 207L157.5 216M166.5 207L171 207M166.5 207L162 207M238.5 207L243 207M238.5 207L234 207M247.5 207L252 207M247.5 207L243 207M265.5 207L265.5 198M265.5 207L265.5 216M499.5 207L499.5 198M499.5 207L499.5 216M517.5 207L522 207M517.5 207L513 207M526.5 207L531 207M526.5 207L522 207M598.5 207L603 207M598.5 207L594 207M607.5 207L607.5 198M607.5 207L603 207M607.5 207L607.5 216M742.5 207L742.5 198M742.5 207L742.5 216M22.5 225L22.5 216M22.5 225L22.5 234M157.5 225L157.5 216M157.5 225L157.5 234M265.5 225L265.5 216M265.5 225L265.5 234M499.5 225L499.5 216M499.5 225L499.5 234M607.5 225L607.5 216M607.5 225L607.5 234M742.5 225L742.5 216M742.5 225L742.5 234M22.5 243L22.5 234M22.5 243L22.5 252M157.5 243L157.5 234M157.5 243L157.5 252M265.5 243L265.5 234M265.5 243L265.5 252M499.5 243L499.5 234M499.5 243L499.5 252M607.5 243L607.5 234M607.5 243L607.5 252M742.5 243L742.5 234M742.5 243L742.5 252M22.5 261L22.5 252M22.5 261L27 261M31.5 261L36 261M31.5 261L27 261M40.5 261L45 261M40.5 261L36 261M49.5 261L54 261M49.5 261L45 261M58.5 261L63 261M58.5 261L54 261M67.5 261L72 261M67.5 261L63 261M76.5 261L81 261M76.5 261L72 261M85.5 261L90 261M85.5 261L81 261M94.5 261L99 261M94.5 261L90 261M103.5 261L108 261M103.5 261L99 261M112.5 261L117 261M112.5 261L108 261M121.5 261L126 261M121.5 261L117 261M130.5 261L135 261M130.5 261L126 261M139.5 261L144 261M139.5 261L135 261M148.5 261L153 261M148.5 261L144 261M157.5 261L157.5 252M157.5 261L153 261M265.5 261L265.5 252M265.5 261L270 261M274.5 261L279 261M274.5 261L270 261M283.5 261L288 261M283.5 261L279 261M292.5 261L297 261M292.5 261L288 261M301.5 261L306 261M301.5 261L297 261M310.5 261L315 261M310.5 261L306 261M319.5 261L324 261M319.5 261L315 261M328.5 261L333 261M328.5 261L324 261M337.5 261L342 261M337.5 261L333 261M346.5 261L351 261M346.5 261L342 261M355.5 261L360 261M355.5 261L351 261M364.5 261L369 261M364.5 261L360 261M373.5 261L378 261M373.5 261L369 261M382.5 261L387 261M382.5 261L378 261M391.5 261L396 261M391.5 261L387 261M400.5 261L405 261M400.5 261L396 261M409.5 261L414 261M409.5 261L405 261M418.5 261L423 261M418.5 261L414 261M427.5 261L432 261M427.5 261L423 261M436.5 261L441 261M436.5 261L432 261M445.5 261L450 261M445.5 261L441 261M454.5 261L459 261M454.5 261L450 261M463.5 261L468 261M463.5 261L459 261M472.5 261L477 261M472.5 261L468 261M481.5 261L486 261M481.5 261L477 261M490.5 261L495 261M490.5 261L486 261M499.5 261L499.5 252M499.5 261L495 261M607.5 261L607.5 252M607.5 261L612 261M616.5 261L621 261M616.5 261L612 261M625.5 261L630 261M625.5 261L621 261M634.5 261L639 261M634.5 261L630 261M643.5 261L648 261M643.5 261L639 261M652.5 261L657 261M652.5 261L648 261M661.5 261L666 261M661.5 261L657 261M670.5 261L675 261M670.5 261L666 261M679.5 261L684 261M679.5 261L675 261M688.5 261L693 261M688.5 261L684 261M697.5 261L702 261M697.5 261L693 261M706.5 261L711 261M706.5 261L702 261M715.5 261L720 261M715.5 261L711 261M724.5 261L729 261M724.5 261L720 261M733.5 261L738 261M733.5 261L729 261M742.5 261L742.5 252M742.5 261L738 261"/>
+<polygon points="261,117 252,112.5 252,121.5" class="accent"/>
+<polygon points="504,117 513,112.5 513,121.5" class="accent"/>
+<polygon points="261,207 252,202.5 252,211.5" class="accent"/>
+<polygon points="504,207 513,202.5 513,211.5" class="accent"/>
+<text class="ink" x="81 90 99" y="48.96">TWO</text>
+<text class="ink" x="117 126 135 144 153" y="48.96">AGENT</text>
+<text class="ink" x="171 180 189 198 207" y="48.96">FILES</text>
+<text class="ink" x="225" y="48.96">·</text>
+<text class="ink" x="243 252 261" y="48.96">TWO</text>
+<text class="ink" x="279 288 297 306 315 324" y="48.96">SHARED</text>
+<text class="ink" x="342 351 360 369 378 387 396" y="48.96">SECTION</text>
+<text class="ink" x="414 423 432 441 450 459" y="48.96">GUIDES</text>
+<text class="ink" x="27 36 45 54 63 72 81 90 99" y="84.96">AGENTS.md</text>
+<text class="muted" x="297 306 315 324 333 342 351 360 369 378 387 396 405 414 423" y="84.96">docs/templates/</text>
+<text class="ink" x="603 612 621 630 639 648 657 666 675" y="84.96">CLAUDE.md</text>
+<text class="accent" x="36 45 54 63 72 81 90 99" y="120.96">commands</text>
+<text class="ink" x="180 189 198 207 216" y="120.96">names</text>
+<text class="ink" x="279 288 297 306 315 324 333 342 351 360 369 378 387 396 405 414 423" y="120.96">agent-commands.md</text>
+<text class="ink" x="540 549 558 567 576" y="120.96">names</text>
+<text class="accent" x="621 630 639 648 657 666 675 684" y="120.96">commands</text>
+<text class="muted" x="279 288 297 306 315 324 333 342" y="138.96">command,</text>
+<text class="muted" x="360 369 378 387 396 405 414 423 432 441" y="138.96">directory,</text>
+<text class="muted" x="279 288 297 306 315" y="156.96">when,</text>
+<text class="muted" x="333 342 351 360 369 378 387" y="156.96">success</text>
+<text class="muted" x="405 414 423 432 441 450" y="156.96">signal</text>
+<text class="accent" x="36 45 54 63 72 81 90 99 108 117" y="210.96">boundaries</text>
+<text class="ink" x="180 189 198 207 216" y="210.96">names</text>
+<text class="ink" x="279 288 297 306 315 324 333 342 351 360 369 378 387 396" y="210.96">agent-rules.md</text>
+<text class="ink" x="540 549 558 567 576" y="210.96">names</text>
+<text class="accent" x="621 630 639 648 657 666 675 684 693 702" y="210.96">boundaries</text>
+<text class="muted" x="279 288 297 306 315" y="228.96">rule,</text>
+<text class="muted" x="333 342 351 360 369 378 387" y="228.96">reason,</text>
+<text class="muted" x="279 288 297 306" y="246.96">safe</text>
+<text class="muted" x="324 333 342 351 360 369 378 387 396 405 414" y="246.96">alternative</text>
 </svg>

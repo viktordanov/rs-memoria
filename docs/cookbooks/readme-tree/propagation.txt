@@ -1,26 +1,31 @@
-title: Only a changed summary carries a code change to the root README
-desc: Two panels. A refactor in services/api makes only services/api/README.md pending. Its review ends with no-update, the export does not change, and the root README stays current. A behavior change makes services/api/README.md pending, the reviewer edits its exported summary, then memoria render updates the root import, and the root README gets its own review with imports_changed.
+title: A code change reaches the root README only when the exported summary changes
+desc: A change to services/api/src/orders.rs makes services/api/README.md pending, and the root README.md waits and stays current. The review asks whether the exported summary is still true. If yes, as for a rename, the reviewer acknowledges no-update and the root stays current: one review. If no, as when the API starts to write orders.log, the reviewer edits the summary and acknowledges updated, memoria render copies the new summary into README.md, README.md becomes pending, and a review of the whole root ends with README.md current: two reviews, in import order.
 ---
-«░▒▓█» WHAT ONE CODE CHANGE REACHES «█▓▒░»
+«░▒▓█» A CODE CHANGE STOPS AT ITS FOLDER UNLESS THE SUMMARY CHANGES «█▓▒░»
 
-┌─ A REFACTOR · THE SUMMARY STAYS TRUE ────────────┐  ┌─ A BEHAVIOR CHANGE · THE SUMMARY CHANGES ────────┐
-│                                                  │  │                                                  │
-│ services/api/src/orders.rs  ‹internal rename›    │  │ services/api/src/orders.rs  ‹writes orders.log›  │
-│    │                                             │  │    │                                             │
-│    ▼                                             │  │    ▼                                             │
-│ services/api/README.md  ▓▓▓▓ «pending»           │  │ services/api/README.md  ▓▓▓▓ «pending»           │
-│    │  README.md waits and stays «current»        │  │    │  README.md waits and stays «current»        │
-│    │  review, then ack «no-update»               │  │    │  edit the «summary» and ack «updated»       │
-│    ▼                                             │  │    ▼                                             │
-│ services/api/README.md  «current»                │  │ README.md  ▓▓▓▓ «pending» ‹import outdated›      │
-│    │  ‹the export did not change›                │  │    │  memoria «render» copies the new summary    │
-│    ×                                             │  │    ▼                                             │
-│ README.md  ░░░░ «current»                        │  │ README.md  «pending» «imports_changed»           │
-│                                                  │  │    │  review the whole root, then ack            │
-│                                                  │  │    ▼                                             │
-│                                                  │  │ README.md  «current»                             │
-│ One review. The change stops at the folder.      │  │ Two reviews, in import order.                    │
-│                                                  │  │                                                  │
-└──────────────────────────────────────────────────┘  └──────────────────────────────────────────────────┘
+                    ┌──────────────────────────────────────┐
+                    │ services/api/src/orders.rs changes   │
+                    └───────────────────┬──────────────────┘
+                                        ▼
+                    ┌──────────────────────────────────────┐
+                    │ services/api/README.md«pending»      │
+                    │‹README.md waits and stays current›   │
+                    └───────────────────┬──────────────────┘
+                                        │ review: is the exported«summary»still true?
+                ┌───────────────────────┴───────────────────┐
+                │ yes ‹a rename›                            │ no ‹writes orders.log›
+                ▼                                           ▼
+         ack«no-update»                     edit the«summary»and ack«updated»
+                │                                           │
+                ▼                                           ▼
+ ┌────────────────────────────┐              ┌────────────────────────────┐
+ │ README.md stays«current»   │              │ README.md«pending»         │
+ └────────────────────────────┘              └──────────────┬─────────────┘
+     ‹the change stops here›                                │ memoria«render»
+                                                            │ review the whole root, ack
+                                                            ▼
+                                             ┌────────────────────────────┐
+                                             │ README.md«current»         │
+                                             └────────────────────────────┘
 
-▓▓▓▓ reached by the change   ░░░░ not reached   × the change stops here
+           One review                         Two reviews, in import order

@@ -1,20 +1,19 @@
-title: A docs page sees code changes only through the summaries that it imports
-desc: Two panels. Left, docs/guide.md only links src/auth/login.rs, which is outside its scope. When login.rs changes from 30 to 15 minutes, src/auth/README.md is pending and docs/guide.md stays current, so the guide drifts. Right, src/auth/README.md covers login.rs and exports a summary, and docs/guide.md imports it. src/ is still outside the guide's scope, but a change to the summary makes the guide wait and then become pending. Other code edits never reach the guide.
+title: A code change reaches the docs page only through the imported summary
+desc: Two folders side by side. Left, src/auth/ is the scope of src/auth/README.md. Any edit to login.rs, such as 30 to 15 minutes, makes the README pending. The README exports a summary. Right, docs/ is the scope of docs/guide.md, which covers 0 source files. One arrow crosses from the left folder to the right: only an edit to the exported summary reaches the guide's import block and makes the guide pending. The guide's link to login.rs is navigation only, so no change travels along it.
 ---
-«░▒▓█» A CENTRAL DOCS/ PAGE · WHAT IT CAN AND CANNOT SEE «█▓▒░»
+«░▒▓█» A CODE CHANGE REACHES DOCS/ ONLY THROUGH THE IMPORTED SUMMARY «█▓▒░»
 
-┌─ PITFALL · THE GUIDE ONLY LINKS THE CODE ────────────┐  ┌─ PATTERN · THE GUIDE IMPORTS A SUMMARY ──────────────┐
-│                                                      │  │                                                      │
-│ docs/guide.md  ── link ──▶ ‹../src/auth/login.rs›    │  │ src/auth/README.md   ▓▓▓▓ src/auth/login.rs          │
-│   ░░░░ src/ is outside its scope                     │  │   └─ «export» summary ──┐                            │
-│                                                      │  │                         │ «import» ‹#summary›        │
-│ src/auth/login.rs changes: 30 → 15 minutes           │  │ docs/guide.md ◀─────────┘                            │
-│   ▓▓▓▓ src/auth/README.md      «pending»             │  │   ░░░░ src/ is still outside its scope               │
-│   ░░░░ docs/guide.md           «current»             │  │                                                      │
-│                                                      │  │ When the summary changes, the guide «waits»          │
-│ The guide still says 30 minutes, and no              │  │ for the README, then it is «pending»                 │
-│ review asks anyone to read it again.                 │  │ Other code edits never reach the guide.              │
-│                                                      │  │                                                      │
-└──────────────────────────────────────────────────────┘  └──────────────────────────────────────────────────────┘
-
-▓▓▓▓ in the document's scope   ░░░░ outside its scope   ──▶ link: navigation only   ◀── «import» carries freshness
+┌─ src/auth/ ────────────────────┐                     ┌─ docs/ ────────────────────────┐
+│ ‹scope of src/auth/README.md›  │                     │ ‹scope of docs/guide.md›       │
+│                                │                     │                                │
+│  login.rs  ‹30 → 15 minutes›   │                     │  guide.md                      │
+│     │                          │                     │ ‹covers 0 source files›        │
+│     │ any edit makes           │                     │                                │
+│     ▼ the README «pending»     │                     │                                │
+│  README.md                     │ only a summary edit │                                │
+│     └─ «export» summary ───────┼─────────────────────┼──▶ «import» block              │
+│                                │                     │     makes the guide «pending»  │
+│                                │                     │                                │
+│                                │                     │  link to login.rs              │
+│                                │                     │ ‹navigation only: no change›   │
+└────────────────────────────────┘                     └────────────────────────────────┘

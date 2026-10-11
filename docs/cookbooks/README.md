@@ -4,13 +4,13 @@ Each cookbook shows one way to lay out a project's documentation, and what Memor
 
 Every cookbook runs a small, realistic project. Every command output on its page comes from that run, and a test compares each output block with the run, so the pages cannot drift from the product.
 
-The patterns differ in one decision: where the documents live, because that decides which documents a code change reaches.
+The patterns differ in one decision: where the documents live. A document covers the files in its own folder and below it, so its place decides which documents one code change reaches. The diagram follows one edited file through each pattern.
 
-![Four ways to document a project: agent instruction files, a README tree with central guidelines, documents beside the code, and a central docs folder that sees code only through imports.](patterns.svg)
+![Where a document lives decides which documents one code change reaches. An edit to justfile makes all three root documents pending. An edit in services/api makes only its README pending, and the root README is reviewed only if the summary that it imports changes. An edit to billing/tax.rs makes every tracked page in billing pending. An edit in src/auth makes only its README pending, and docs/guide.md is reviewed only if the summary that it imports changes.](patterns.svg)
 
 ## Choose a pattern
 
-Start from where your explanations need to live. A document covers its own folder and below it, so a page beside the code sees each change there directly, while a page in a separate folder sees a change only through a summary that it imports.
+Start from where your explanations need to live. A page beside the code sees each change there directly, while a page in a separate folder sees a change only through a summary that it imports.
 
 | Pattern | The documents live… | One code change reaches… | Choose it when… | Avoid it when… |
 | --- | --- | --- | --- | --- |
@@ -75,10 +75,16 @@ You draw each diagram as text, and [`scripts/ascii-diagram.py`](../../scripts/as
    | `«text»` | A Memoria state or concept: `pending`, `import`, `section` | Accent text |
    | `‹text›` | A path or a note in the background | Muted text |
 
+   Three details of the renderer affect the layout:
+
+   - Each `«`, `»`, `‹`, and `›` marker takes one grid cell and renders as a blank. Count the markers when you align columns. For marked text directly after a border, write `│‹text›` with no space.
+   - A marked span must close on the line where it opens. The renderer starts each line as plain ink, so a closing marker on the next line renders as a visible `»` or `›`.
+   - Where a line crosses a box border, draw `┼`. A `─` or `│` in the border cell draws only its own direction, so the border breaks there.
+
 3. Run `python3 scripts/ascii-diagram.py docs/cookbooks/<name>/<diagram>.txt`. It writes `<diagram>.svg` beside the source.
 4. Embed the SVG with alt text that states the same claim as the `title:` line.
 5. Run `python3 scripts/ascii-diagram.py --check` on every source before you commit. It fails when an SVG is not the current render of its source.
 
-Keep one claim for each diagram. Show the pattern first, then how it differs from the other patterns.
+Keep one claim for each diagram. Show the pattern first, then how it differs from the other patterns. When one diagram compares several cases, give each panel the same layout and the same marks, so that the reader compares one thing.
 
 Next: open [Keep agent instructions current](agent-instructions/README.md) for a complete example.
