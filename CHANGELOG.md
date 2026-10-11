@@ -65,6 +65,15 @@ A full-baseline review said "Read the complete current scope" and then listed on
 
 The manifest, the token, and the review requirements do not change. The artifact still lists only the changed inputs, so it stays proportional to the changes. A focused candidate keeps its `Read:` list.
 
+### Rust 1.99
+
+Memoria now builds with Rust 1.99.0, up from 1.96.0, so that release builds include the miscompilation fixes from Rust 1.96.1, 1.97.1, and 1.98.1.
+
+- `rust-toolchain.toml` pins 1.99.0, and the minimum supported Rust version (`rust-version`) is now 1.99.
+- The Linux release archives build in `rust:1.99.0-bookworm`, pinned by digest in `scripts/linux-builders.json`.
+- A measurement on this repository and on a 2,000-source synthetic project found no runtime difference beyond noise. Memoria's time goes mostly to Git subprocesses, not to compiled Rust code.
+- Building from source now needs Rust 1.99. Prebuilt packages are not affected.
+
 ### Quiet output stays quiet
 
 A document that names no guide keeps its guidance digest, its review lines, and its `memoria guidance` view byte for byte. During a review, the only new lines are a `· guide: <path>` suffix on a suggested section and a count on the `Guidance:` line. `status`, `check`, the plan, `graph`, hooks, and the workflow template do not change.
@@ -100,7 +109,8 @@ The token, the review context, `memoria.lock`, and configuration `version = 3` d
 2. Capture review artifacts that were in flight again. Manifest 2, packet 4, and view 2 artifacts are refused with regeneration text.
 3. Run `memoria agent upgrade` for each installed skill. `memoria agent status` reports it as outdated until then.
 4. A project that registers no guide sees no change: the same digests and the same output.
-5. If a section names a file whose name starts with `!`, replace that token with a pattern that matches it, for example `?keep.rs` for `!keep.rs`.
+5. To build from source, use Rust 1.99 or later. `rustup` selects the pinned toolchain from `rust-toolchain.toml`.
+6. If a section names a file whose name starts with `!`, replace that token with a pattern that matches it, for example `?keep.rs` for `!keep.rs`.
 
 ## 0.8.0 - 2026-10-04
 

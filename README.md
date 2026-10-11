@@ -5,8 +5,10 @@
   <a href="https://github.com/viktordanov/rs-memoria/actions/workflows/setup-action.yml"><img src="https://github.com/viktordanov/rs-memoria/actions/workflows/setup-action.yml/badge.svg" alt="Setup Action"></a>
   <a href="https://github.com/viktordanov/rs-memoria/releases/latest"><img src="https://img.shields.io/github/v/release/viktordanov/rs-memoria" alt="Latest release"></a>
   <a href="https://aur.archlinux.org/packages/memoria-bin"><img src="https://img.shields.io/aur/version/memoria-bin" alt="AUR"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/viktordanov/rs-memoria" alt="License"></a>
 </p>
+
+<p align="center"><img src="docs/assets/memoria-title.svg" width="820" alt="Memoria: people and agents write the documentation, and when the code it describes changes, Memoria says which document to review. A box of documents shows README.md and AGENTS.md as current and src/auth/README.md marked review; an arrow labelled memoria runs to it from the edited src/auth/login.rs in a box of code."></p>
 
 **Memoria keeps a project's documentation current as its code changes. When a file changes, it tells you which explanations to review, what to read, and in which order, then records each review against the exact bytes that the reviewer saw.**
 
@@ -14,13 +16,70 @@ Documentation drift rarely announces itself. A feature changes, the tests move o
 
 Memoria turns that into a review queue. People and agents still write and judge every explanation: Memoria does not write documentation, and it does not decide whether an explanation is correct. It decides which explanations have not been checked against their current inputs.
 
+## Install
+
+Every package installs the latest published release, which the release badge above shows. This README follows the `main` branch, so it can describe changes that are not released yet: check `memoria --version` against the [changelog](CHANGELOG.md) when a command here behaves differently.
+
+```sh
+brew install viktordanov/tap/memoria       # macOS 13 Ventura or later, Apple Silicon or Intel
+yay -S memoria-bin                         # Arch Linux, x86_64
+cargo install --locked --path .            # from a checkout of this repository, Rust 1.99
+```
+
+### Homebrew on macOS
+
+The [Homebrew tap](https://github.com/viktordanov/homebrew-tap) installs a prebuilt executable for Apple Silicon or Intel Macs on macOS 13 Ventura or later:
+
+```sh
+brew install viktordanov/tap/memoria
+memoria --version
+```
+
+Run `brew upgrade memoria` to move to a new release.
+
+### Arch Linux from the AUR
+
+The [`memoria-bin`](https://aur.archlinux.org/packages/memoria-bin) package installs the prebuilt x86_64 executable from the GitHub release. Install it with an AUR helper such as `yay`:
+
+```sh
+yay -S memoria-bin
+memoria --version
+```
+
+### Prebuilt archives for Linux and macOS
+
+Each [GitHub release](https://github.com/viktordanov/rs-memoria/releases/latest) carries archives for Linux (x86_64 and ARM64, glibc) and macOS (Apple Silicon and Intel), each with a `.sha256` checksum file. For example, on x86_64 Linux:
+
+```sh
+version=0.8.0
+archive=memoria-$version-x86_64-unknown-linux-gnu.tar.gz
+gh release download "v$version" -R viktordanov/rs-memoria -p "$archive*"
+sha256sum -c "$archive.sha256"
+tar xzf "$archive"
+install -D -m 0755 "memoria-$version-x86_64-unknown-linux-gnu/memoria" ~/.local/bin/memoria
+```
+
+Set `version` to the release that you want. The Linux release also publishes a provenance file for each architecture.
+
+### Build from source
+
+Building needs Rust 1.99. The repository's `rust-toolchain.toml` pins that toolchain, so `rustup` selects it for you. Install from a checkout:
+
+```sh
+git clone https://github.com/viktordanov/rs-memoria.git
+cd rs-memoria
+cargo install --locked --path .
+```
+
+To build one release instead of the current `main`, check out its tag first, for example `git checkout v0.8.0`. An older tag pins its own toolchain: 0.8.0 builds with Rust 1.96. The executable is called `memoria`, and Cargo installs it in `~/.cargo/bin`.
+
 ## Contents
 
 1. Get started
+   - [Install](#install)
    - [Use cases](#use-cases)
    - [How it works](#how-it-works)
    - [The CLI at a glance](#the-cli-at-a-glance)
-   - [Install](#install)
    - [Quick start](#quick-start)
 2. Use it every day
    - [The review cycle](#the-review-cycle)
@@ -164,63 +223,6 @@ The cookbook's test runs these commands and compares each output with its page. 
 | See documents, handoffs, and imports as a graph | `memoria graph` |
 
 Every command accepts `--format json`. The [complete command list](#command-line-interface) is below, and the [command reference](docs/cli.md) covers every argument, diagnostic, and exit status.
-
-## Install
-
-Every package installs the latest published release, which the release badge above shows. This README follows the `main` branch, so it can describe changes that are not released yet: check `memoria --version` against the [changelog](CHANGELOG.md) when a command here behaves differently.
-
-```sh
-brew install viktordanov/tap/memoria       # macOS 13 Ventura or later, Apple Silicon or Intel
-yay -S memoria-bin                         # Arch Linux, x86_64
-cargo install --locked --path .            # from a checkout of this repository, Rust 1.96
-```
-
-### Homebrew on macOS
-
-The [Homebrew tap](https://github.com/viktordanov/homebrew-tap) installs a prebuilt executable for Apple Silicon or Intel Macs on macOS 13 Ventura or later:
-
-```sh
-brew install viktordanov/tap/memoria
-memoria --version
-```
-
-Run `brew upgrade memoria` to move to a new release.
-
-### Arch Linux from the AUR
-
-The [`memoria-bin`](https://aur.archlinux.org/packages/memoria-bin) package installs the prebuilt x86_64 executable from the GitHub release. Install it with an AUR helper such as `yay`:
-
-```sh
-yay -S memoria-bin
-memoria --version
-```
-
-### Prebuilt archives for Linux and macOS
-
-Each [GitHub release](https://github.com/viktordanov/rs-memoria/releases/latest) carries archives for Linux (x86_64 and ARM64, glibc) and macOS (Apple Silicon and Intel), each with a `.sha256` checksum file. For example, on x86_64 Linux:
-
-```sh
-version=0.8.0
-archive=memoria-$version-x86_64-unknown-linux-gnu.tar.gz
-gh release download "v$version" -R viktordanov/rs-memoria -p "$archive*"
-sha256sum -c "$archive.sha256"
-tar xzf "$archive"
-install -D -m 0755 "memoria-$version-x86_64-unknown-linux-gnu/memoria" ~/.local/bin/memoria
-```
-
-Set `version` to the release that you want. The Linux release also publishes a provenance file for each architecture.
-
-### Build from source
-
-Building needs Rust 1.96. The repository's `rust-toolchain.toml` pins that toolchain, so `rustup` selects it for you. Install from a checkout:
-
-```sh
-git clone https://github.com/viktordanov/rs-memoria.git
-cd rs-memoria
-cargo install --locked --path .
-```
-
-To build one release instead of the current `main`, check out its tag first, for example `git checkout v0.8.0`. The executable is called `memoria`, and Cargo installs it in `~/.cargo/bin`.
 
 ## Quick start
 

@@ -375,7 +375,7 @@ pub fn build(
                                 InputChange::Changed { after, .. } => &after.path == path,
                             })
                         });
-                        let classified = file_change.map(&classify);
+                        let classified = file_change.map(classify);
                         let kind = match classified {
                             Some(Classified::Handoff(_)) => RelationshipKind::Handoff,
                             Some(Classified::Unrecorded(_)) => RelationshipKind::CoverageUnrecorded,
