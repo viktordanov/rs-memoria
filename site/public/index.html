@@ -135,6 +135,7 @@ section::before { content: ""; position: absolute; left: 50%; top: 0; width: min
 .term { height: 372px; }
 .mk { color: var(--ink); }
 .nw { white-space: nowrap; }
+.t-h { color: var(--muted); } .t-k { color: var(--ink); } .t-p { color: var(--muted); } .t-s { color: var(--added); }
 .cl { display: block; padding-left: 4ch; text-indent: -4ch; overflow-wrap: normal; }
 .share .ln { padding-left: 4ch; text-indent: -4ch; overflow-wrap: normal; }
 .ar-row code { display: block; padding-left: 4.5ch; text-indent: -4.5ch; }
@@ -219,9 +220,14 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
 @media (max-width: 1319px) { .map { display: none; } }
 
 /* ---------- feature clusters ---------- */
-.share { display: grid; grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1fr); align-items: stretch; }
-.share .via { align-self: center; }
-.share .frame, .guide .frame, .plug .frame { font-size: 13px; }
+.share { display: grid; grid-template-columns: minmax(0, 1fr) 100px minmax(0, 1fr); align-items: center; }
+.share .frame { font-size: 11.5px; padding-inline: 18px; }
+.copies { display: flex; flex-direction: column; gap: 30px; }
+.srcnote { font-size: 12px; margin-top: 14px; }
+.vianote { font-size: 11px; text-align: center; }
+.share .via .c-acc { white-space: nowrap; font-size: 11px; }
+.ln.copy { color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.guide .frame, .plug .frame { font-size: 13px; }
 .via { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 12px; }
 .via .link { width: 72%; transform: scaleX(-1); background: var(--muted); }
 .via .link::before { border-right-color: var(--muted); }
@@ -277,10 +283,12 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
 .cycle .ar { color: var(--muted); padding-inline: 6px; }
 .cycle .back { flex-basis: 100%; color: var(--muted); font-size: 13px; text-align: center; }
 .uses { display: flex; flex-direction: column; border-top: 1.5px solid var(--ink); }
-.uses div { display: grid; grid-template-columns: 1fr 1.2fr; gap: 48px; padding-block: 24px; border-bottom: 1px dashed var(--rule); line-height: 1.5; }
-.uses div > span:first-child::before { content: "› "; color: var(--muted); }
+.uses .urow { display: grid; grid-template-columns: 1fr 1.2fr; gap: 48px; padding-block: 24px; border-bottom: 1px dashed var(--rule); line-height: 1.5; color: var(--ink); }
+.uses .urow:hover > span:first-child { color: var(--accent); }
+.uses .urow:hover > span:first-child::before { color: var(--accent); }
+.uses .urow > span:first-child::before { content: "› "; color: var(--muted); }
 .uses .m { font-size: 14px; }
-.uses div > span:first-child { font-weight: 500; }
+.uses .urow > span:first-child { font-weight: 500; }
 .never { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px 18px; }
 .never .frame { font-size: 14px; border: 0; padding: 0; }
 .never .frame > .ft { position: static; padding: 0; background: none; display: block; margin-bottom: 8px; }
@@ -372,7 +380,11 @@ footer { color: var(--muted); font-size: 12px; }
   .trees .says { min-height: 0; }
 
   /* markers and the loop: a compact numbered list */
-  .annot { font-size: 11.5px; padding: 20px 12px 14px; }
+  .annot { font-size: 10px; padding: 20px 10px 14px; }
+  .annot .vl { display: none; }
+  .ar-row code { padding-left: 0; text-indent: 0; }
+  .share .frame { font-size: 10.5px; padding-inline: 12px; }
+  .guide .frame, .cmdrow { font-size: 11px; }
   .ar-row.blank { display: none; }
   .ar-row { grid-template-columns: 1fr; gap: 0; }
   .ar-row .note:empty { display: none; }
@@ -390,10 +402,15 @@ footer { color: var(--muted); font-size: 12px; }
   .back .narrow { display: inline; }
 
   /* exports */
-  .share { grid-template-columns: 1fr; gap: 8px; }
+  .share { grid-template-columns: 1fr; gap: 10px; }
+  .vianote { display: none; }
+  .share .via { padding-block: 2px 16px; }
+  .share .via .c-acc { font-size: 12px; white-space: normal; text-align: center; }
+  .copies { gap: 26px; }
   .via { flex-direction: row; justify-content: center; }
   .via .link { display: none; }
-  .via span::before { content: "↓ "; }
+  .via .c-acc::before { content: "↓ "; }
+  .via .c-acc::after { content: " copies it into each import"; font-weight: 400; color: var(--muted); }
 
   /* guidance: the section-guide example is described by the rule below it */
   .guide { grid-template-columns: 1fr; }
@@ -401,7 +418,7 @@ footer { color: var(--muted); font-size: 12px; }
   .cmdrow { font-size: 11px; }
 
   /* use cases and principles */
-  .uses div { grid-template-columns: 1fr; gap: 4px; padding-block: 14px; }
+  .uses .urow { grid-template-columns: 1fr; gap: 4px; padding-block: 14px; }
   .never { grid-template-columns: 1fr; gap: 18px; }
 
   /* onboarding: the terminal starts short */
@@ -561,7 +578,7 @@ footer { color: var(--muted); font-size: 12px; }
       <h2 class="hd" id="h-cycle">Document markers</h2>
       <p class="sub">Folders do most of the work. Plain HTML comments add the rest: which part of a doc describes which code, and which summary other docs reuse. Nothing else in your Markdown changes.</p>
     </header>
-    <div class="frame annot"><span class="ft">src/auth/README.md</span><div class="ar-row on"><code><span class="vl">1</span># Auth</code><span class="note"><b>tracked</b> · covers src/auth/ and below</span></div><div class="ar-row blank"><code><span class="vl">2</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">3</span><span class="mk">&lt;!-- memoria:export id="summary" --&gt;</span></code><span class="note"><b>export</b> · a summary other docs reuse</span></div><div class="ar-row"><code><span class="vl">4</span>Auth signs users in with a password or a passkey.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">5</span><span class="mk">&lt;!-- /memoria:export --&gt;</span></code><span class="note"></span></div><div class="ar-row blank"><code><span class="vl">6</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">7</span><span class="mk">&lt;!-- memoria:section id="sessions" files="src/auth/**" --&gt;</span></code><span class="note"><b>section</b> · maps src/auth/**</span></div><div class="ar-row"><code><span class="vl">8</span>## Sessions</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">9</span>A session lasts 15 minutes, then the user signs in again.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">10</span><span class="mk">&lt;!-- /memoria:section --&gt;</span></code><span class="note"></span></div></div>
+    <div class="frame annot"><span class="ft">src/auth/README.md</span><div class="ar-row on"><code><span class="vl">1</span># Auth</code><span class="note"><b>tracked</b> · covers src/auth/ and below</span></div><div class="ar-row blank"><code><span class="vl">2</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">3</span><span class="mk">&lt;!-- memoria:export id="summary" --&gt;</span></code><span class="note"><b>export</b> · a summary other docs reuse</span></div><div class="ar-row"><code><span class="vl">4</span>Auth signs users in with a passkey.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">5</span><span class="mk">&lt;!-- /memoria:export --&gt;</span></code><span class="note"></span></div><div class="ar-row blank"><code><span class="vl">6</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">7</span><span class="mk">&lt;!-- memoria:section id="sessions" files="src/auth/**" --&gt;</span></code><span class="note"><b>section</b> · maps src/auth/**</span></div><div class="ar-row"><code><span class="vl">8</span>## Sessions</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">9</span>A session lasts 15 minutes.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">10</span><span class="mk">&lt;!-- /memoria:section --&gt;</span></code><span class="note"></span></div></div>
     <div class="label loop-label">every change runs the same loop</div>
     <div class="cycle" id="cyc">
       <div class="box">login.rs changes<small>git commit</small></div><span class="ar">─▸</span>
@@ -582,10 +599,15 @@ footer { color: var(--muted); font-size: 12px; }
     </header>
     <div class="share">
       <div class="frame"><span class="ft">auth/README.md · the source</span>
-<pre><span class="ln c-mut">&lt;!-- memoria:export id="summary" --&gt;</span><span class="ln hot" id="exp-line">Auth signs users in with a password or a passkey.</span><span class="ln c-mut">&lt;!-- /memoria:export --&gt;</span></pre></div>
-      <div class="via"><span class="c-acc">memoria render</span><span class="link" aria-hidden="true"></span></div>
-      <div class="frame"><span class="ft">README.md · reuses it</span>
-<pre><span class="ln c-mut">&lt;!-- memoria:import src="auth/README.md#summary" --&gt;</span><span class="ln hot" id="imp-line" data-text="Auth signs users in with a password or a passkey.">Auth signs users in with a password or a passkey.</span><span class="ln c-mut">&lt;!-- /memoria:import --&gt;</span></pre></div>
+<pre><span class="ln c-mut">&lt;!-- memoria:export id="summary" --&gt;</span><span class="ln hot" id="exp-line">Auth signs users in with a passkey.</span><span class="ln c-mut">&lt;!-- /memoria:export --&gt;</span></pre>
+        <p class="m srcnote">You edit the summary here, and only here.</p></div>
+      <div class="via"><span class="c-acc">memoria render</span><span class="link" aria-hidden="true"></span><span class="m vianote">copies it into each import</span></div>
+      <div class="copies">
+        <div class="frame"><span class="ft">README.md · a copy</span>
+<pre><span class="ln c-mut">&lt;!-- memoria:import src="auth/README.md#summary" --&gt;</span><span class="ln copy imp-line" data-text="Auth signs users in with a passkey.">Auth signs users in with a passkey.</span><span class="ln c-mut">&lt;!-- /memoria:import --&gt;</span></pre></div>
+        <div class="frame"><span class="ft">AGENTS.md · a copy</span>
+<pre><span class="ln c-mut">&lt;!-- memoria:import src="auth/README.md#summary" --&gt;</span><span class="ln copy imp-line" data-text="Auth signs users in with a passkey.">Auth signs users in with a passkey.</span><span class="ln c-mut">&lt;!-- /memoria:import --&gt;</span></pre></div>
+      </div>
     </div>
     <p>The source is reviewed first, so nobody checks a half-finished copy. Render only rewrites the marked copy and leaves the rest of the file alone. Change the summary once, and every doc that reuses it is queued for review in the right order.</p>
   </section>
@@ -597,14 +619,14 @@ footer { color: var(--muted); font-size: 12px; }
       <p class="sub">Write your documentation rules once in <code>memoria.toml</code>. Every review lists them, and <code>memoria guidance</code> prints them for any doc.</p>
     </header>
     <div class="guide">
-      <div class="frame"><span class="ft">memoria.toml · project guidance</span><pre><span class="cl"><span class="c-mut">[documentation]</span></span><span class="cl">guidance = [</span><span class="cl">  <span class="c-acc">"Explain the operational workflow before implementation details."</span>,</span><span class="cl">]</span><span class="cl">guidance_files = <span class="nw">[<span class="c-acc">"docs/writing-guidance.md"</span>]</span></span></pre></div>
+      <div class="frame"><span class="ft">memoria.toml · project guidance</span><pre><span class="cl"><span class="t-h">[documentation]</span></span><span class="cl"><span class="t-k">guidance</span><span class="t-p"> = [</span></span><span class="cl">  <span class="t-s">"Explain the workflow first."</span><span class="t-p">,</span></span><span class="cl">  <span class="t-s">"Then the implementation."</span><span class="t-p">,</span></span><span class="cl"><span class="t-p">]</span></span><span class="cl"><span class="t-k">guidance_files</span><span class="t-p"> = [</span><span class="t-s">"docs/writing-guide.md"</span><span class="t-p">]</span></span></pre></div>
       <div class="frame"><span class="ft">AGENTS.md · section guide</span><pre class="wrap">&lt;!-- memoria:section id="boundaries"
      guidance="docs/templates/agent-rules.md" --&gt;
 ## Boundaries
 …
 &lt;!-- /memoria:section --&gt;</pre></div>
     </div>
-    <div class="frame cmdrow"><span class="ft">terminal</span><pre><span class="cl"><span class="p">$ memoria guidance src/README.md</span>   <span class="c-mut"># the rules for one document</span></span><span class="cl"><span class="p">$ memoria guidance --changed</span>       <span class="c-mut"># reviewed documents that saw older wording</span></span></pre></div>
+    <div class="frame cmdrow"><span class="ft">terminal</span><pre><span class="cl"><span class="c-mut"># the rules for one document</span></span><span class="cl"><span class="p">$ memoria guidance src/README.md</span></span><span class="cl"> </span><span class="cl"><span class="c-mut"># reviewed docs that saw older wording</span></span><span class="cl"><span class="p">$ memoria guidance --changed</span></span></pre></div>
     <ul class="rules">
       <li><span><strong>Advice, not a trigger.</strong> <span class="m">Rules never decide which files a doc covers, and never flag a doc on their own.</span></span></li>
       <li><span><strong>Changing a rule flags nothing.</strong> <span class="m">The review plan notes the change, <code>memoria check</code> still passes, and you decide which docs deserve a fresh look.</span></span></li>
@@ -619,10 +641,10 @@ footer { color: var(--muted); font-size: 12px; }
       <p class="sub">Four jobs it does well, from one stale file to a blocked merge.</p>
     </header>
     <div class="uses">
-      <div><span>Find every doc a feature change touches</span><span class="m">Each doc that covers a changed file is flagged, in the order to review them.</span></div>
-      <div><span>Block a merge until the docs are checked</span><span class="m"><code>memoria check</code> fails in CI while any review is pending.</span></div>
-      <div><span>Keep AGENTS.md and CLAUDE.md honest</span><span class="m">Both are tracked, and shared writing rules apply to each section that names them.</span></div>
-      <div><span>Re-check docs after a decision, not a diff</span><span class="m"><code>memoria invalidate</code> asks for a review and records your reason.</span></div>
+      <a class="urow" href="#how"><span>Find every doc a feature change touches</span><span class="m">Each doc that covers a changed file is flagged, in the order to review them.</span></a>
+      <a class="urow" href="https://github.com/viktordanov/rs-memoria/blob/main/docs/github-actions.md"><span>Block a merge until the docs are checked</span><span class="m"><code>memoria check</code> fails in CI while any review is pending.</span></a>
+      <a class="urow" href="https://github.com/viktordanov/rs-memoria/blob/main/docs/cookbooks/agent-instructions/README.md"><span>Keep AGENTS.md and CLAUDE.md honest</span><span class="m">Both are tracked, and shared writing rules apply to each section that names them.</span></a>
+      <a class="urow" href="https://github.com/viktordanov/rs-memoria/blob/main/docs/workflow.md"><span>Re-check docs after a decision, not a diff</span><span class="m"><code>memoria invalidate</code> asks for a review and records your reason.</span></a>
     </div>
   </section>
 
@@ -850,18 +872,20 @@ Go deeper
     });
   }, treesIdle);
 
-  var imp = document.getElementById('imp-line'), rtm = new Timers();
-  function reveal(k) { var t = imp.dataset.text; imp.innerHTML = '<span>' + t.slice(0, k) + '</span><span class="ghost">' + t.slice(k) + '</span>'; }
-  function renderIdle() { rtm.clear(); reveal(0); imp.classList.remove('hot'); }
+  var imps = document.querySelectorAll('.imp-line'), rtm = new Timers();
+  function reveal(el, k) { var t = el.dataset.text; el.innerHTML = '<span>' + t.slice(0, k) + '</span><span class="ghost">' + t.slice(k) + '</span>'; }
+  function renderIdle() { rtm.clear(); imps.forEach(function (el) { reveal(el, 0); }); }
   if (!reduce) renderIdle();
   onView(document.querySelector('.share'), function () {
-    var txt = imp.dataset.text, k = 0;
     flash(document.getElementById('exp-line'));
-    rtm.later(function type() {
-      reveal(k += 2);
-      if (k < txt.length) return rtm.later(type, 28);
-      imp.textContent = txt; imp.classList.add('hot'); flash(imp);
-    }, 700);
+    imps.forEach(function (el, n) {
+      var txt = el.dataset.text, k = 0;
+      rtm.later(function type() {
+        reveal(el, k += 2);
+        if (k < txt.length) return rtm.later(type, 24);
+        el.textContent = txt; flash(el);
+      }, 700 + n * 500);
+    });
   }, renderIdle);
 
   // onboard: the hub's output scrolls in line by line; its space is always kept
@@ -982,7 +1006,7 @@ Go deeper
     '# Auth',
     '',
     '<!-- memoria:export id="summary" -->',
-    'Auth signs users in with a password or a passkey.',
+    'Auth signs users in with a passkey.',
     '<!-- /memoria:export -->',
     '',
     '<!-- memoria:section id="sessions" files="src/auth/**" -->',
@@ -993,7 +1017,7 @@ Go deeper
   function editor(val, mode, caret) {
     var rows = DOC.map(function (l, k) {
       var body;
-      if (l === '@@') return '<span class="erow eline"><span class="vl">' + (k + 1) + '</span>A session lasts ' + val + (caret ? '<span class="cursor"></span>' : '') + ' minutes, then the user signs in again.</span>';
+      if (l === '@@') return '<span class="erow eline"><span class="vl">' + (k + 1) + '</span>A session lasts ' + val + (caret ? '<span class="cursor"></span>' : '') + ' minutes.</span>';
       if (l.indexOf('<!--') === 0) body = '<span class="c-mut">' + l.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>';
       else body = l;
       return '<span class="erow"><span class="vl">' + (k + 1) + '</span>' + (body || ' ') + '</span>';
