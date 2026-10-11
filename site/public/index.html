@@ -201,7 +201,7 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
 .docs footer a { color: var(--muted); }
 
 /* ---------- phone-only pieces ---------- */
-.ttabs, .back .narrow, .more, .arch { display: none; }
+.ttabs, .back .narrow, .more, .arch, .legend { display: none; }
 .top a.cta-onb, .ctas a.cta-onb { color: var(--accent); }
 .top a.cta-onb:hover, .ctas a.cta-onb:hover { color: var(--ink); }
 .ctas a.cta-onb::before { color: var(--accent); }
@@ -231,8 +231,8 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
 .via { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 12px; }
 .via .link { width: 72%; transform: scaleX(-1); background: var(--accent); }
 .via .link::before { border-right-color: var(--accent); }
-.guide { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 34px 18px; }
-.guide .frame { font-size: 12px; }
+.guide { display: grid; grid-template-columns: 1fr 1fr; gap: 34px 18px; }
+.guide .frame { font-size: 11.5px; }
 .share pre, .guide pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .cmdrow { font-size: 13px; }
 .plug { display: grid; grid-template-columns: 1fr; gap: 34px; }
@@ -388,14 +388,15 @@ footer { color: var(--muted); font-size: 12px; }
   .guide .frame, .cmdrow { font-size: 11px; }
   .ar-row.blank { display: none; }
   .ar-row { grid-template-columns: 1fr; gap: 0; }
-  .ar-row .note:empty { display: none; }
+  .ar-row .note { display: none !important; }
+  .legend { display: flex; margin-top: -8px; gap: 8px; font-size: 13px; }
   .ar-row .note { font-size: 11.5px; margin-bottom: 4px; }
   .loop-label { margin-bottom: -8px; }
   .cycle { flex-direction: column; align-items: stretch; gap: 4px; counter-reset: step; }
   .cycle .ar { display: none; }
   .cycle .box, .cycle .box.lit { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; text-align: left; padding: 6px 2px; font-size: 12.5px; counter-increment: step; }
   #cycle > p { font-size: 13px; }
-  #cycle { gap: 16px; }
+  #cycle { gap: 12px; }
   .cycle .back { margin-top: 2px; font-size: 12px; }
   .cycle .box::before { content: counter(step); color: var(--muted); margin-right: 10px; }
   .cycle .box small { margin-left: auto; }
@@ -580,6 +581,11 @@ footer { color: var(--muted); font-size: 12px; }
       <p class="sub">Folders do most of the work. Plain HTML comments add the rest: which part of a doc describes which code, and which summary other docs reuse. Nothing else in your Markdown changes.</p>
     </header>
     <div class="frame annot"><span class="ft">src/auth/README.md</span><div class="ar-row on"><code><span class="vl">1</span># Auth</code><span class="note"><b>tracked</b> · covers src/auth/ and below</span></div><div class="ar-row blank"><code><span class="vl">2</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">3</span><span class="mk"><span class="t-p">&lt;!--</span> <span class="t-k">memoria:export</span> <span class="t-p">id=</span><span class="t-s">"summary"</span> <span class="t-p">--&gt;</span></span></code><span class="note"><b>export</b> · a summary other docs reuse</span></div><div class="ar-row"><code><span class="vl">4</span>Auth signs users in with a passkey.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">5</span><span class="mk"><span class="t-p">&lt;!--</span> /<span class="t-k">memoria:export</span> <span class="t-p">--&gt;</span></span></code><span class="note"></span></div><div class="ar-row blank"><code><span class="vl">6</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">7</span><span class="mk"><span class="t-p">&lt;!--</span> <span class="t-k">memoria:section</span> <span class="t-p">id=</span><span class="t-s">"sessions"</span> <span class="t-p">files=</span><span class="t-s">"src/auth/**"</span> <span class="t-p">--&gt;</span></span></code><span class="note"><b>section</b> · maps src/auth/**</span></div><div class="ar-row"><code><span class="vl">8</span>## Sessions</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">9</span>A session lasts 15 minutes.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">10</span><span class="mk"><span class="t-p">&lt;!--</span> /<span class="t-k">memoria:section</span> <span class="t-p">--&gt;</span></span></code><span class="note"></span></div></div>
+    <ul class="rules legend">
+      <li><span><strong>tracked</strong> <span class="m">This README covers src/auth/ and below.</span></span></li>
+      <li><span><strong>export</strong> <span class="m">The text inside is a summary other docs reuse.</span></span></li>
+      <li><span><strong>section</strong> <span class="m">This part describes src/auth/**, so reviews start here.</span></span></li>
+    </ul>
     <div class="label loop-label">every change runs the same loop</div>
     <div class="cycle" id="cyc">
       <div class="box">login.rs changes<small>git commit</small></div><span class="ar">─▸</span>
@@ -621,7 +627,7 @@ footer { color: var(--muted); font-size: 12px; }
     </header>
     <div class="guide">
       <div class="frame"><span class="ft">memoria.toml · project guidance</span><pre><span class="cl"><span class="t-h">[documentation]</span></span><span class="cl"><span class="t-k">guidance</span><span class="t-p"> = [</span></span><span class="cl">  <span class="t-s">"Explain the workflow first."</span><span class="t-p">,</span></span><span class="cl">  <span class="t-s">"Then the implementation."</span><span class="t-p">,</span></span><span class="cl"><span class="t-p">]</span></span><span class="cl"><span class="t-k">guidance_files</span><span class="t-p"> = [</span><span class="t-s">"docs/writing-guide.md"</span><span class="t-p">]</span></span></pre></div>
-      <div class="frame"><span class="ft">AGENTS.md · section guide</span><pre><span class="cl"><span class="t-p">&lt;!--</span> <span class="t-k">memoria:section</span> <span class="t-p">id=</span><span class="t-s">"rules"</span> <span class="t-p">guidance=</span><span class="t-s">"docs/rules.md"</span> <span class="t-p">--&gt;</span></span><span class="cl">## Boundaries</span><span class="cl">…</span><span class="cl"><span class="t-p">&lt;!--</span> /<span class="t-k">memoria:section</span> <span class="t-p">--&gt;</span></span></pre></div>
+      <div class="frame"><span class="ft">AGENTS.md · section guide</span><pre><span class="cl"># Agent instructions</span><span class="cl"><span class="t-p">&lt;!--</span> <span class="t-k">memoria:section</span> <span class="t-p">id=</span><span class="t-s">"rules"</span> <span class="t-p">guidance=</span><span class="t-s">"docs/rules.md"</span> <span class="t-p">--&gt;</span></span><span class="cl">## Boundaries</span><span class="cl">- Never edit generated files.</span><span class="cl">- Ask before you run a migration.</span><span class="cl"><span class="t-p">&lt;!--</span> /<span class="t-k">memoria:section</span> <span class="t-p">--&gt;</span></span></pre></div>
     </div>
     <div class="frame cmdrow"><span class="ft">terminal</span><pre><span class="cl"><span class="c-mut"># the rules for one document</span></span><span class="cl"><span class="p">$ memoria guidance src/README.md</span></span><span class="cl"> </span><span class="cl"><span class="c-mut"># reviewed docs that saw older wording</span></span><span class="cl"><span class="p">$ memoria guidance --changed</span></span></pre></div>
     <ul class="rules">
