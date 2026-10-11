@@ -96,7 +96,18 @@ Memoria never edits your prose, except inside import blocks that you declare, an
 
 ## The CLI at a glance
 
-Here is one change, seen from the command line. In the [documents beside the code cookbook](docs/cookbooks/beside-code/README.md), a teammate changes how `billing/tax.rs` rounds VAT. Three documents cover `billing/`, so all three become pending, in review order:
+Here is one change, seen from the command line. In the [documents beside the code cookbook](docs/cookbooks/beside-code/README.md), a teammate changes how `billing/tax.rs` rounds VAT. The VAT now rounds to the nearest cent, and a half cent rounds up:
+
+```diff
+-/// The VAT on a subtotal, rounded down to a whole cent.
++/// The VAT on a subtotal, rounded to the nearest cent. A half cent rounds up.
+ pub fn vat(subtotal_cents: u64) -> u64 {
+-    subtotal_cents * VAT_BASIS_POINTS / 10_000
++    (subtotal_cents * VAT_BASIS_POINTS + 5_000) / 10_000
+ }
+```
+
+Three documents cover `billing/`, so all three become pending, in review order:
 
 ```console
 $ memoria review
