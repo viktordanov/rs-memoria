@@ -81,15 +81,15 @@ fn sections_validate_against_the_scope() {
         "{warnings:?}"
     );
 
-    // The grammar is unchanged: a glob is refused by the parser.
+    // Brace alternation is refused by the parser.
     project.write(
         "docs/guide.md",
         project
             .read_string("docs/guide.md")
-            .replace("missing.rs", "*.md"),
+            .replace("missing.rs", "{a,b}.rs"),
     );
     let warnings = section_warnings(&project);
-    assert!(warnings[0].contains("glob"), "{warnings:?}");
+    assert!(warnings[0].contains("not permitted"), "{warnings:?}");
 }
 
 #[test]

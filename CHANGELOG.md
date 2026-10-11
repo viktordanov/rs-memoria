@@ -35,13 +35,43 @@ A section can now name one reusable Markdown guide with writing rules for that k
 - New diagnostics: `section_guidance_invalid` and `section_guidance_unregistered` (errors), and `section_guidance_unused` (a hint for `lint` and `--verbose`). A registered guide that carries a Memoria marker, is also project guidance, is listed twice, or is larger than 65,536 bytes is `guidance_file_invalid`. A sidecar registration is `configuration_invalid`.
 - Bounds: one guide per section, at most 64 distinct guides per document, and at most 1,024 bytes per guide path.
 
+### Section patterns
+
+A section can now describe a kind of file instead of a fixed list. `files` accepts glob patterns and `!` exclusions beside literal paths:
+
+```markdown
+<!-- memoria:section id="auth" files="src/auth/** !src/auth/tests/** !src/auth/generated.rs" -->
+```
+
+- A section maps the union of its paths and patterns, minus the union of its exclusions, in any order. An exclusion also removes a literal path. Exclusions alone are invalid.
+- A pattern matches only sources in the document's effective scope: never a tracked document, a guide, an ignored file, or a handed-off folder. Memoria expands it to concrete files, and the mapping identity uses those files. A literal list and a pattern that match the same files are the same association.
+- A suggestion reads every literal path and only the pattern matches that changed. Review manifests add `review.sections[].files` (the authored tokens) and `review.sections[].matched` (the match count). The human review prints a pattern section as `<tokens> (N matches; read ...)`. A section with literal paths only prints as before.
+- `memoria status --explain <DOCUMENT>` lists each section's tokens, every match, and the tokens that match nothing. `status --explain <SOURCE>` names each section that maps the source and the token that names it.
+- A token that matches nothing keeps the mapping valid. Only `memoria lint` reports it, as the new hint `section_pattern_empty`.
+- Freshness, scope, and acknowledgement do not change. An added, removed, or renamed file is still a changed path set and a full baseline. With a pattern, the mapping stays valid and the next change can be focused. With a literal path, a renamed file still withdraws the document's advice.
+- Compatibility: a literal `files` path that starts with `!` is now an exclusion. Such a file can no longer be named by a literal path, but a pattern can match it. Tokens with `*`, `?`, or `[` were rejected before, so no valid 0.8 mapping changes meaning otherwise. A document whose mappings use only literal paths keeps the same review token.
+
+### One glob engine
+
+Selection rules and section patterns now share one matcher, built on the [`glob`](https://crates.io/crates/glob) crate. `ignore` and `include` keep their meaning: `?` matches one Unicode character, braces are ordinary characters, and `[!...]` and `[^...]` negate a class. A fuzz comparison with the 0.8 matcher found no difference in matches or errors. Configuration, selection fingerprints, and `memoria.lock` do not change.
+
+### Clear full-baseline reading
+
+A full-baseline review said "Read the complete current scope" and then listed only the changed inputs under `Read:`. The human view now says what each list means:
+
+- `Read first:` holds the document and the changed inputs.
+- The next line counts the unchanged sources and imports that the review must also cover, for example `Then read the rest of the scope: 3 unchanged sources. List the sources: memoria status --explain deploy/runbook.md`. When the list is already complete, the line is `Rest of the scope: none. The list above is the complete scope.`
+- `memoria status --explain <DOCUMENT>` now lists every source in the document's scope. JSON adds `document.scope`.
+
+The manifest, the token, and the review requirements do not change. The artifact still lists only the changed inputs, so it stays proportional to the changes. A focused candidate keeps its `Read:` list.
+
 ### Quiet output stays quiet
 
 A document that names no guide keeps its guidance digest, its review lines, and its `memoria guidance` view byte for byte. During a review, the only new lines are a `· guide: <path>` suffix on a suggested section and a count on the `Guidance:` line. `status`, `check`, the plan, `graph`, hooks, and the workflow template do not change.
 
 ### Review artifacts
 
-- Review manifests are now `manifest_version` 3. They add `review.sections[].guidance` and `section` entries in `guidance.references`.
+- Review manifests are now `manifest_version` 3. They add `review.sections[].guidance`, `review.sections[].files`, `review.sections[].matched`, and `section` entries in `guidance.references`.
 - Full exports are now `packet_version` 5. They carry each section guide's exact text. `ack` now recomputes the guidance digest of a full export and refuses text that does not produce it (`packet_content_mismatch`).
 - `packet view` is now `view_version` 3.
 
@@ -57,6 +87,7 @@ The token, the review context, `memoria.lock`, and configuration `version = 3` d
 - The skill links the agent instructions cookbook and the command reference on GitHub, pinned to this release, because an installed skill cannot read Memoria's own `docs/`.
 - The skill's `integrations.md` now names all five package files.
 - The root README lists its use cases before the purpose and the quick start.
+- The documents beside the code cookbook maps the runbook's scripts with `*.sh` and shows a new file that the pattern picks up.
 
 ### Fixes
 
@@ -69,6 +100,7 @@ The token, the review context, `memoria.lock`, and configuration `version = 3` d
 2. Capture review artifacts that were in flight again. Manifest 2, packet 4, and view 2 artifacts are refused with regeneration text.
 3. Run `memoria agent upgrade` for each installed skill. `memoria agent status` reports it as outdated until then.
 4. A project that registers no guide sees no change: the same digests and the same output.
+5. If a section names a file whose name starts with `!`, replace that token with a pattern that matches it, for example `?keep.rs` for `!keep.rs`.
 
 ## 0.8.0 - 2026-10-04
 

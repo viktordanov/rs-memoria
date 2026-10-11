@@ -2,7 +2,9 @@
 
 use std::collections::BTreeMap;
 
-use memoria_domain::{DocumentId, DocumentKind, Exclusion, Handoff, ProjectPath, RuleKind};
+use memoria_domain::{
+    DocumentId, DocumentKind, Exclusion, Handoff, ProjectPath, RuleKind, SectionMap,
+};
 
 use crate::error::{AppError, Detail, DetailMap, ExitClass, Outcome};
 use crate::ports::{FileKind, Services};
@@ -62,8 +64,45 @@ pub struct DocumentFacts {
     /// `readme` or `opted_in`.
     pub kind: String,
     pub scope_files: u64,
+    /// Every selected source in the scope, sorted: the complete inventory
+    /// that a full baseline review covers.
+    pub scope: Vec<String>,
     pub handoffs: Vec<HandoffNote>,
     pub handed_off_by: Vec<HandoffNote>,
+    /// `absent`, `valid`, or `invalid`.
+    pub section_state: String,
+    /// Each valid section with its complete expansion.
+    pub sections: Vec<SectionFacts>,
+}
+
+/// One section of an explained document: its tokens and what they expand to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SectionFacts {
+    pub id: String,
+    pub files: Vec<String>,
+    pub sources: Vec<String>,
+    /// Tokens that match nothing in the current scope.
+    pub unmatched: Vec<String>,
+}
+
+impl SectionFacts {
+    fn to_detail(&self) -> Detail {
+        DetailMap::default()
+            .text("id", self.id.clone())
+            .with("files", Detail::texts(self.files.clone()))
+            .with("sources", Detail::texts(self.sources.clone()))
+            .with("unmatched", Detail::texts(self.unmatched.clone()))
+            .build()
+    }
+}
+
+/// A section that maps an explained source, and the include tokens that
+/// name it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SectionRef {
+    pub document: String,
+    pub id: String,
+    pub via: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,6 +119,8 @@ pub struct Explanation {
     pub handed_off: Vec<HandoffNote>,
     /// For a tracked document: its kind, scope size, and handoffs.
     pub document: Option<DocumentFacts>,
+    /// For a selected source: every valid section that maps it.
+    pub sections: Vec<SectionRef>,
 }
 
 impl Explanation {
@@ -92,6 +133,7 @@ impl Explanation {
             covered_by: vec![],
             handed_off: vec![],
             document: None,
+            sections: vec![],
         }
     }
 
@@ -113,6 +155,7 @@ impl Explanation {
                     Some(facts) => DetailMap::default()
                         .text("kind", facts.kind.clone())
                         .number("scope_files", facts.scope_files)
+                        .with("scope", Detail::texts(facts.scope.clone()))
                         .with(
                             "handoffs",
                             Detail::list(facts.handoffs.iter().map(HandoffNote::to_detail)),
@@ -121,8 +164,23 @@ impl Explanation {
                             "handed_off_by",
                             Detail::list(facts.handed_off_by.iter().map(HandoffNote::to_detail)),
                         )
+                        .text("section_state", facts.section_state.clone())
+                        .with(
+                            "sections",
+                            Detail::list(facts.sections.iter().map(SectionFacts::to_detail)),
+                        )
                         .build(),
                 },
+            )
+            .with(
+                "sections",
+                Detail::list(self.sections.iter().map(|section| {
+                    DetailMap::default()
+                        .text("document", section.document.clone())
+                        .text("id", section.id.clone())
+                        .with("via", Detail::texts(section.via.clone()))
+                        .build()
+                })),
             )
             .build()
     }
@@ -568,6 +626,12 @@ fn explain(
             document: Some(DocumentFacts {
                 kind: kind.as_str().to_string(),
                 scope_files: snapshot.scopes.scope_of(&document).len() as u64,
+                scope: snapshot
+                    .scopes
+                    .scope_of(&document)
+                    .iter()
+                    .map(|p| p.as_str().to_string())
+                    .collect(),
                 handoffs: snapshot
                     .scopes
                     .handoffs_of(&document)
@@ -579,6 +643,27 @@ fn explain(
                     .handed_off_by(&document)
                     .into_iter()
                     .map(HandoffNote::from_handoff)
+                    .collect(),
+                section_state: match snapshot.sections_of(&document) {
+                    SectionMap::Absent => "absent",
+                    SectionMap::Valid(_) => "valid",
+                    SectionMap::Invalid => "invalid",
+                }
+                .to_string(),
+                sections: snapshot
+                    .sections_of(&document)
+                    .sections()
+                    .iter()
+                    .map(|section| SectionFacts {
+                        id: section.id.as_str().to_string(),
+                        files: section.files.tokens(),
+                        sources: section
+                            .sources
+                            .iter()
+                            .map(|p| p.as_str().to_string())
+                            .collect(),
+                        unmatched: section.unmatched.clone(),
+                    })
                     .collect(),
             }),
             ..Explanation::plain(&path, "document", reason)
@@ -659,6 +744,18 @@ fn explain(
                 )
             }
         };
+        // Every valid section of a covering document that maps this source,
+        // with the include tokens that name it.
+        let mut sections = Vec::new();
+        for document in snapshot.scopes.covering(&path) {
+            for section in snapshot.sections_of(document).sections_for(&path) {
+                sections.push(SectionRef {
+                    document: document.as_str().to_string(),
+                    id: section.id.as_str().to_string(),
+                    via: section.files.includes_naming(&document.directory(), &path),
+                });
+            }
+        }
         return Ok(Explanation {
             path: path.as_str().to_string(),
             outcome,
@@ -667,6 +764,7 @@ fn explain(
             covered_by,
             handed_off,
             document: None,
+            sections,
         });
     }
     if snapshot.collected.boundaries.iter().any(|b| {

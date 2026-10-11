@@ -1,18 +1,20 @@
 # Cookbook: keep agent instructions current
 
-This cookbook shows how to keep `AGENTS.md` and `CLAUDE.md` correct with Memoria.
-It uses one small project from start to finish, and every output on this page comes from a real run of that project.
-Read [Memoria concepts](../../concepts.md) first if scopes and handoffs are new to you. The [cookbook index](../README.md) lists the other cookbooks.
+`AGENTS.md` and `CLAUDE.md` tell a coding agent which commands to run and which rules to follow. When a recipe in the `justfile` changes, both files can keep the old command, and nothing tells the team. This cookbook makes both files tracked documents, so a change to a file that they describe asks for their review. It also keeps their writing rules in shared section guides, so the rules for a command list reach only the sections that list commands.
+
+Choose this pattern when agents work in your repository. The cost is one review for each instruction file, and for the root README too, whenever a root file that they all describe changes. Every output below comes from a real, tested run of one small project. Read [Memoria concepts](../../concepts.md) first if scopes and handoffs are new to you, and the [cookbook index](../README.md) to compare the other patterns.
 
 ## Contents
 
-1. [The problem](#the-problem)
-2. [The project](#the-project)
-3. [Markers and guides](#markers-and-guides)
-4. [A command changes](#a-command-changes)
-5. [A guide changes](#a-guide-changes)
-6. [A guide path breaks](#a-guide-path-breaks)
-7. [Tradeoffs](#tradeoffs)
+1. Set up
+   - [The problem](#the-problem)
+   - [The project](#the-project)
+   - [Markers and guides](#markers-and-guides)
+2. What happens when
+   - [A command changes](#a-command-changes)
+   - [A guide changes](#a-guide-changes)
+   - [A guide path breaks](#a-guide-path-breaks)
+3. [Tradeoffs](#tradeoffs), including when not to adopt the pattern
 
 ## The problem
 

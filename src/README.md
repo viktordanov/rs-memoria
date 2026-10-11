@@ -101,6 +101,9 @@ The default human view in `presentation/review.rs` is change-first.
 It shows the header, the scope and its handoffs, the baseline, what changed with each relationship and its verified hunk, semantic requests, co-covering documents, export consumers, how to read, and three next steps.
 The hunks come from the same snapshot as the artifact, and only the human view shows them, bounded to 40 lines for one change and 160 in total.
 When section guides apply, a suggested section ends with `· guide: <path>`, and the guidance line counts the section guides. A document without guides keeps the 0.8 lines.
+A suggested section with a pattern prints its authored tokens and `(N matches; read ...)`, which names only the reads. A section with literal paths only keeps the earlier line.
+A full baseline labels its reads `Read first:` and adds one line that counts the unchanged sources and imports the review must also cover, or says that nothing else is in the scope. The count comes from the manifest, so the view never lists the unchanged sources itself.
+`presentation/text.rs` prints the scope and the `section` lines of `status --explain`: every source in a document's scope with each section's tokens and matches, or the sections that map a source.
 `--details` adds tokens, digests, per-input sizes and hashes, counts, and at most 10 section guide paths, and shows all computed hunks. The evidence budget can omit hunks without a reason, even with `--details`.
 
 Source evidence: [main.rs](main.rs) and [presentation/review.rs](presentation/review.rs).

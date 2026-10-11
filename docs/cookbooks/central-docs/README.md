@@ -1,20 +1,22 @@
 # Cookbook: a central docs/ site
 
-A page in `docs/` never sees a code change in `src/`. It sees only the summaries that it imports.
-This cookbook shows that limit, then the pattern that works: a README beside the code exports a short summary, and the docs page imports it.
-Every output on this page comes from a real run of one small project.
-Read [Memoria concepts](../../concepts.md) first if scopes, handoffs, and imports are new to you. The [cookbook index](../README.md) lists the other cookbooks.
+A page in `docs/` never sees a code change in `src/`, because a document covers only its own folder and a link to the code carries no freshness. This cookbook shows that pitfall first. Then it shows the pattern that works: a README beside the code exports a short summary of it, and the docs page imports that summary, so a change to the summary reaches the page.
+
+Choose this pattern when readers use one product site and each code area can keep a short, stable summary. The cost is two reviews for one behavior change: the README beside the code first, then the docs page. Every output below comes from a real, tested run of one small project. Read [Memoria concepts](../../concepts.md) first if scopes, handoffs, and imports are new to you, and the [cookbook index](../README.md) to compare the other patterns.
 
 ## Contents
 
-1. [The problem](#the-problem)
-2. [The project](#the-project)
-3. [The pitfall: a page that only links the code](#the-pitfall-a-page-that-only-links-the-code)
-4. [The pattern: import a summary from beside the code](#the-pattern-import-a-summary-from-beside-the-code)
-5. [A code change that keeps the summary true](#a-code-change-that-keeps-the-summary-true)
-6. [A code change that changes the summary](#a-code-change-that-changes-the-summary)
-7. [An export body with a relative link](#an-export-body-with-a-relative-link)
-8. [Tradeoffs](#tradeoffs)
+1. Set up
+   - [The problem](#the-problem)
+   - [The project](#the-project)
+2. The pattern
+   - [The pitfall: a page that only links the code](#the-pitfall-a-page-that-only-links-the-code)
+   - [The fix: import a summary from beside the code](#the-pattern-import-a-summary-from-beside-the-code)
+3. What happens when
+   - [A code change keeps the summary true](#a-code-change-that-keeps-the-summary-true)
+   - [A code change changes the summary](#a-code-change-that-changes-the-summary)
+   - [An export body has a relative link](#an-export-body-with-a-relative-link)
+4. [Tradeoffs](#tradeoffs), including when not to adopt the pattern
 
 ## The problem
 
@@ -433,11 +435,12 @@ What changed since that review:
 Downstream:
   export summary → docs/guide.md (waits for this review)
 How to read:
-  Mode: full baseline. Read the complete current scope.
+  Mode: full baseline. Review the whole document against its complete current scope, not only the changes.
   unmapped_change [src/auth/login.rs]: no valid section describes this changed source, so the review cannot narrow to a part of the document
-  Read:
+  Read first:
     src/auth/README.md (whole_document)
     src/auth/login.rs (changed_source)
+  Rest of the scope: none. The list above is the complete scope.
   Whole document pass: required
   Guidance: memoria guidance src/auth/README.md
 Next:
@@ -526,11 +529,12 @@ What changed since that review:
       -A session ends after 30 minutes without activity. After 5 failed sign-in attempts, the account locks.
       +A session ends after 15 minutes without activity. After 5 failed sign-in attempts, the account locks.
 How to read:
-  Mode: full baseline. Read the complete current scope.
+  Mode: full baseline. Review the whole document against its complete current scope, not only the changes.
   imports_changed [src/auth/README.md#summary]: an imported contract changed; review the provider first, render, then review this document against its current scope
-  Read:
+  Read first:
     docs/guide.md (whole_document)
     src/auth/README.md#summary (current_import)
+  Rest of the scope: none. The list above is the complete scope.
   Whole document pass: required
   Guidance: memoria guidance docs/guide.md
 Next:

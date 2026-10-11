@@ -1,19 +1,20 @@
 # Cookbook: a README tree with central guidelines
 
-In this pattern, every important folder has a README that explains that folder.
-The root README imports a short summary from each folder README, and one central place holds the writing rules.
-This cookbook follows one small project from start to finish. Every output on this page comes from a real run of that project.
-Read [Memoria concepts](../../concepts.md) first if scopes, handoffs, and imports are new to you. The [cookbook index](../README.md) lists the other cookbooks.
+Give every important folder a README that explains it, let the root README import a short summary from each one, and keep the writing rules in one central place. A code change then reaches only the README of its own folder. The root hears about it only when that folder's exported summary changes, so the root stays a short, current map instead of a second copy of every story.
+
+Choose this pattern when each folder has its own story and the root needs a map. The cost is two reviews for a summary change: the folder README first, then the root. Every output below comes from a real, tested run of one small project. Read [Memoria concepts](../../concepts.md) first if scopes, handoffs, and imports are new to you, and the [cookbook index](../README.md) to compare the other patterns.
 
 ## Contents
 
-1. [The problem](#the-problem)
-2. [The project](#the-project)
-3. [A change that keeps the summary true](#a-change-that-keeps-the-summary-true)
-4. [A change that changes the summary](#a-change-that-changes-the-summary)
-5. [A central guideline changes](#a-central-guideline-changes)
-6. [A README that its parent does not link](#a-readme-that-its-parent-does-not-link)
-7. [Tradeoffs](#tradeoffs)
+1. Set up
+   - [The problem](#the-problem)
+   - [The project](#the-project)
+2. What happens when
+   - [A change keeps the summary true](#a-change-that-keeps-the-summary-true)
+   - [A change changes the summary](#a-change-that-changes-the-summary)
+   - [A central guideline changes](#a-central-guideline-changes)
+   - [A parent does not link a README](#a-readme-that-its-parent-does-not-link)
+3. [Tradeoffs](#tradeoffs), including when not to adopt the pattern
 
 ## The problem
 
@@ -275,11 +276,12 @@ What changed since that review:
 Downstream:
   export summary → README.md (waits for this review)
 How to read:
-  Mode: full baseline. Read the complete current scope.
+  Mode: full baseline. Review the whole document against its complete current scope, not only the changes.
   unmapped_change [services/api/src/orders.rs]: no valid section describes this changed source, so the review cannot narrow to a part of the document
-  Read:
+  Read first:
     services/api/README.md (whole_document)
     services/api/src/orders.rs (changed_source)
+  Rest of the scope: none. The list above is the complete scope.
   Whole document pass: required
   Guidance: memoria guidance services/api/README.md
 Next:
@@ -425,15 +427,16 @@ What changed since that review:
       -The orders API accepts orders over HTTP and keeps them in memory. It depends on no other service.
       +The orders API accepts orders over HTTP, keeps them in memory, and appends each one to `orders.log`. It depends on no other service.
 How to read:
-  Mode: full baseline. Read the complete current scope.
+  Mode: full baseline. Review the whole document against its complete current scope, not only the changes.
   imports_changed [services/api/README.md#summary]: an imported contract changed; review the provider first, render, then review this document against its current scope
-  Read:
+  Read first:
     README.md (whole_document)
     services/api/README.md#summary (current_import)
+  Then read the rest of the scope: 1 unchanged source and 1 unchanged import. List the sources: memoria status --explain README.md
   Whole document pass: required
   Guidance: memoria guidance README.md
 Next:
-  1. Read the whole document and the listed inputs; edit README.md if it is wrong.
+  1. Read the whole document and the listed inputs, then the rest of the scope; edit README.md if it is wrong.
   2. After any edit, save a fresh artifact: dir=$(mktemp -d); memoria review README.md --save "$dir"
   3. Record the result: memoria ack README.md --packet <saved file> --reviewer <you> --result <updated|no-update> --note "<why>"
 ```
@@ -529,15 +532,16 @@ Semantic review requests:
 Downstream:
   export summary → README.md (waits for this review)
 How to read:
-  Mode: full baseline. Read the complete current scope.
+  Mode: full baseline. Review the whole document against its complete current scope, not only the changes.
   guidance_changed [services/web/README.md]: project documentation guidance changed since the last review; read the current guidance in full
   semantic_invalidation [services/web/README.md]: invalidation 1 requires a semantic review: The writing guide now asks each service README to list its environment variables.
-  Read:
+  Read first:
     services/web/README.md (whole_document)
+  Then read the rest of the scope: 1 unchanged source. List the sources: memoria status --explain services/web/README.md
   Whole document pass: required
   Guidance: memoria guidance services/web/README.md (changed since the last review; apply the current text)
 Next:
-  1. Read the whole document and the listed inputs; edit services/web/README.md if it is wrong.
+  1. Read the whole document and the listed inputs, then the rest of the scope; edit services/web/README.md if it is wrong.
   2. After any edit, save a fresh artifact: dir=$(mktemp -d); memoria review services/web/README.md --save "$dir"
   3. Record the result: memoria ack services/web/README.md --packet <saved file> --reviewer <you> --result <updated|no-update> --note "<why>"
 ```
@@ -696,7 +700,7 @@ The link hands `services/mailer/` to its README. The root README is pending beca
 
 - **Only the summary travels.** The root learns about a folder change only when the exported text changes. A plain link carries no freshness.
 - **Guidance never selects files.** A guidance change makes no document pending. Use `memoria invalidate` to request a review.
-- **The `Read:` list follows changes, not rules.** After a guidance change, read the sources that the new rule asks about.
+- **The read list follows changes, not rules.** After a guidance change, read the sources that the new rule asks about.
 - **Export bodies.** An export body accepts absolute web and email links only. Relative links are invalid inside an export.
 
 ### How this differs from the other patterns

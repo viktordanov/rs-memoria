@@ -1,21 +1,24 @@
 # Memoria concepts
 
-Read this page before the [workflow guide](workflow.md) if Memoria is new to you.
-It explains the five ideas that every command uses, with one small example each.
+Memoria answers one question: which documentation must a person or an agent read again, because its inputs changed? It answers from your folders and a few explicit markers, so once you know which documents cover which files, every command's output follows from that.
 
-Memoria answers one question: which documentation must a person or an agent read again, because its inputs changed?
-It does not write documentation, and it does not decide whether an explanation is correct.
-You choose the document structure. A reviewer judges the prose. Memoria records that judgment against exact bytes.
+Read this page once, top to bottom, before the [workflow guide](workflow.md). Each idea gets a small example and its limits, so you can predict what a change will make pending before you run anything. Memoria does not write documentation and does not decide whether an explanation is correct: you choose the document structure, a reviewer judges the prose, and Memoria records that judgment against exact bytes.
 
 ## Contents
 
-1. [Three structures, one cycle](#three-structures-one-cycle)
-2. [Tracked document](#tracked-document)
-3. [Directory scope](#directory-scope)
-4. [Handoff](#handoff)
-5. [Imports and review order](#imports-and-review-order)
-6. [Review and acknowledgement](#review-and-acknowledgement)
-7. [Examples side by side](#examples-side-by-side)
+Read the model first, then the ideas in order, because each one builds on the one before it:
+
+1. [Three structures, one cycle](#three-structures-one-cycle): the map of everything below
+2. Which documents exist and what they cover
+   - [Tracked document](#tracked-document)
+   - [Directory scope](#directory-scope)
+   - [Handoff](#handoff)
+3. How documents depend on each other
+   - [Imports and review order](#imports-and-review-order)
+4. How a review is pointed and recorded
+   - [Sections](#sections)
+   - [Review and acknowledgement](#review-and-acknowledgement)
+5. [Examples side by side](#examples-side-by-side): the rules applied to one tree
 
 ## Three structures, one cycle
 
@@ -120,6 +123,22 @@ An import from a subfolder is also a handoff of that subfolder.
 
 **Limits.** Only the exported section travels. A plain link creates no review order, even to a tracked document.
 
+## Sections
+
+A section maps one part of a document to the sources it describes, so a review can start at the part that a change concerns:
+
+```markdown
+<!-- memoria:section id="auth" files="src/auth/** !src/auth/tests/**" -->
+## Authentication
+<!-- /memoria:section -->
+```
+
+When `src/auth/login.rs` changes, the review can suggest the `auth` section. When a source that no section maps changes, the review is a full baseline with the reason `unmapped_change`. `files` takes literal paths, glob patterns, and `!` exclusions. A pattern describes a kind of file, so it also maps a file that is added or renamed later. A literal path to a renamed file withdraws the document's advice until someone edits the marker.
+
+A section is advice, never a boundary. It adds or removes no input, and it has no freshness or acknowledgement of its own, so the reviewer still reads the whole document and the acknowledgement still checks every input.
+
+**Limits.** One invalid mapping withdraws the advice of the whole document, because Memoria cannot tell which mapping the author meant. An added file is always a full baseline, even when a pattern matches it. `memoria status --explain <DOCUMENT>` lists what each section matches. The [command reference](cli.md#advisory-sections) gives the complete grammar.
+
 ## Review and acknowledgement
 
 A review is one reader's judgment that one whole document is correct for its current inputs.
@@ -133,7 +152,7 @@ Memoria supports the judgment and does not make it:
 
 - An acknowledgement records a verified result. It does not record who wrote the prose.
 - A passing `memoria check` proves that every document matches its last review and that imports are rendered. It does not prove that the explanations are correct.
-- Advisory sections suggest where to read. They never replace the whole-document pass.
+- [Sections](#sections) suggest where to read. They never replace the whole-document pass.
 - Guidance is review context. A guidance change does not make documents pending by itself. It asks you to [assess it](workflow.md#assess-a-guidance-change).
 - A section can name a section guide: shared writing rules for one kind of section, which add to project guidance. The [agent instructions cookbook](cookbooks/agent-instructions/README.md) shows one in use.
 

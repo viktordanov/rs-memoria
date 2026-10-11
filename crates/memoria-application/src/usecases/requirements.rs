@@ -520,16 +520,23 @@ pub fn build(
                     continue;
                 }
                 seen.push(id.clone());
+                // Read every literal source, and a pattern match only when it
+                // changed. The complete expansion stays in the mapping.
+                let mut sources: Vec<String> = section
+                    .sources
+                    .iter()
+                    .filter(|p| section.literals.contains(p) || changed_sources.contains(p))
+                    .map(|p| p.as_str().to_string())
+                    .collect();
+                sources.sort();
                 out.push(SectionSuggestion {
                     id,
                     heading: section.heading.clone(),
                     first_line: section.first_line,
                     last_line: section.last_line,
-                    sources: section
-                        .sources
-                        .iter()
-                        .map(|p| p.as_str().to_string())
-                        .collect(),
+                    files: section.files.tokens(),
+                    matched: section.sources.len(),
+                    sources,
                     guidance: section.guidance.as_ref().map(|p| p.as_str().to_string()),
                 });
             }
@@ -862,15 +869,28 @@ fn proven_former_exclusions(
 }
 
 /// The section mapping identity that the previous text had over the
-/// recorded scope, with the same total-validity rule as current resolution.
+/// recorded scope, with the same total-validity rule and the same domain
+/// expansion as current resolution.
 fn prior_mapping(
     services: &Services<'_>,
     document: &DocumentId,
     previous: &[u8],
     scope: &[&ProjectPath],
 ) -> memoria_domain::SectionMapIdentity {
+    prior_identity(
+        document,
+        &services.markdown.parse(document, previous),
+        scope,
+    )
+}
+
+/// The mapping identity of parsed previous text over a recorded scope.
+fn prior_identity(
+    document: &DocumentId,
+    parsed: &crate::ports::ParsedDocument,
+    scope: &[&ProjectPath],
+) -> memoria_domain::SectionMapIdentity {
     use memoria_domain::{SectionId, SectionMap, SectionMapping};
-    let parsed = services.markdown.parse(document, previous);
     if !parsed.section_issues.is_empty() {
         return SectionMap::Invalid.identity();
     }
@@ -878,26 +898,26 @@ fn prior_mapping(
         return SectionMap::Absent.identity();
     }
     let dir = document.directory();
+    let recorded: std::collections::BTreeSet<&ProjectPath> = scope.iter().copied().collect();
     let mut mappings = Vec::new();
     for section in &parsed.sections {
         let Ok(id) = SectionId::parse(&section.id) else {
             return SectionMap::Invalid.identity();
         };
-        let mut sources = Vec::new();
-        for raw in &section.files {
-            match ProjectPath::resolve_relative(&dir, raw) {
-                Ok(path) if scope.contains(&&path) => sources.push(path),
-                _ => return SectionMap::Invalid.identity(),
-            }
-        }
-        sources.sort();
-        sources.dedup();
+        // The same domain expansion as current resolution, over the recorded
+        // scope. A literal outside that scope makes the whole map invalid.
+        let Ok(expansion) = section.files.expand(&dir, &recorded) else {
+            return SectionMap::Invalid.identity();
+        };
         mappings.push(SectionMapping {
             id,
             heading: section.heading.clone(),
             first_line: section.first_line,
             last_line: section.last_line,
-            sources,
+            files: section.files.clone(),
+            sources: expansion.sources,
+            literals: expansion.literals,
+            unmatched: expansion.unmatched,
             // The guide is never part of the identity.
             guidance: None,
         });
@@ -1022,5 +1042,207 @@ pub fn downstream(snapshot: &Snapshot, document: &DocumentId) -> Downstream {
                 status: label(other),
             })
             .collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use memoria_domain::{
+        ByteRange, DocumentId, DocumentReference, ProjectPath, ReferenceKind, ScopeMap,
+        SectionFiles, SectionMap, SectionMapIdentity, SectionRule, SourceLocation,
+    };
+
+    use super::prior_identity;
+    use crate::ports::{ParsedDocument, ParsedSection};
+    use crate::snapshot::resolve_sections;
+
+    fn path(raw: &str) -> ProjectPath {
+        ProjectPath::parse(raw).unwrap()
+    }
+
+    fn doc(raw: &str) -> DocumentId {
+        DocumentId::from_path(path(raw)).unwrap()
+    }
+
+    fn section(id: &str, files: &str) -> ParsedSection {
+        ParsedSection {
+            id: id.to_string(),
+            files: SectionFiles::new(
+                files
+                    .split(' ')
+                    .map(|token| SectionRule::parse(token).unwrap())
+                    .collect(),
+            )
+            .unwrap(),
+            guidance: None,
+            heading: "Heading".into(),
+            body: ByteRange::new(0, 0),
+            first_line: 2,
+            last_line: 3,
+            location: SourceLocation { line: 1, column: 1 },
+        }
+    }
+
+    /// The root README hands `sub/` to `sub/README.md`. `docs/guide.md` is
+    /// an opted-in document and `rules.md` a registered guide, so neither
+    /// is a source. An ignored file never reaches selection at all.
+    struct Fixture {
+        documents: BTreeSet<DocumentId>,
+        scopes: ScopeMap,
+        selected: BTreeMap<ProjectPath, Vec<u8>>,
+        guides: BTreeSet<ProjectPath>,
+    }
+
+    const SOURCES: [&str; 6] = [
+        "Cargo.toml",
+        "src/auth/generated.rs",
+        "src/auth/login.rs",
+        "src/auth/passkeys.rs",
+        "src/auth/tests/login.rs",
+        "sub/x.rs",
+    ];
+
+    fn fixture() -> Fixture {
+        let documents: BTreeSet<DocumentId> = ["README.md", "sub/README.md", "docs/guide.md"]
+            .into_iter()
+            .map(doc)
+            .collect();
+        let references = [DocumentReference {
+            from: doc("README.md"),
+            target: path("sub/README.md"),
+            kind: ReferenceKind::Link,
+            location: SourceLocation { line: 3, column: 1 },
+        }];
+        let sources: Vec<ProjectPath> = SOURCES.into_iter().map(path).collect();
+        Fixture {
+            scopes: ScopeMap::build(&documents, &references, &sources),
+            documents,
+            selected: sources.iter().map(|p| (p.clone(), Vec::new())).collect(),
+            guides: [path("rules.md")].into_iter().collect(),
+        }
+    }
+
+    fn current(fixture: &Fixture, sections: &[ParsedSection]) -> (SectionMap, Vec<String>) {
+        let mut diagnostics = Vec::new();
+        let map = resolve_sections(
+            &doc("README.md"),
+            sections,
+            &[],
+            &fixture.scopes,
+            &fixture.documents,
+            &fixture.selected,
+            &fixture.guides,
+            &mut diagnostics,
+        );
+        (map, diagnostics.into_iter().map(|d| d.message).collect())
+    }
+
+    fn prior(sections: &[ParsedSection], scope: &[&str]) -> SectionMapIdentity {
+        let parsed = ParsedDocument {
+            sections: sections.to_vec(),
+            ..ParsedDocument::default()
+        };
+        let scope: Vec<ProjectPath> = scope.iter().map(|p| path(p)).collect();
+        let scope: Vec<&ProjectPath> = scope.iter().collect();
+        prior_identity(&doc("README.md"), &parsed, &scope)
+    }
+
+    fn sources(map: &SectionMap, id: &str) -> Vec<String> {
+        map.sections()
+            .iter()
+            .find(|s| s.id.as_str() == id)
+            .unwrap()
+            .sources
+            .iter()
+            .map(|p| p.as_str().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn both_resolvers_expand_patterns_over_the_same_scope() {
+        let fixture = fixture();
+        let scope: Vec<&str> = fixture
+            .scopes
+            .scope_of(&doc("README.md"))
+            .iter()
+            .map(ProjectPath::as_str)
+            .collect();
+        // The handed-off folder is not in the root's scope.
+        assert!(!scope.contains(&"sub/x.rs"));
+        let sections = [
+            section(
+                "auth",
+                "!src/auth/generated.rs src/auth/** !src/auth/tests/**",
+            ),
+            // Overlaps `auth`; each source can belong to several sections.
+            section("login", "src/auth/login.rs src/**/login.rs"),
+            // Documents, guides, and handed-off sources are never matched.
+            section("other", "Cargo.toml sub/** docs/** *.md"),
+        ];
+        let (map, warnings) = current(&fixture, &sections);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(
+            sources(&map, "auth"),
+            ["src/auth/login.rs", "src/auth/passkeys.rs"]
+        );
+        assert_eq!(
+            sources(&map, "login"),
+            ["src/auth/login.rs", "src/auth/tests/login.rs"]
+        );
+        assert_eq!(sources(&map, "other"), ["Cargo.toml"]);
+        let other = &map.sections()[2];
+        assert_eq!(other.unmatched, ["sub/**", "docs/**", "*.md"]);
+        assert_eq!(map.sections_for(&path("src/auth/login.rs")).len(), 2);
+        // The prior resolver gives the same identity over the same scope.
+        assert_eq!(prior(&sections, &scope), map.identity());
+        // Over a recorded scope without a file, the expansion follows that
+        // scope, as the current resolver would have at that time.
+        let without: Vec<&str> = scope
+            .iter()
+            .copied()
+            .filter(|p| *p != "src/auth/passkeys.rs")
+            .collect();
+        let earlier = prior(&sections, &without);
+        assert_ne!(earlier, map.identity());
+        assert!(
+            earlier
+                .pairs()
+                .contains(&("auth".to_string(), vec!["src/auth/login.rs".to_string()]))
+        );
+    }
+
+    #[test]
+    fn literal_paths_keep_their_strict_checks_in_both_resolvers() {
+        let fixture = fixture();
+        let scope: Vec<&str> = fixture
+            .scopes
+            .scope_of(&doc("README.md"))
+            .iter()
+            .map(ProjectPath::as_str)
+            .collect();
+        for (files, cause) in [
+            ("sub/x.rs", "handed off to sub/README.md"),
+            ("docs/guide.md", "now a tracked document"),
+            ("rules.md", "section guide registered"),
+            ("src/gone.rs", "not a selected regular source"),
+        ] {
+            let sections = [section("s", &format!("src/** {files}"))];
+            let (map, warnings) = current(&fixture, &sections);
+            assert_eq!(map, SectionMap::Invalid, "{files}");
+            assert!(warnings[0].contains(cause), "{files}: {warnings:?}");
+            assert_eq!(
+                prior(&sections, &scope),
+                SectionMapIdentity::Invalid,
+                "{files}"
+            );
+        }
+        // A literal exclusion of the same paths only matches nothing.
+        let sections = [section("s", "src/** !sub/x.rs !src/gone.rs")];
+        let (map, warnings) = current(&fixture, &sections);
+        assert!(warnings.is_empty());
+        assert_eq!(map.sections()[0].unmatched, ["!sub/x.rs", "!src/gone.rs"]);
+        assert_eq!(prior(&sections, &scope), map.identity());
     }
 }

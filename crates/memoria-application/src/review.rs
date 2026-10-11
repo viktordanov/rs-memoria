@@ -327,10 +327,25 @@ pub struct SectionSuggestion {
     pub heading: String,
     pub first_line: usize,
     pub last_line: usize,
-    /// Sorted root-relative sources.
+    /// The authored `files` tokens, relative to the document's folder.
+    pub files: Vec<String>,
+    /// How many sources the tokens expand to in the current scope.
+    pub matched: usize,
+    /// The sources to read for this section, sorted and root-relative: every
+    /// literal source, and each pattern match that changed.
     pub sources: Vec<String>,
     /// The resolved section guide this section names, if any.
     pub guidance: Option<String>,
+}
+
+impl SectionSuggestion {
+    /// Whether any authored token is a pattern. A section with only literal
+    /// paths reads every one of them, so its tokens and its reads agree.
+    pub fn has_patterns(&self) -> bool {
+        self.files
+            .iter()
+            .any(|token| memoria_domain::glob::is_pattern(token.strip_prefix('!').unwrap_or(token)))
+    }
 }
 
 /// Why one suggested read is listed.
@@ -543,6 +558,8 @@ impl ReviewManifest {
                                         Detail::Number(s.last_line as u64),
                                     ]),
                                 )
+                                .with("files", Detail::texts(s.files.clone()))
+                                .number("matched", s.matched as u64)
                                 .with("sources", Detail::texts(s.sources.clone()))
                                 .with("guidance", Detail::option_text(s.guidance.clone()))
                                 .build()

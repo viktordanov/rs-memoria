@@ -671,6 +671,9 @@ pub fn status(report: &StatusReport) -> String {
                 "  kind     {}\n  scope    {} source(s)",
                 facts.kind, facts.scope_files
             );
+            for source in &facts.scope {
+                let _ = writeln!(out, "             {source}");
+            }
             for handoff in &facts.handoffs {
                 let _ = writeln!(
                     out,
@@ -685,6 +688,37 @@ pub fn status(report: &StatusReport) -> String {
                     handoff.by, handoff.via, handoff.line
                 );
             }
+            if facts.section_state != "absent" {
+                let _ = writeln!(out, "  sections {}", facts.section_state);
+            }
+            for section in &facts.sections {
+                let _ = writeln!(
+                    out,
+                    "  section  {}: {} -> {} source(s)",
+                    section.id,
+                    section.files.join(" "),
+                    section.sources.len()
+                );
+                for source in &section.sources {
+                    let _ = writeln!(out, "             {source}");
+                }
+                if !section.unmatched.is_empty() {
+                    let _ = writeln!(
+                        out,
+                        "             no match: {}",
+                        section.unmatched.join(" ")
+                    );
+                }
+            }
+        }
+        for section in &explanation.sections {
+            let _ = writeln!(
+                out,
+                "  section  {}#{} via {}",
+                section.document,
+                section.id,
+                section.via.join(" ")
+            );
         }
         for step in &explanation.steps {
             let _ = writeln!(out, "  rule     {step}");

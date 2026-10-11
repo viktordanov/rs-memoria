@@ -407,3 +407,50 @@ fn a_section_guide_key_is_refused_by_name_when_misplaced() {
     assert_eq!(code, 1);
     assert_eq!(diagnostic_codes(&value), vec!["configuration_invalid"]);
 }
+
+#[test]
+fn ignore_and_include_patterns_keep_their_released_meaning() {
+    // The shared glob engine matches one Unicode character with `?`, treats
+    // braces as ordinary characters, accepts `^` and `!` for class
+    // negation, and keeps a `.` component and a run of stars harmless.
+    let project = Project::empty_repo();
+    project.write("README.md", "# Project\n");
+    project.write(
+        "memoria.toml",
+        "version = 3\nignore = [\"caf?.txt\", \"{a,b}.txt\", \"logs/[^k]*.log\", \"./tmp/x**y\", \"deep/**\"]\ninclude = [\"deep/**/keep.txt\"]\n",
+    );
+    for path in [
+        "café.txt",
+        "{a,b}.txt",
+        "a.txt",
+        "logs/keep.log",
+        "logs/run.log",
+        "tmp/xzzy",
+        "deep/a/b/drop.txt",
+        "deep/a/b/keep.txt",
+    ] {
+        project.write(path, "x\n");
+    }
+    let outcome = |path: &str| {
+        let (code, value) = project.json(&["status", "--explain", path]);
+        assert_eq!(code, 0, "{value:?}");
+        get_str(&value, &["data", "explanation", "outcome"]).to_string()
+    };
+    for (path, expected) in [
+        ("café.txt", "excluded"),
+        ("{a,b}.txt", "excluded"),
+        ("a.txt", "selected"),
+        ("logs/keep.log", "selected"),
+        ("logs/run.log", "excluded"),
+        ("tmp/xzzy", "excluded"),
+        ("deep/a/b/drop.txt", "excluded"),
+        ("deep/a/b/keep.txt", "selected"),
+    ] {
+        assert_eq!(outcome(path), expected, "{path}");
+    }
+    // A class that crosses a component stays a configuration error.
+    project.write("memoria.toml", "version = 3\nignore = [\"a[/]b\"]\n");
+    let (code, value) = project.json(&["status"]);
+    assert_eq!(code, 1);
+    assert_eq!(diagnostic_codes(&value), ["configuration_invalid"]);
+}

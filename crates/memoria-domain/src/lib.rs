@@ -1,6 +1,7 @@
 //! Pure domain model for Memoria.
 //!
-//! This crate depends only on the standard library. It contains validated
+//! This crate depends only on the standard library and the `glob` crate,
+//! which matches patterns without I/O. It contains validated
 //! identities, authored relationships, selection rules, document scopes
 //! with their explicit handoffs, the import and navigation graphs, immutable input manifests with their
 //! canonical byte encoding, review state transitions, and the scheduling
@@ -43,7 +44,8 @@ pub use review::{
 pub use schedule::{DocumentStatus, PendingCause, schedule};
 pub use scope::{DocumentReference, Handoff, HandoffVia, ReferenceKind, ScopeMap};
 pub use section::{
-    GuidancePathError, InvalidSectionId, SectionId, SectionMap, SectionMapIdentity, SectionMapping,
-    SectionPathError,
+    GuidancePathError, InvalidSectionId, NothingIncluded, SectionExpansion, SectionFiles,
+    SectionId, SectionMap, SectionMapIdentity, SectionMapping, SectionPathError, SectionRule,
+    SectionTarget,
 };
 pub use selection::{Exclusion, RuleKind, RuleScope, SelectionDecision, SelectionStep};

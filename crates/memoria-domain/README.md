@@ -3,7 +3,7 @@
 The domain crate decides which documents require review and which review comes first.
 
 The domain receives values and returns values.
-It uses only the Rust standard library at runtime.
+At runtime it uses the Rust standard library and the [`glob`](https://crates.io/crates/glob) crate, which matches patterns without I/O.
 The application supplies repository facts.
 
 Read [scope.rs](src/scope.rs) to start with the rule that decides which files each document covers.
@@ -143,9 +143,11 @@ token. The frozen byte layouts live with their tests in
 a reader cannot tell which mapping the author meant.
 
 `SectionMap::identity` gives the comparable association set: the sorted
-identifiers, each with its sorted source set. Body edits, heading text,
-moved line ranges, and a section guide do not change it. Any changed
-association requires a full baseline.
+identifiers, each with its sorted source set. A pattern contributes the
+sources it expands to, never its text, so a literal list and a pattern that
+match the same files are one association. Body edits, heading text, moved line
+ranges, and a section guide do not change it. Any changed association requires
+a full baseline.
 
 A section can name one section guide. `SectionMapping.guidance` holds its
 resolved path. A guide-only section has no sources, so a change never suggests
@@ -155,9 +157,19 @@ text becomes a `GuidanceKind::Section` entry of the document's guidance, and
 its `sections` list is presentation only.
 
 A section adds or removes no input and has no separate freshness. The domain
-validates the identifier grammar and the literal-path grammar. The application
-resolves each path against the project and rejects anything outside the
-document's scope.
+validates the identifier grammar and each `files` token: `SectionRule::parse`
+classifies a token as a literal path, a pattern, or a `!` exclusion.
+`SectionFiles::expand` is the one expansion rule. It takes the union of the
+includes over a given scope, subtracts the union of the exclusions, and reports
+the tokens that match nothing. The application checks each literal path against
+the project, then calls `expand` with the current scope, or with the recorded
+scope when it reconstructs a previous mapping.
+
+`glob::Glob` is the one matcher for selection rules and section patterns. It
+wraps the `glob` crate and keeps the released grammar: `?` is one Unicode
+character, braces are ordinary characters, a `.` component is skipped, a run of
+`*` inside a component is one `*`, and `[^...]` negates like `[!...]`. Each
+pattern compiles once, when its rule or marker is parsed.
 
 Source evidence: [section.rs](src/section.rs).
 
@@ -208,11 +220,11 @@ The application maps these errors to diagnostics and exit classes.
 | `selection`, `scope`, `policy` | Selected inputs, document scopes, and handoffs |
 | `graph`, `schedule` | Dependencies, navigation, and review order |
 | `manifest`, `canonical` | Input comparisons and stable byte encodings |
-| `section` | Advisory mapping identities, source and guide path grammar, guide bounds, and mapping identity |
+| `section` | Advisory mapping identities, `files` token grammar and expansion, guide path grammar, guide bounds, and mapping identity |
 | `guidance` | The guidance digest value type, its entry kinds (`inline`, `file`, `section`), and the sections that name a guide |
 | `review` | Review records and invalidation transitions |
 
-The [crate manifest](Cargo.toml) declares no runtime dependencies.
+The [crate manifest](Cargo.toml) declares one runtime dependency, `glob`. It has no dependencies of its own and performs no I/O, so the crate stays a pure model.
 The [crate exports](src/lib.rs) identify the implemented modules.
 
 ## Continue

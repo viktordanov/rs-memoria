@@ -190,9 +190,9 @@ pub struct ParsedLink {
 pub struct ParsedSection {
     /// The `id` attribute, before identifier validation.
     pub id: String,
-    /// The `files` tokens in authored order, each already checked against the
-    /// literal-path grammar. Empty for a guide-only section.
-    pub files: Vec<String>,
+    /// The `files` rules in authored order, each already parsed as a literal
+    /// path, a pattern, or a `!` exclusion. Empty for a guide-only section.
+    pub files: memoria_domain::SectionFiles,
     /// The `guidance` token exactly as authored, already checked against the
     /// guide path grammar.
     pub guidance: Option<String>,

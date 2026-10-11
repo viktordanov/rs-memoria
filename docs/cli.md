@@ -162,12 +162,14 @@ The configuration requires an empty `fingerprints.languages` map in this release
 Only raw byte hashing exists.
 
 Glob patterns match whole paths relative to their configuration directory.
-`*` and `?` remain within one path component.
-`[...]` supplies a character class, and `**` matches directories.
+`*` and `?` remain within one path component, and `?` matches one Unicode character.
+`[...]` supplies a character class, negated with a leading `!` or `^`, and `**` matches directories.
 The pattern `directory/**` selects contents within that directory.
-The parser rejects negation of a whole pattern, absolute patterns, and `..`.
+Braces are ordinary characters, a `.` component is skipped, and a leading dot needs no special pattern.
+The parser rejects negation of a whole pattern, absolute patterns, `..`, a backslash, a trailing `/`, and a class that does not close inside its component.
+Section `files` patterns use the same engine (see [Advisory sections](#advisory-sections)).
 
-Source evidence: [TOML parser](../crates/memoria-infrastructure/src/config.rs#L104) and [glob parser](../crates/memoria-domain/src/glob.rs#L78).
+Source evidence: [TOML parser](../crates/memoria-infrastructure/src/config.rs#L104) and [glob parser](../crates/memoria-domain/src/glob.rs#L90).
 
 </details>
 
@@ -362,7 +364,10 @@ The human view starts with "Documents N: M READMEs, K opted-in documents; H hand
 
 `status --explain <path>` names the rule chain for one path.
 For a selected source it adds `covered_by`, the documents whose scope contains it, and `handed_off`, each handoff `{by, to, subtree, via, line}` whose subtree contains it.
-For a tracked document the outcome is `document`, and `document` holds its `kind`, `scope_files`, `handoffs`, and `handed_off_by`.
+It also adds `sections`: each valid section `{document, id, via}` that maps the source, where `via` lists the `files` tokens that name it.
+For a tracked document the outcome is `document`, and `document` holds its `kind`, `scope_files`, `scope` (every source in its scope, sorted), `handoffs`, `handed_off_by`, `section_state` (`absent`, `valid`, or `invalid`), and `sections`.
+Each entry of `sections` is `{id, files, sources, unmatched}`: the authored tokens, every source they expand to in the current scope, and the tokens that match nothing.
+The human view prints one `section` line for each, followed by its sources.
 A normal Markdown link supplies navigation without creating a review dependency, except a link to a tracked document in a strict subfolder, which is a handoff.
 Local navigation decodes URL path escapes once and leaves `+` literal.
 Invalid encodings or paths outside the root do not create navigation edges.
@@ -371,6 +376,7 @@ Invalid encodings or paths outside the root do not create navigation edges.
 Its `imports_outdated` and `navigation_disconnected` warnings do not fail lint.
 Its `missing_import_hint` diagnostics remain optional hints.
 The configuration key `lint.missing_import_hint: false` suppresses those hints.
+Only `lint` reports `section_pattern_empty`, a hint for each section token that matches nothing.
 `check` treats outdated imports as errors and fails for pending reviews.
 A changed-guidance count is a hint in `check`, and it never fails the command.
 
@@ -480,7 +486,7 @@ The human view is change-first:
 5. Semantic review requests.
 6. "Also pending for the same changes": co-covering documents, at most 10 lines.
 7. "Downstream": export consumers, at most 10 lines.
-8. "How to read": the mode and its reasons, suggested sections, the reads, the whole-document pass, and the guidance command. A suggested section that names a guide ends with `· guide: <path>`. When section guides apply, the guidance line ends with "(project guidance and N section guides)".
+8. "How to read": the mode and its reasons, suggested sections, the reads, the whole-document pass, and the guidance command. In a full baseline, the reads are labelled "Read first:" and hold the document and the changed inputs. The next line counts the unchanged sources and imports that the review must also cover, and names `memoria status --explain <DOCUMENT>`, which lists every source in the scope. When nothing else is in the scope, the line says "Rest of the scope: none". The artifact does not list the unchanged sources, so its size stays proportional to the changes. A suggested section that names a guide ends with `· guide: <path>`. When section guides apply, the guidance line ends with "(project guidance and N section guides)".
 9. "Next": read and edit, save a fresh artifact, and acknowledge.
 10. Only when a hunk was cut: the line "Complete hunks: memoria review DOCUMENT --details".
 
@@ -507,10 +513,10 @@ document.
 {
   "command": "review",
   "data": {
-    "artifact_digest": "be5a507bdac29b82",
+    "artifact_digest": "d804b0144b601187",
     "baseline": {
       "evidence_status": "verified",
-      "recorded_commit": "38dbae1ee665839293db86b6ef4e7de6ddc8fc1e",
+      "recorded_commit": "95353ccbde7a848a09e91b43df8c13189ee25569",
       "result": "no-update",
       "reviewer": "fixture",
       "revision": 1,
@@ -594,6 +600,9 @@ document.
       "mode": "focused_candidate",
       "sections": [
         {
+          "files": [
+            "login.rs"
+          ],
           "guidance": null,
           "heading": "Login",
           "id": "login",
@@ -601,6 +610,7 @@ document.
             4,
             6
           ],
+          "matched": 1,
           "sources": [
             "auth/login.rs"
           ]
@@ -617,13 +627,13 @@ document.
       "handoffs_total": 0
     },
     "snapshot": {
-      "baseline_digest": "5d819bb20f034f9c",
+      "baseline_digest": "d2cc4b3fdad018ad",
       "context_digest": "ac6f9a256466da33",
       "guidance_digest": "bb97f9223e4cba99",
       "inputs_digest": "659dabed259ca916",
       "selection_version": 2
     },
-    "token": "mrv3.1aa666aced18a2c5",
+    "token": "mrv3.28eed67913c9b2f6",
     "workflow": {
       "policy": "section-review-v2",
       "steps": [
@@ -725,11 +735,35 @@ Save writes a local archive. Sync also uploads the archive.
 ```
 
 Both markers sit at column zero. The attribute order is fixed. Exactly one
-space separates two paths. The identifier matches
-`[A-Za-z][A-Za-z0-9_-]{0,63}` and stays unique inside one document. Each path
-is literal, relative to the document's folder, and must name a selected
-regular source file in the document's scope: not a tracked document, not a
-handed-off file. The body must open with a Markdown heading.
+space separates two tokens. The identifier matches
+`[A-Za-z][A-Za-z0-9_-]{0,63}` and stays unique inside one document. Each token
+is relative to the document's folder. The body must open with a Markdown heading.
+
+A section describes a kind of file, so a token can be a pattern or an
+exclusion as well as a path:
+
+```markdown
+<!-- memoria:section id="auth" files="src/auth/** !src/auth/tests/** !src/auth/generated.rs" -->
+## Authentication
+<!-- /memoria:section -->
+```
+
+| Token | Meaning |
+| --- | --- |
+| A literal path, such as `handle.go` | One selected regular source file in the document's scope: not a tracked document, not a handed-off file. Otherwise the mapping is invalid. |
+| A pattern, with `*`, `?`, or `[` | Every source in the document's scope that matches. It uses the same glob rules as `ignore` and `include`. |
+| `!` and a path or a pattern | Removes the matching sources from the section. |
+
+The section maps every included source minus every excluded one, in any token
+order. Exclusions alone are invalid. A pattern matches only the document's
+effective scope, so it never matches a tracked document, a guide, an ignored
+file, or a handed-off folder. Braces are rejected. A file whose name starts
+with `!` cannot be named by a literal path; a pattern can still match it.
+
+A pattern or an exclusion that matches nothing keeps the mapping valid.
+`memoria lint` reports each one as the hint `section_pattern_empty`. Other
+commands do not repeat it. `memoria status --explain <document>` lists each
+section's tokens, every source they match, and the tokens that match nothing.
 
 Sections do not nest. An export or an import can sit wholly inside a section.
 A section cannot sit inside or cross an export or an import. Marker text
@@ -761,7 +795,9 @@ documents that name it: `memoria guidance --changed` lists them, and an `ack`
 of an artifact saved before the edit fails with `guidance_changed`.
 
 A section is advice. It adds or removes no input and has no separate
-freshness. One invalid mapping withdraws the advice of the whole document,
+freshness. A pattern changes no scope: an added file is a changed path set,
+so its review is a full baseline. The change still names the sections whose
+patterns match it, and the next change to that file can suggest them. One invalid mapping withdraws the advice of the whole document,
 because partial
 advice cannot narrow a review. Memoria then reports `section_mapping_invalid`
 as a warning with the path, the line, and a precise reason. `lint` does not
@@ -866,6 +902,14 @@ entry has a `role`: `whole_document`, `changed_source`, `section_context`, or
 `current_import`. For the complete inventory, invoke `memoria status` or
 produce a full export.
 
+Each `data.review.sections[]` entry holds `files`, the authored tokens, and
+`matched`, the number of sources they expand to. Its `sources` are the reads
+for that section: every literal path, and each pattern match that changed.
+They enter `data.inputs` with the role `section_context`. An unchanged pattern
+match is not listed. `status --explain <document>` lists the complete
+expansion. The human view prints a pattern section as its tokens, then
+`(N matches; read ...)`.
+
 The line range in `data.review.sections[].lines` is a 1-based inclusive hint
 for the current document bytes. The complete document hash binds every byte.
 
@@ -916,7 +960,8 @@ Every CLI JSON envelope uses schema version 3. The manifest uses
 `kind: "focused_review"` and `packet_version: 5`. `packet view` uses
 `view_version: 3`.
 
-Version 3 manifests add `review.sections[].guidance` (the guide path or
+Version 3 manifests add `review.sections[].files` and `review.sections[].matched`
+(see [Suggested reads](#suggested-reads)), `review.sections[].guidance` (the guide path or
 `null`) and `section` entries in `guidance.references`, each with `sections`
 (the ids of the sections that name it). A section reference's `entry_index`
 counts the section entries. Version 5 exports carry each section guide's exact
@@ -1454,7 +1499,8 @@ import_missing_document import_missing_export import_self import_duplicate impor
 imports_outdated navigation_disconnected missing_import_hint review_pending
 review_not_pending dependencies_pending document_not_found document_invalid
 document_encoding_invalid section_mapping_invalid section_guidance_invalid
-section_guidance_unregistered section_guidance_unused handoff_not_applied handoff_absent
+section_guidance_unregistered section_guidance_unused section_pattern_empty
+handoff_not_applied handoff_absent
 save_requires_document save_destination_invalid save_destination_in_project
 save_name_exhausted save_failed packet_too_large max_bytes_invalid
 summary_invalid token_invalid token_mismatch reviewer_invalid result_invalid note_invalid

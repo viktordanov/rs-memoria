@@ -1027,17 +1027,20 @@ fn build_scope(
 
 /// Resolve one document's authored sections against its scope.
 ///
-/// Advice survives only when every mapping resolves to a selected regular
+/// Advice survives only when every literal include names a selected regular
 /// source in the document's scope. Anything else — an unselected, reserved,
 /// guidance, symlinked, or missing path, a tracked document, or a source the
 /// document handed off or never covered — withdraws the whole document's
-/// advice, because partial advice cannot narrow a review.
+/// advice, because partial advice cannot narrow a review. Patterns and
+/// exclusions expand over the scope itself, through the same domain rules
+/// that the prior-mapping resolver uses, so they can only match sources that
+/// are in the scope. A token that matches nothing stays valid.
 ///
 /// A section's guide never affects validity here. Guide references are
 /// resolved and checked separately, because a guide still applies when the
 /// section's advice is withdrawn.
 #[allow(clippy::too_many_arguments)]
-fn resolve_sections(
+pub(crate) fn resolve_sections(
     document: &DocumentId,
     parsed_sections: &[crate::ports::ParsedSection],
     parser_issues: &[crate::ports::MarkdownIssue],
@@ -1070,12 +1073,15 @@ fn resolve_sections(
     let scope: BTreeSet<&ProjectPath> = scopes.scope_of(document).iter().collect();
     let mut mappings = Vec::new();
     for section in parsed_sections {
-        let mut sources: Vec<ProjectPath> = Vec::new();
-        for raw in &section.files {
+        // A literal include must name a selected source in this scope. Each
+        // failure reports its own cause. Patterns and exclusions only match
+        // sources that are already in the scope, so they cannot fail here.
+        let mut literal_failed = false;
+        for raw in section.files.literal_includes() {
             let resolved = match ProjectPath::resolve_relative(&dir, raw) {
                 Ok(path) => path,
                 Err(err) => {
-                    invalid = true;
+                    literal_failed = true;
                     report(
                         format!(
                             "section {:?}: path {raw:?} is not a project path: {err}",
@@ -1089,7 +1095,7 @@ fn resolve_sections(
             let is_document =
                 DocumentId::from_path(resolved.clone()).is_ok_and(|id| documents.contains(&id));
             if is_document {
-                invalid = true;
+                literal_failed = true;
                 report(
                     format!(
                         "section {:?}: {resolved} is now a tracked document, not a source in this document's scope; name the sources that the section describes",
@@ -1100,7 +1106,7 @@ fn resolve_sections(
                 continue;
             }
             if section_guides.contains(&resolved) {
-                invalid = true;
+                literal_failed = true;
                 report(
                     format!(
                         "section {:?}: {resolved} is a section guide registered in {ROOT_CONFIG_PATH}, not a source; name it in `guidance`, or name the sources that the section describes in `files`",
@@ -1111,7 +1117,7 @@ fn resolve_sections(
                 continue;
             }
             if !selected.contains_key(&resolved) {
-                invalid = true;
+                literal_failed = true;
                 report(
                     format!(
                         "section {:?}: {resolved} is not a selected regular source file; a section can only name sources in this document's scope",
@@ -1122,7 +1128,7 @@ fn resolve_sections(
                 continue;
             }
             if !scope.contains(&resolved) {
-                invalid = true;
+                literal_failed = true;
                 let handed = scopes
                     .handoffs_of(document)
                     .iter()
@@ -1140,10 +1146,26 @@ fn resolve_sections(
                 report(message, Some(section.location));
                 continue;
             }
-            sources.push(resolved);
         }
-        sources.sort();
-        sources.dedup();
+        if literal_failed {
+            invalid = true;
+            continue;
+        }
+        let expansion = match section.files.expand(&dir, &scope) {
+            Ok(expansion) => expansion,
+            Err(tokens) => {
+                invalid = true;
+                report(
+                    format!(
+                        "section {:?}: {} name no source in this document's scope",
+                        section.id,
+                        tokens.join(", ")
+                    ),
+                    Some(section.location),
+                );
+                continue;
+            }
+        };
         let id = match memoria_domain::SectionId::parse(&section.id) {
             Ok(id) => id,
             Err(err) => {
@@ -1157,7 +1179,10 @@ fn resolve_sections(
             heading: section.heading.clone(),
             first_line: section.first_line,
             last_line: section.last_line,
-            sources,
+            files: section.files.clone(),
+            sources: expansion.sources,
+            literals: expansion.literals,
+            unmatched: expansion.unmatched,
             guidance: section
                 .guidance
                 .as_deref()

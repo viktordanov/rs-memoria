@@ -1,25 +1,33 @@
 # Memoria
 
-**Memoria tracks documentation freshness. You choose what your documents represent. Memoria records reviewed inputs and shows which documents need another review.**
+**Memoria keeps a project's documentation current as its code changes. When a file changes, it tells you which explanations to review, what to read, and in which order, then records each review against the exact bytes that the reviewer saw.**
 
-**Memoria does not write documentation and does not decide whether its explanation is correct.**
+Documentation drift rarely announces itself. A feature changes, the tests move on, and the explanation that once made sense quietly becomes misleading. In a large repository, even finding the documents that deserve another look can be harder than fixing them, and the documents are written by people and by agents alike.
 
-README drift rarely announces itself. A feature changes, the tests move on, and the explanation that once made sense quietly becomes misleading. In a large repository, even finding the documentation that deserves another look can be harder than fixing it.
-
-Memoria turns that into a review queue. It records fingerprints of the exact inputs a reviewer examined, watches those inputs for change, and tells you which explanations are now unverified. The judgment stays yours.
+Memoria turns that into a review queue. People and agents still write and judge every explanation: Memoria does not write documentation, and it does not decide whether an explanation is correct. It decides which explanations have not been checked against their current inputs.
 
 ## Contents
 
-- [Use cases](#use-cases)
-- [Purpose](#what-memoria-does-and-does-not-do) and [documentation strategy](#your-documentation-strategy)
-- [Quick start](#quick-start)
-- [Review workflow](#the-review-workflow) and [project guidance](#project-documentation-guidance)
-- [Command-line interface](#command-line-interface) and [task guides](#find-the-right-guide)
-- [Self-hosting and development](#self-hosting-and-development)
+1. Get started
+   - [Use cases](#use-cases)
+   - [How it works](#how-it-works)
+   - [The CLI at a glance](#the-cli-at-a-glance)
+   - [Quick start](#quick-start)
+2. Use it every day
+   - [The review cycle](#the-review-cycle)
+   - [Everyday tasks](#everyday-tasks)
+3. Fit it to your project
+   - [Choose what your documents represent](#choose-what-your-documents-represent)
+   - [Project documentation guidance](#project-documentation-guidance)
+   - [Run it in CI](#run-it-in-ci)
+4. Go deeper
+   - [Find the right guide](#find-the-right-guide)
+   - [Command-line interface](#command-line-interface)
+   - [Self-hosting and development](#self-hosting-and-development)
 
 ## Use cases
 
-People and agents write the documents. Memoria keeps them current: it finds the ones to review again and records each review. The [cookbooks](docs/cookbooks/README.md) show each use case in a small, tested project.
+Each row is a reason to arrive. The [cookbooks](docs/cookbooks/README.md) show each one in a small, tested project, and help you choose a documentation layout.
 
 | When you need to… | Memoria… | Read |
 | --- | --- | --- |
@@ -30,32 +38,13 @@ People and agents write the documents. Memoria keeps them current: it finds the 
 | Repeat one summary in several documents | Copies an export into each import with `memoria render`, and schedules the provider's review first. | [Concepts](docs/concepts.md) |
 | Review documents after a decision that changed no file | Records a review request with your reason. | [Review workflow](docs/workflow.md) |
 
-## What Memoria does and does not do
+## How it works
 
-Memoria answers one question: *which explanations have not been checked against their current inputs?*
+Memoria remembers, for each document, the exact files and bytes that its last reviewer looked at. When those bytes change, the document goes back in the queue. Which files a document covers comes from your folders:
 
-It does that by remembering, for each document, the exact files and bytes a reviewer looked at. When those bytes change, that document goes back in the queue. When you tell Memoria that the goals themselves changed, it queues the documents you name.
-
-What Memoria will never do:
-
-- Write or edit your prose. Only `memoria render` changes document text, and only inside explicitly declared import blocks.
-- Judge whether an explanation is good, complete, or true. A person or an agent does that.
-- Decide what a document should be about. That choice is yours, and Memoria works with whichever one you make.
-
-## Your documentation strategy
-
-Memoria reads three structures and runs one cycle:
-
-1. **The file tree** comes from Git. It decides which files exist.
-2. **Document scopes** come from folders. Every tracked document covers the selected files in its own folder and below it, until it hands a subfolder to a tracked document there by a link or an import.
-3. **The import graph** comes from explicit export and import markers. Imports are the only edges that carry freshness between documents.
-4. **The cycle**: inputs change, the documents whose scope holds them become pending, Memoria states what each review must read, a person or an agent judges the explanation, and an acknowledgement records that judgment against one exact snapshot.
-
-Every `README.md` is a tracked document. Any other Markdown file becomes one when it carries a Memoria marker: an export, an import, or a section. A link alone never tracks a file.
-
-The [concept guide](docs/concepts.md) explains each of these ideas with an example and its limits.
-
-### Scope and handoffs
+- **Every `README.md` is a tracked document.** Another Markdown file becomes one when it carries a Memoria marker: an export, an import, or a section. A link alone never tracks a file.
+- **A document covers its own folder and below it,** until it hands a subfolder to a tracked document there with a link or an import.
+- **Imports are the only edges that carry freshness between documents.** A document that imports another's summary waits for that document's review.
 
 A small example shows the whole rule:
 
@@ -82,45 +71,90 @@ flowchart TD
     root["README.md covers app.rs"] -- "link or import: hands off auth/" --> auth["auth/README.md covers auth/login.rs"]
 ```
 
-The same rule scales. In this tree, the root links `auth/README.md`, imports `docs/guide.md#overview`, and never mentions `legacy/`:
+A nested README alone removes nothing: until the root links to it or imports from it, both documents cover `auth/`, and both are reviewed. The link is the handoff. It moves `auth/` out of the root's scope and binds that decision into the root's review, so removing the link later makes the root pending again.
+
+Memoria never edits your prose, except inside import blocks that you declare, and only when you run `memoria render`. The [concept guide](docs/concepts.md) explains each idea with an example and its limits.
+
+## The CLI at a glance
+
+Here is one change, seen from the command line. In the [documents beside the code cookbook](docs/cookbooks/beside-code/README.md), a teammate changes how `billing/tax.rs` rounds VAT. Three documents cover `billing/`, so all three become pending, in review order:
+
+```console
+$ memoria review
+Review plan: 3 pending documents (dependency order)
+  2. billing/README.md  README · input changed: billing/tax.rs · ready · also covered by billing/design.md, billing/notes.md
+  3. billing/design.md  opted-in document · input changed: billing/tax.rs · ready · also covered by billing/README.md, billing/notes.md
+  4. billing/notes.md  opted-in document · input changed: billing/tax.rs · ready · also covered by billing/README.md, billing/design.md
+Next: memoria review billing/README.md
+```
+
+The review of one document starts with what changed, as a verified hunk, and then says what to read. Here a section marker in `billing/design.md` maps `tax.rs`, so the review can suggest the part to start from:
+
+```console
+$ memoria review billing/design.md
+Review billing/design.md — opted-in document, pending since revision 2
+Scope: 2 sources in billing/ and below
+Baseline: revision 2 by fixture (no-update)
+What changed since that review:
+  changed  billing/tax.rs · scope source · section "tax" describes it · also covered by 2 other documents
+      @@ -1,7 +1,7 @@
+       /// The VAT rate in basis points: 2000 is 20%.
+       pub const VAT_BASIS_POINTS: u64 = 2000;
+
+      -/// The VAT on a subtotal, rounded down to a whole cent.
+      +/// The VAT on a subtotal, rounded to the nearest cent. A half cent rounds up.
+       pub fn vat(subtotal_cents: u64) -> u64 {
+      -    subtotal_cents * VAT_BASIS_POINTS / 10_000
+      +    (subtotal_cents * VAT_BASIS_POINTS + 5_000) / 10_000
+       }
+Also pending for the same changes:
+  billing/README.md (covers the same folder; pending)
+  billing/notes.md (covers the same folder; pending)
+How to read:
+  Mode: focused candidate. Eligibility only; it does not certify the prior review.
+  Suggested section tax "Tax" lines 14-17: billing/tax.rs
+  Read:
+    billing/design.md (whole_document)
+    billing/tax.rs (changed_source)
+  Whole document pass: required
+  Guidance: memoria guidance billing/design.md
+Next:
+  1. Read the whole document and the listed inputs; edit billing/design.md if it is wrong.
+  2. After any edit, save a fresh artifact: dir=$(mktemp -d); memoria review billing/design.md --save "$dir"
+  3. Record the result: memoria ack billing/design.md --packet <saved file> --reviewer <you> --result <updated|no-update> --note "<why>"
+```
+
+After the reviewer fixes the tax section, a fresh artifact records the result against the exact bytes that they read:
+
+```sh
+dir=$(mktemp -d)
+memoria review billing/design.md --save "$dir"
+memoria ack billing/design.md --packet "$dir"/memoria-manifest-billing_design.md-*.json \
+  --reviewer docs-agent --result updated \
+  --note "The tax section now says that VAT rounds to the nearest cent, half up."
+```
+
+`--save` prints the saved path and the exact `ack` command. The acknowledgement prints one line:
 
 ```text
-README.md        links auth/README.md; imports docs/guide.md#overview
-app.rs
-docs/guide.md    opted in: it carries an export
-docs/notes.md    ordinary Markdown
-auth/README.md
-auth/flows.md    opted in: it carries a section
-auth/login.rs
-legacy/README.md
-legacy/old.rs
+Recorded billing/design.md revision 3 (updated) by docs-agent
 ```
 
-An edit to `auth/login.rs` makes `auth/README.md` and `auth/flows.md` pending, because they share the folder. An edit to `legacy/old.rs` makes `legacy/README.md` and the root pending, because the root never handed `legacy/` off; `memoria lint` says so with a `handoff_absent` hint. An edit to `docs/notes.md` makes the guide pending, and the root waits for it because of the import.
+The cookbook's test runs these commands and compares each output with its page. The commands you use most:
 
-### Choose what your documents represent
-
-What those scopes *mean* is up to you. Projects commonly pick one of these:
-
-| Strategy | One document for each… |
+| To… | Run |
 | --- | --- |
-| Architecture modules | crate, package, or layer |
-| Business concepts | domain concept, with its rules and its code |
-| Operational workflows | workflow, from its entry point to its outputs |
+| See coverage, input size, and review state | `memoria status` |
+| See why one file or document is covered, and by what | `memoria status --explain <PATH>` |
+| Get the review plan and the next command | `memoria review` |
+| Read one review and its guidance | `memoria review <DOCUMENT>`, `memoria guidance <DOCUMENT>` |
+| Save an artifact, then record the result | `memoria review <DOCUMENT> --save <DIR>`, then `memoria ack <DOCUMENT> --packet <FILE> ...` |
+| Refresh imported summaries | `memoria render` |
+| Request a review with a reason | `memoria invalidate doc:<DOCUMENT> --reason "..."` |
+| Validate structure, or gate CI | `memoria lint`, `memoria check` |
+| See documents, handoffs, and imports as a graph | `memoria graph` |
 
-None of these is more correct than the others, and Memoria will not choose for you. Run `memoria init` to see the choice laid out before anything is written:
-
-```sh
-memoria init
-```
-
-That is a preview. It reads your project, explains the model, lists the two files it would create, and writes nothing at all. When you are ready:
-
-```sh
-memoria init --apply
-```
-
-Apply creates `memoria.toml` and `memoria.lock` beside each other. It needs a root `README.md` that you wrote yourself — Memoria will not invent one, because the root explanation is the part only you can write.
+Every command accepts `--format json`. The [complete command list](#command-line-interface) is below, and the [command reference](docs/cli.md) covers every argument, diagnostic, and exit status.
 
 ## Quick start
 
@@ -142,7 +176,13 @@ To build Memoria from this checkout instead, install it with Cargo:
 cargo install --locked --path .
 ```
 
-Then, in a Git project that already has a root README:
+Then, in a Git project that already has a root `README.md`, preview the setup:
+
+```sh
+memoria init
+```
+
+The preview reads your project, explains the model, lists the two files it would create, and writes nothing. When you are ready, create them and look at the queue:
 
 ```sh
 memoria init --apply
@@ -150,7 +190,7 @@ memoria status
 memoria review
 ```
 
-`status` gives you the overview. `review` tells you exactly which document to look at next, and in which order.
+`init --apply` creates `memoria.toml` and `memoria.lock`. It needs a root README that you wrote yourself, because the root explanation is the part only you can write. `status` gives you the overview, and `review` names the next document to look at and why.
 
 When a document needs attention, read the project's guidance first, then look at what changed:
 
@@ -181,7 +221,7 @@ memoria check
 
 The fresh-artifact step matters. If anything changed after the review — a source file, a handoff, the guidance, an imported summary, even a provider's own context — Memoria rejects the acknowledgement rather than approving inputs nobody read. The [review workflow](docs/workflow.md) walks through the whole procedure.
 
-## The review workflow
+## The review cycle
 
 The [review workflow guide](docs/workflow.md) owns the cycle. This summary is imported from it:
 
@@ -205,28 +245,106 @@ Its token binds the acknowledgement to one snapshot, so an old artifact cannot a
 `memoria check` passes when no document is pending and every import is current.
 <!-- /memoria:import -->
 
-Memoria will point you at a smaller part of a document when it safely can. Mark a section with `<!-- memoria:section id="..." files="..." -->` and Memoria will suggest it when one of those files changes. The suggestion is advice and nothing more: it never narrows what an acknowledgement checks, and the whole-document pass is always part of the review. Anything Memoria cannot account for — a new file, a rename, a changed handoff, a changed mapping, a changed policy, an unverifiable baseline — falls back to the full scope with the reason written out.
+## Everyday tasks
 
-When you want the bytes in one file instead — for an offline reader, or a machine that cannot open the repository — `memoria review README.md --full --save DIR` exports everything, and `memoria packet view` reads its exact saved sections.
+### Point a review at one part of a document
 
-Acknowledging changes one file: `memoria.lock`. Two files belong in Git:
+Mark a section, and Memoria suggests it when a file that it maps changes:
 
-- `memoria.toml` — your configuration, which only you edit.
-- `memoria.lock` — generated, machine-owned review state, which only Memoria writes. Commit it; do not edit it. Read it with `memoria state inspect`.
+```markdown
+<!-- memoria:section id="auth" files="src/auth/** !src/auth/tests/**" -->
+## Authentication
+<!-- /memoria:section -->
+```
 
-Because the state travels with the repository, a colleague who clones the project sees the same freshness you do — even with completely different local Git ignore settings on their machine. Their host settings still decide which untracked files exist for them, but they never change what has been reviewed.
+`files` takes paths, glob patterns such as `src/auth/**`, and `!` exclusions, so a section can describe a kind of file instead of a fixed list. Check what each section matches with `memoria status --explain <DOCUMENT>`. The suggestion is advice and nothing more: it never narrows what an acknowledgement checks, and the whole-document pass is always part of the review. Anything Memoria cannot account for, such as a new file, a rename, a changed handoff, a changed mapping, a changed policy, or an unverifiable baseline, falls back to the full scope with the reason written out.
 
-Documents can also share small, stable explanations. A provider marks an export, a consumer declares an import, and `memoria render` refreshes only those managed copies. The provider is scheduled first, so consumers never review text from an unfinished dependency.
+### Share one summary between documents
 
-Sometimes the reason for another review is not a file diff at all. `memoria invalidate` records an explicit request — a changed policy, a new architecture decision — and carries your reason into every review it affects.
+A provider marks an export, and a consumer declares an import of it:
 
-To see why any document is current, pending, or waiting, run `memoria explain README.md`. It lists the changed paths with available hunks and reasons for missing evidence, and it works for current documents too. Hunks require historical bytes that match the last acknowledged inputs. Use `--full` for hashes and detailed context. To compare saved review records, use `memoria state diff before.lock after.lock`; that comparison does not establish current freshness.
+```markdown
+<!-- memoria:export id="summary" -->
+Auth signs users in with a password or a passkey.
+<!-- /memoria:export -->
+```
+
+```markdown
+<!-- memoria:import src="auth/README.md#summary" -->
+<!-- /memoria:import -->
+```
+
+`memoria render` refreshes only those managed copies. The provider is reviewed first, so a consumer never reviews text from an unfinished dependency.
+
+### Commit the review state
+
+Acknowledging changes one file, `memoria.lock`. Commit it with `memoria.toml`: the configuration is yours to edit, and the lock is machine-owned state that only Memoria writes.
+
+```sh
+git add memoria.toml memoria.lock
+memoria state inspect
+```
+
+Because the state travels with the repository, a colleague who clones the project sees the same freshness that you do, even with different local Git ignore settings.
+
+### Request a review without a file change
+
+When a policy or an architecture decision changes, record your reason. Memoria carries it into every review it affects:
+
+```sh
+memoria invalidate subtree:src --reason "Errors are now reported as structured JSON."
+memoria invalidate doc:docs/guide.md --reason "The team no longer releases on Fridays."
+```
+
+### Find out why a document is pending
+
+```sh
+memoria explain README.md
+memoria status --explain src/auth/login.rs
+```
+
+`explain` lists the changed paths with available hunks and the reasons for missing evidence, and it works for current documents too. `status --explain` names the rule chain for one path and every document that covers it. `memoria state diff before.lock after.lock` compares saved review records, but it does not establish current freshness.
+
+### Hand a reviewer everything in one file
+
+For an offline reader, or a machine that cannot open the repository, export every reviewed byte, then read its exact saved sections:
+
+```sh
+memoria review README.md --full --save "$dir"
+memoria packet view "$dir"/memoria-full-README.md-*.json --section content
+```
+
+### Review in parallel
+
+Each artifact binds only its own document, so one acknowledgement never forces another reviewer to start again unless it changed something that reviewer read. A coordinator hands out the documents that are ready:
+
+```sh
+memoria review --format json | jq -r '.data.tasks[] | select(.ready) | .document'
+```
+
+The [workflow guide](docs/workflow.md#review-documents-in-parallel) shows how to split the work, and how to bring reviews back from separate Git worktrees.
+
+### Label the reviewer
+
+```sh
+export MEMORIA_REVIEWER="your-name"
+```
+
+An explicit `--reviewer` always wins. The label records attribution, not authentication or authority, so agents pass their label explicitly.
 
 Commands print their result, every warning, and every error. Advisory hints, such as a link that hands nothing off, appear only in `memoria lint` and with `--verbose`. JSON output always carries every diagnostic.
 
-Several reviewers can work in one checkout at once. Each artifact binds only its own document, so one acknowledgement never forces another reviewer to start again unless it changed something that reviewer read. The [workflow guide](docs/workflow.md#review-documents-in-parallel) shows how to split the work, and how to bring reviews back from separate Git worktrees.
+## Choose what your documents represent
 
-For repeated reviews, you can set `MEMORIA_REVIEWER` to your chosen label. An explicit `--reviewer` always wins, and a successful acknowledgement confirms the label it used. The label records attribution, not authentication or authority. Agents should pass their label explicitly.
+What the scopes mean is up to you. Projects commonly pick one of these:
+
+| Strategy | One document for each… |
+| --- | --- |
+| Architecture modules | crate, package, or layer |
+| Business concepts | domain concept, with its rules and its code |
+| Operational workflows | workflow, from its entry point to its outputs |
+
+None of these is more correct than the others, and Memoria does not choose for you. The [cookbooks](docs/cookbooks/README.md#choose-a-pattern) compare four layouts by where the documents live and what one code change costs in reviews.
 
 ## Project documentation guidance
 
@@ -259,6 +377,36 @@ memoria invalidate subtree:src --reason 'The workflow explanation has new requir
 That is deliberate. A wording tweak should not silently invalidate a hundred reviews, and Memoria will never do it for you.
 
 Some rules apply to one kind of section only, such as the command list in an `AGENTS.md`. Put them in a section guide: register the file once in `section_guidance_files`, and name it in each section marker that needs it with a `guidance="PATH"` attribute. A guide edit then reaches only the documents that name it, and project guidance still wins a conflict. The [agent instructions cookbook](docs/cookbooks/agent-instructions/README.md) walks through a complete example.
+
+## Run it in CI
+
+Memoria can write the GitHub Actions workflow for you, and it shows you the file before it writes anything:
+
+```sh
+memoria integrations github install
+memoria integrations github install --apply
+```
+
+The generated workflow calls the first-party `setup-memoria` Action, which downloads a verified prebuilt executable for the runner — x64 or ARM64 — instead of compiling Memoria from source. Then it runs `memoria check`. Memoria never adopts or overwrites a workflow file it does not own, and a pending check still means a person reviews the documentation locally.
+
+The first command is a preview. It works in any project, even one Memoria has never seen: it prints the file it would write, names anything still missing, and changes nothing. The second command writes, so it needs an initialized project — the generated job runs `memoria check`. Author the root README first, then run `memoria init --apply`. The workflow pins one exact Memoria version. Configuration version 3 needs Memoria 0.7.0 or later, so the pinned version must be 0.7.0 or newer, and a pinned release must be published before the workflow can pass. A build writes its own version into the workflow. The [GitHub Actions guide](docs/github-actions.md) covers the pins, the checksum, the ownership record, and what each state means.
+
+## Find the right guide
+
+| If you want to… | Read… |
+| --- | --- |
+| Learn the ideas behind scopes, handoffs, and imports | [Concepts](docs/concepts.md) |
+| See complete, tested uses of Memoria in small projects | [Cookbooks](docs/cookbooks/README.md) |
+| Keep `AGENTS.md` and `CLAUDE.md` current with shared section guides | [Agent instructions cookbook](docs/cookbooks/agent-instructions/README.md) |
+| Complete a documentation review | [Review workflow](docs/workflow.md) |
+| Look up a command or failure | [Command reference](docs/cli.md) |
+| Understand the committed state file | [Committed state](docs/state.md) |
+| Install the agent skill or a Stop hook | [Agent integrations](docs/agents.md) |
+| Find every integration and its command name | [Integrations](docs/integrations.md) |
+| Run Memoria in GitHub Actions | [GitHub Actions](docs/github-actions.md) |
+| See release changes and earlier upgrade notes | [Changelog](CHANGELOG.md) |
+
+Start with the concepts, then the workflow, if you are new. The command reference is the lookup guide, the [specification](docs/specification.md) preserves the product rules and their rationale, and the [agent skill](skills/memoria/SKILL.md) is the procedure an assistant follows.
 
 ## Command-line interface
 
@@ -300,41 +448,11 @@ Options:
 
 The [command reference](docs/cli.md) covers every argument, state change, diagnostic, and exit status.
 
-### Run it in CI
-
-Memoria can write the GitHub Actions workflow for you, and it shows you the file before it writes anything:
-
-```sh
-memoria integrations github install
-memoria integrations github install --apply
-```
-
-The generated workflow calls the first-party `setup-memoria` Action, which downloads a verified prebuilt executable for the runner — x64 or ARM64 — instead of compiling Memoria from source. Then it runs `memoria check`. Memoria never adopts or overwrites a workflow file it does not own, and a pending check still means a person reviews the documentation locally.
-
-The first command is a preview. It works in any project, even one Memoria has never seen: it prints the file it would write, names anything still missing, and changes nothing. The second command writes, so it needs an initialized project — the generated job runs `memoria check`. Author the root README first, then run `memoria init --apply`. The workflow pins one exact Memoria version. Configuration version 3 needs Memoria 0.7.0 or later, so the pinned version must be 0.7.0 or newer, and a pinned release must be published before the workflow can pass. A build writes its own version into the workflow. The [GitHub Actions guide](docs/github-actions.md) covers the pins, the checksum, the ownership record, and what each state means.
-
-## Find the right guide
-
-| If you want to… | Read… |
-| --- | --- |
-| Learn the ideas behind scopes, handoffs, and imports | [Concepts](docs/concepts.md) |
-| See complete, tested uses of Memoria in small projects | [Cookbooks](docs/cookbooks/README.md) |
-| Keep `AGENTS.md` and `CLAUDE.md` current with shared section guides | [Agent instructions cookbook](docs/cookbooks/agent-instructions/README.md) |
-| Complete a documentation review | [Review workflow](docs/workflow.md) |
-| Look up a command or failure | [Command reference](docs/cli.md) |
-| Understand the committed state file | [Committed state](docs/state.md) |
-| Install the agent skill or a Stop hook | [Agent integrations](docs/agents.md) |
-| Find every integration and its command name | [Integrations](docs/integrations.md) |
-| Run Memoria in GitHub Actions | [GitHub Actions](docs/github-actions.md) |
-| See release changes and earlier upgrade notes | [Changelog](CHANGELOG.md) |
-
-Start with the concepts, then the workflow, if you are new. The command reference is the lookup guide, the [specification](docs/specification.md) preserves the product rules and their rationale, and the [agent skill](skills/memoria/SKILL.md) is the procedure an assistant follows.
-
 ## Self-hosting and development
 
 Memoria is its own first real project. This repository has eleven READMEs and one opted-in guide, [the review workflow](docs/workflow.md). The root README imports short summaries from five other READMEs and imports the review cycle from the guide. Because the root links and imports the guide, it hands `docs/` to the guide, which covers the other pages there. The guide hands `docs/cookbooks/` to the [cookbook index](docs/cookbooks/README.md), which hands each cookbook folder to its own README. `memoria.lock` records the evidence each explanation was checked against.
 
-Every review names the guidance in `memoria.toml`, and `memoria guidance` prints it. It asks documentation agents to load the `simple-english` and `i-have-adhd` skills, applies Simplified Technical English in its pragmatic mode, gives guides such as this page a concept-led voice, and establishes Mermaid as the diagram format. Those are this project's choices, not defaults Memoria imposes: `memoria init --apply` writes an empty guidance list.
+Every review names the guidance in `memoria.toml`, and `memoria guidance` prints it. It points documentation writers to [the writing guide](docs/development/writing-guide.md), which shapes each page around its reader, asks agents to load the `simple-english` and `i-have-adhd` skills, gives guides such as this page a concept-led voice, and keeps Mermaid as the diagram format everywhere except the cookbooks, which try out SVG diagrams. Those are this project's choices, not defaults Memoria imposes: `memoria init --apply` writes an empty guidance list.
 
 To watch the repository review itself:
 
@@ -361,7 +479,7 @@ flowchart TD
     application --> domain
 ```
 
-Each arrow means that one workspace package declares a dependency on another. All paths point toward the domain, which has no runtime dependency. The [root manifest](Cargo.toml), [application manifest](crates/memoria-application/Cargo.toml), [infrastructure manifest](crates/memoria-infrastructure/Cargo.toml), and [domain manifest](crates/memoria-domain/Cargo.toml) are the source evidence.
+Each arrow means that one workspace package declares a dependency on another. All paths point toward the domain, whose only runtime dependency is the `glob` crate for pattern matching. The [root manifest](Cargo.toml), [application manifest](crates/memoria-application/Cargo.toml), [infrastructure manifest](crates/memoria-infrastructure/Cargo.toml), and [domain manifest](crates/memoria-domain/Cargo.toml) are the source evidence.
 
 The summaries below are managed imports. Each implementation README explains its folder locally, while this page gives readers a compact map of the whole system.
 
@@ -429,7 +547,7 @@ python3 -m unittest discover -s tests/setup_action -p 'test_*.py'
 ./scripts/check-github-workflow-template.sh --binary ./target/release/memoria --output /tmp/generated.yml
 ```
 
-Each diagram in the cookbooks has a `.txt` source beside its SVG. After you edit a source, render it again with `python3 scripts/ascii-diagram.py <SOURCE>.txt`. `python3 scripts/ascii-diagram.py --check docs/cookbooks/*.txt docs/cookbooks/*/*.txt` fails when an SVG is not the current render of its source. CI does not run this check yet.
+Each diagram in the cookbooks has a `.txt` source beside its SVG. After you edit a source, render it again with `python3 scripts/ascii-diagram.py <SOURCE>.txt`. `python3 scripts/ascii-diagram.py --check docs/cookbooks/*.txt docs/cookbooks/*/*.txt` fails when an SVG is not the current render of its source. CI does not run this check, because the cookbook diagrams change rarely.
 
 </details>
 

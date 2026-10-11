@@ -89,14 +89,15 @@ An invalidation requests a review with an explicit reason, even without a file c
 | [upgrade.rs](upgrade.rs) | Configuration version 3 and projects acknowledged by the real Memoria 0.6.0 |
 | [review_context.rs](review_context.rs) | Saved export views, P1 fallback, and verified historical coverage |
 | [sections.rs](sections.rs) | Advisory mappings, section guide markers and bounds, review mode, fallback reasons, and snapshot safety |
-| [configuration.rs](configuration.rs) | Supported settings, section guide registration rules, and explicit configuration errors |
+| [section_patterns.rs](section_patterns.rs) | Section `files` patterns and `!` exclusions: effective-scope expansion, added, deleted, and renamed matches, changed-only reads, identity with literal lists, lint-only empty-match hints, invalid tokens, and the full-baseline reading lines |
+| [configuration.rs](configuration.rs) | Supported settings, section guide registration rules, `ignore` and `include` pattern meaning on the shared glob engine, and explicit configuration errors |
 | [packets.rs](packets.rs) | Artifact transport, limits, integrity, replay, and concurrency |
 | [parallel.rs](parallel.rs) | Independent reviewers in one checkout: simultaneous acknowledgements, shared sources, import waiting, competing reviewers, the lock wait, and worktree integration |
 | [quiet_output.rs](quiet_output.rs) | Default human output on stdout and stderr together: hints and progress only on request, review hunks, `explain` next steps, and the guidance assessment |
 | [edges.rs](edges.rs) | Discovery, paths, configuration, and corrupt state |
 | [portability.rs](portability.rs) | Host rules against repository policy, and clean clones |
 | [guidance.rs](guidance.rs) | Setup preview, guidance visibility, advisory behavior, section guide layers, and the agent-instructions cookbook run |
-| `cookbook_readme_tree.rs`, `cookbook_beside_code.rs`, `cookbook_central_docs.rs` | One real run of each cookbook fixture, compared block by block with its page |
+| `cookbook_readme_tree.rs`, `cookbook_beside_code.rs`, `cookbook_central_docs.rs` | One real run of each cookbook fixture, compared block by block with its page. The beside-code run also checks the root README's "CLI at a glance" output |
 | [usability.rs](usability.rs) | Completions, reviewer identity, freshness explanations, state comparisons, and human guidance cues |
 | [state_format.rs](state_format.rs) | Frozen lock vectors, corruption, limits, and inspection |
 | [agent.rs](agent.rs) | Skill scopes, status, upgrade, backups, and removal |
@@ -178,6 +179,12 @@ The suite covers the section grammar through the CLI, every fallback reason,
 baseline eligibility with and without verifiable bytes, and mapping validation
 with its advisory diagnostic. It checks that one invalid mapping withdraws
 every suggestion, and that a new mapping cannot reduce the required scope.
+
+`section_patterns.rs` adds the same guarantees for patterns: an added match is
+still a full baseline, and only the reading list is limited to changed matches.
+Unit tests in `crates/memoria-application/src/usecases/requirements.rs` check
+that the current resolver and the prior-mapping resolver expand the same tokens
+to the same identity, because both call one domain function.
 
 It also checks the snapshot binding itself. Each bound component of the review
 context must change the token: an unrelated scope source, the document body, the

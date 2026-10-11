@@ -7,8 +7,9 @@ use memoria_application::ports::{
     MarkdownCodec, MarkdownIssue, ParsedDocument, ParsedGuide, ParsedImport, ParsedLink,
     ParsedSection,
 };
-use memoria_domain::section::{validate_guidance_path, validate_section_path};
+use memoria_domain::section::validate_guidance_path;
 use memoria_domain::{ByteRange, DocumentId, Export, ExportId, SourceLocation};
+use memoria_domain::{SectionFiles, SectionRule};
 use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd};
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -20,13 +21,13 @@ enum Marker {
     ExportClose,
     ImportOpen(String),
     ImportClose,
-    /// Advisory section: the `id` attribute, the authored `files` tokens,
+    /// Advisory section: the `id` attribute, the parsed `files` rules,
     /// and the optional `guidance` token. `problem` holds an `id` or `files`
     /// error found while the `guidance` token parsed: the section's advice is
     /// withdrawn, but its guide still applies.
     SectionOpen {
         id: String,
-        files: Vec<String>,
+        files: SectionFiles,
         guidance: Option<String>,
         problem: Option<String>,
     },
@@ -126,32 +127,33 @@ fn looks_like_section(line: &str) -> bool {
 }
 
 /// Split the `files` attribute on exactly one ASCII space per separator and
-/// check every token against the literal-path grammar.
-fn parse_section_files(raw: &str) -> Result<Vec<String>, String> {
+/// parse every token as a literal path, a pattern, or a `!` exclusion.
+fn parse_section_files(raw: &str) -> Result<SectionFiles, String> {
     if raw.is_empty() {
         return Err("section marker requires at least one path in `files`".to_string());
     }
-    let mut files = Vec::new();
+    let mut tokens: Vec<&str> = Vec::new();
+    let mut rules = Vec::new();
     for token in raw.split(' ') {
         if token.is_empty() {
             return Err(
                 "section marker `files` paths must be separated by exactly one space".to_string(),
             );
         }
-        if let Err(err) = validate_section_path(token) {
-            return Err(format!("section path {token:?}: {err}"));
-        }
-        if files.contains(&token.to_string()) {
+        let rule =
+            SectionRule::parse(token).map_err(|err| format!("section path {token:?}: {err}"))?;
+        if tokens.contains(&token) {
             return Err(format!("section lists the path {token:?} more than once"));
         }
-        files.push(token.to_string());
+        tokens.push(token);
+        rules.push(rule);
     }
-    Ok(files)
+    SectionFiles::new(rules).map_err(|err| err.to_string())
 }
 
 /// Parse the `id` and optional `files` attributes of a section marker. A
 /// guide-only section (`guided`, with no `files`) has no sources.
-fn parse_section_attributes(attrs: &str, guided: bool) -> Result<(String, Vec<String>), String> {
+fn parse_section_attributes(attrs: &str, guided: bool) -> Result<(String, SectionFiles), String> {
     let Some(rest) = attrs.strip_prefix("id=\"") else {
         return Err("section marker requires `id=\"ID\"` as its first attribute".to_string());
     };
@@ -162,7 +164,7 @@ fn parse_section_attributes(attrs: &str, guided: bool) -> Result<(String, Vec<St
         if id.is_empty() {
             return Err("section marker attributes are malformed".to_string());
         }
-        return Ok((id.to_string(), Vec::new()));
+        return Ok((id.to_string(), SectionFiles::none()));
     }
     let Some(files) = rest
         .strip_prefix(" files=\"")
@@ -239,7 +241,7 @@ fn parse_section_open(rest: &str) -> Result<Marker, MarkerError> {
                     .and_then(|rest| rest.split_once('"'))
                     .map(|(id, _)| id.to_string())
                     .unwrap_or_default(),
-                files: Vec::new(),
+                files: SectionFiles::none(),
                 guidance: Some(guidance),
                 problem: Some(message),
             }),
@@ -622,7 +624,7 @@ impl MarkdownCodec for PulldownMarkdownCodec {
         }
         struct OpenSection {
             id: String,
-            files: Vec<String>,
+            files: SectionFiles,
             guidance: Option<String>,
             problem: bool,
             body_start: usize,
@@ -985,7 +987,7 @@ mod tests {
         assert_eq!(parsed.sections.len(), 1);
         let section = &parsed.sections[0];
         assert_eq!(section.id, "persistence");
-        assert_eq!(section.files, vec!["handle.go", "service.go"]);
+        assert_eq!(section.files.tokens(), ["handle.go", "service.go"]);
         assert_eq!(section.heading, "Saving and synchronizing");
         assert_eq!(section.location.line, 3);
         // The body range and the line hints both exclude the two markers.
@@ -994,6 +996,29 @@ mod tests {
             "## Saving and synchronizing\n\nSave writes a local archive.\n"
         );
         assert_eq!((section.first_line, section.last_line), (4, 6));
+    }
+
+    #[test]
+    fn section_files_hold_patterns_and_exclusions() {
+        let text = "<!-- memoria:section id=\"auth\" files=\"src/auth/** !src/auth/tests/** !src/auth/generated.rs main.rs\" -->\n## Authentication\n\nText.\n<!-- /memoria:section -->\n";
+        let parsed = parse(text);
+        assert!(
+            parsed.section_issues.is_empty(),
+            "{:?}",
+            parsed.section_issues
+        );
+        let files = &parsed.sections[0].files;
+        assert_eq!(
+            files.tokens(),
+            [
+                "src/auth/**",
+                "!src/auth/tests/**",
+                "!src/auth/generated.rs",
+                "main.rs"
+            ]
+        );
+        assert!(files.has_patterns());
+        assert_eq!(files.literal_includes().collect::<Vec<_>>(), ["main.rs"]);
     }
 
     #[test]
@@ -1103,8 +1128,14 @@ mod tests {
             "<!-- memoria:section id=\"a\" files=\"\" -->\n# T\n<!-- /memoria:section -->\n",
             // Two spaces between paths.
             "<!-- memoria:section id=\"a\" files=\"x.rs  y.rs\" -->\n# T\n<!-- /memoria:section -->\n",
-            // A glob is not a literal path.
-            "<!-- memoria:section id=\"a\" files=\"src/*.rs\" -->\n# T\n<!-- /memoria:section -->\n",
+            // Brace alternation is not supported.
+            "<!-- memoria:section id=\"a\" files=\"src/{a,b}.rs\" -->\n# T\n<!-- /memoria:section -->\n",
+            // Only exclusions.
+            "<!-- memoria:section id=\"a\" files=\"!src/*.rs\" -->\n# T\n<!-- /memoria:section -->\n",
+            // An unterminated class.
+            "<!-- memoria:section id=\"a\" files=\"src/[ab.rs\" -->\n# T\n<!-- /memoria:section -->\n",
+            // Two `!`.
+            "<!-- memoria:section id=\"a\" files=\"x.rs !!y.rs\" -->\n# T\n<!-- /memoria:section -->\n",
             // Parent components are refused.
             "<!-- memoria:section id=\"a\" files=\"../x.rs\" -->\n# T\n<!-- /memoria:section -->\n",
             // Absolute paths are refused.
@@ -1176,7 +1207,7 @@ mod tests {
             "{:?}",
             parsed.section_issues
         );
-        assert_eq!(parsed.sections[0].files, vec!["guidance=rules.md"]);
+        assert_eq!(parsed.sections[0].files.tokens(), ["guidance=rules.md"]);
         assert_eq!(parsed.sections[0].guidance, None);
         assert!(parsed.guides.is_empty());
         // The same value beside a real guide keeps both apart.
@@ -1184,7 +1215,7 @@ mod tests {
             "<!-- memoria:section id=\"commands\" files=\"guidance=rules.md\" guidance=\"g.md\" -->\n## Commands\nText.\n<!-- /memoria:section -->\n",
         );
         assert!(parsed.issues.is_empty(), "{:?}", parsed.issues);
-        assert_eq!(parsed.sections[0].files, vec!["guidance=rules.md"]);
+        assert_eq!(parsed.sections[0].files.tokens(), ["guidance=rules.md"]);
         assert_eq!(parsed.sections[0].guidance.as_deref(), Some("g.md"));
     }
 
@@ -1221,7 +1252,7 @@ mod tests {
             "<!-- memoria:section id=\"commands\" files=\"\u{e9}.txt\" -->\n## Commands\nText.\n<!-- /memoria:section -->\n",
         );
         assert!(parsed.issues.is_empty() && parsed.section_issues.is_empty());
-        assert_eq!(parsed.sections[0].files, vec!["\u{e9}.txt"]);
+        assert_eq!(parsed.sections[0].files.tokens(), ["\u{e9}.txt"]);
         let parsed =
             parse("```markdown\n<!-- memoria:section id=\u{e9} files=\"source.txt\" -->\n```\n");
         assert!(parsed.issues.is_empty() && parsed.section_issues.is_empty());

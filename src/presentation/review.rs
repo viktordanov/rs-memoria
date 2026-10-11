@@ -340,6 +340,23 @@ pub fn manifest(m: &ReviewManifest, details: bool, evidence: &[Detail]) -> Strin
                 "  Mode: focused candidate. Eligibility only; it does not certify the prior review.\n",
             );
             for section in &m.sections {
+                // A pattern section names its tokens and match count, and
+                // lists only the reads: literals and changed matches.
+                let sources = if section.has_patterns() {
+                    format!(
+                        "{} ({} {}; read {})",
+                        section.files.join(" "),
+                        section.matched,
+                        if section.matched == 1 {
+                            "match"
+                        } else {
+                            "matches"
+                        },
+                        section.sources.join(", ")
+                    )
+                } else {
+                    section.sources.join(", ")
+                };
                 let _ = writeln!(
                     out,
                     "  Suggested section {} \"{}\" lines {}-{}: {}{}",
@@ -347,7 +364,7 @@ pub fn manifest(m: &ReviewManifest, details: bool, evidence: &[Detail]) -> Strin
                     section.heading,
                     section.first_line,
                     section.last_line,
-                    section.sources.join(", "),
+                    sources,
                     match &section.guidance {
                         Some(guide) => format!(" · guide: {guide}"),
                         None => String::new(),
@@ -356,7 +373,9 @@ pub fn manifest(m: &ReviewManifest, details: bool, evidence: &[Detail]) -> Strin
             }
         }
         ReviewMode::FullBaseline => {
-            out.push_str("  Mode: full baseline. Read the complete current scope.\n");
+            out.push_str(
+                "  Mode: full baseline. Review the whole document against its complete current scope, not only the changes.\n",
+            );
             for reason in &m.fallback_reasons {
                 let _ = writeln!(
                     out,
@@ -368,7 +387,11 @@ pub fn manifest(m: &ReviewManifest, details: bool, evidence: &[Detail]) -> Strin
             }
         }
     }
-    out.push_str("  Read:\n");
+    // A full baseline lists the changed inputs first and then states, as a
+    // count, what else the scope holds. The list stays proportional to the
+    // changes; the complete inventory is one command away.
+    let full = m.mode == ReviewMode::FullBaseline;
+    out.push_str(if full { "  Read first:\n" } else { "  Read:\n" });
     for input in &m.inputs {
         let identity = match &input.export_id {
             Some(export) => format!("{}#{}", input.path, export),
@@ -385,6 +408,23 @@ pub fn manifest(m: &ReviewManifest, details: bool, evidence: &[Detail]) -> Strin
             );
         } else {
             let _ = writeln!(out, "    {} ({})", identity, input.role.as_str());
+        }
+    }
+    let listed = |kind: &str| m.inputs.iter().filter(|i| i.kind == kind).count() as u64;
+    let unlisted_sources = m.scope_files.saturating_sub(listed("file"));
+    let unlisted_imports = m.imports.saturating_sub(listed("import"));
+    let rest_remains = full && (unlisted_sources > 0 || unlisted_imports > 0);
+    if full {
+        let (sources, imports) = (unlisted_sources, unlisted_imports);
+        if !rest_remains {
+            out.push_str("  Rest of the scope: none. The list above is the complete scope.\n");
+        } else {
+            let _ = writeln!(
+                out,
+                "  Then read the rest of the scope: {}. List the sources: memoria status --explain {}",
+                rest_of_scope(sources, imports),
+                m.document
+            );
         }
     }
     out.push_str("  Whole document pass: required\n");
@@ -455,8 +495,13 @@ pub fn manifest(m: &ReviewManifest, details: bool, evidence: &[Detail]) -> Strin
     // 9. Next.
     let _ = writeln!(
         out,
-        "Next:\n  1. Read the whole document and the listed inputs; edit {doc} if it is wrong.\n  2. After any edit, save a fresh artifact: dir=$(mktemp -d); memoria review {doc} --save \"$dir\"\n  3. Record the result: memoria ack {doc} --packet <saved file> --reviewer <you> --result <updated|no-update> --note \"<why>\"",
-        doc = m.document
+        "Next:\n  1. Read the whole document and the listed inputs{rest}; edit {doc} if it is wrong.\n  2. After any edit, save a fresh artifact: dir=$(mktemp -d); memoria review {doc} --save \"$dir\"\n  3. Record the result: memoria ack {doc} --packet <saved file> --reviewer <you> --result <updated|no-update> --note \"<why>\"",
+        doc = m.document,
+        rest = if rest_remains {
+            ", then the rest of the scope"
+        } else {
+            ""
+        }
     );
     // 10. Details pointer, only when this view left something out.
     if budget.cut {
@@ -618,4 +663,20 @@ fn capped_list(names: &[&str], cap: usize) -> String {
         text.push_str(&format!(", +{} more", names.len() - cap));
     }
     text
+}
+
+/// "2 unchanged sources and 1 unchanged import", leaving out a zero count.
+fn rest_of_scope(sources: u64, imports: u64) -> String {
+    let count = |n: u64, one: &str, many: &str| {
+        format!("{n} unchanged {}", if n == 1 { one } else { many })
+    };
+    match (sources, imports) {
+        (0, i) => count(i, "import", "imports"),
+        (s, 0) => count(s, "source", "sources"),
+        (s, i) => format!(
+            "{} and {}",
+            count(s, "source", "sources"),
+            count(i, "import", "imports")
+        ),
+    }
 }

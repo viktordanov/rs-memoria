@@ -1,23 +1,36 @@
 # Memoria cookbooks
 
-A cookbook shows one complete use of Memoria in a small, realistic project.
-It starts from a real problem, makes one change, and follows every review to a passing check.
-Every command output in a cookbook comes from a real run, and a test compares each output block with that run.
+Each cookbook shows one way to lay out a project's documentation, and what Memoria then does when the code changes. Use this page to choose a pattern, then follow its cookbook from the first file to a passing check.
 
-Each cookbook shows one way to document a project. The patterns differ in where the documents live and what each one covers:
+Every cookbook runs a small, realistic project. Every command output on its page comes from that run, and a test compares each output block with the run, so the pages cannot drift from the product.
+
+The patterns differ in one decision: where the documents live, because that decides which documents a code change reaches.
 
 ![Four ways to document a project: agent instruction files, a README tree with central guidelines, documents beside the code, and a central docs folder that sees code only through imports.](patterns.svg)
+
+## Choose a pattern
+
+Start from where your explanations need to live. A document covers its own folder and below it, so a page beside the code sees each change there directly, while a page in a separate folder sees a change only through a summary that it imports.
+
+| Pattern | The documents live… | One code change reaches… | Choose it when… | Avoid it when… |
+| --- | --- | --- | --- | --- |
+| [Agent instruction files](agent-instructions/README.md) | At the root: `AGENTS.md` and `CLAUDE.md` | Every root document that covers the changed file, one review each | Agents work in the repository and follow its commands and rules | The project has one instruction file and no shared writing rules |
+| [README tree](readme-tree/README.md) | One README in each important folder | The folder's README; the root only when an exported summary changes | Each folder has its own owner or story, and the root needs a short map | The project is one folder, or the root must explain each part in detail |
+| [Beside the code](beside-code/README.md) | A README and a marked design note or runbook in the same folder | Every tracked page in that folder, one review each | An explanation is too long for the README and belongs next to its code | The README already holds the explanation, or the page describes several folders |
+| [Central docs/ site](central-docs/README.md) | Product pages in `docs/`, summaries in READMEs beside the code | The README beside the code; the docs page only when the summary changes | Readers use one product site, and the code areas can export short, stable summaries | The pages need code detail that a short summary cannot carry |
+
+The patterns combine. A project can keep a README tree, add a design note beside one service, and track its agent instruction files at the root. Each document follows the same scope rule, so the costs add up per folder.
 
 Read the [concept guide](../concepts.md) first if scopes, handoffs, and imports are new to you.
 Read the [review workflow](../workflow.md) for the procedure that each cookbook uses.
 
-## Cookbooks
+## What each cookbook shows
 
 | Cookbook | The problem | What it shows | Tested with |
 | --- | --- | --- | --- |
 | [Keep agent instructions current](agent-instructions/README.md) | `AGENTS.md` and `CLAUDE.md` keep an old command after a `justfile` change, and their writing rules apply to no other document. | Two tracked agent files, two shared section guides, a guide-only section, a guide edit that reaches exactly two documents, and a broken guide path. | Memoria 0.9.0 |
 | [A README tree with central guidelines](readme-tree/README.md) | Each service has a README, the root repeats their story, and each README carries its own writing rules. | Folder handoffs, exported summaries imported by the root, a change that stops at its folder, a summary change that the root waits for, central guidance with a local sidecar, and an unlinked README. | Memoria 0.9.0 |
-| [Documents beside the code](beside-code/README.md) | A design note or a runbook next to the code goes stale, and a link to it tracks nothing. | Opting a page in with a marker, shared folder coverage, a focused review on one section, a renamed mapped file, and a decision change with no code change. | Memoria 0.9.0 |
+| [Documents beside the code](beside-code/README.md) | A design note or a runbook next to the code goes stale, and a link to it tracks nothing. | Opting a page in with a marker, shared folder coverage, a focused review on one section, a renamed mapped file, a `files` pattern that follows a new script, and a decision change with no code change. | Memoria 0.9.0 |
 | [A central docs/ site](central-docs/README.md) | Product pages in `docs/` describe code in `src/`, and a code change never reaches them. | The pitfall of a page that only links the code, a summary imported from beside the code, a change that stays local, a summary change that travels, and an invalid export body. | Memoria 0.9.0 |
 
 ## What a cookbook proves

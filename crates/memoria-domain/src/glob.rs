@@ -1,10 +1,17 @@
-//! A small, deterministic glob matcher for Memoria ignore and include rules.
+//! The one glob matcher for Memoria selection rules and section mappings.
 //!
 //! Patterns match whole paths relative to their rule scope. Supported syntax:
 //! `*` (any characters within one component), `?` (one character), character
-//! classes such as `[abc]` or `[a-z]` with a leading `!` for negation, and the
-//! `**` component that matches zero or more directories. A trailing `**`
-//! matches everything inside a directory, but not a file with that name.
+//! classes such as `[abc]` or `[a-z]` with a leading `!` or `^` for negation,
+//! and the `**` component that matches zero or more directories. A trailing
+//! `**` matches everything inside a directory, but not a file with that name.
+//! Braces are ordinary characters.
+//!
+//! The `glob` crate compiles and matches each pattern, once per pattern, by
+//! Unicode character. This module adds the Memoria grammar around it: the
+//! rejected forms below, `.` components that are skipped, and a run of `*`
+//! inside one component that means one `*`. Contextual rules, such as `!` for
+//! a section exclusion, belong to the callers.
 
 use std::fmt;
 
@@ -18,6 +25,11 @@ pub enum GlobError {
     TrailingSlash(String),
     UnterminatedClass(String),
     EmptyComponent(String),
+    /// Any other syntax error that the matcher reports.
+    Syntax {
+        pattern: String,
+        message: String,
+    },
 }
 
 impl fmt::Display for GlobError {
@@ -38,35 +50,38 @@ impl fmt::Display for GlobError {
                 write!(f, "pattern {p:?} has an unterminated character class")
             }
             GlobError::EmptyComponent(p) => write!(f, "pattern {p:?} contains an empty component"),
+            GlobError::Syntax { pattern, message } => write!(f, "pattern {pattern:?}: {message}"),
         }
     }
 }
 
 impl std::error::Error for GlobError {}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Token {
-    Literal(char),
-    Any,
-    One,
-    Class {
-        negated: bool,
-        ranges: Vec<(char, char)>,
-    },
+/// Whether an authored token uses glob syntax: `*`, `?`, or `[`.
+pub fn is_pattern(token: &str) -> bool {
+    token.contains(['*', '?', '['])
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Segment {
-    DoubleStar,
-    Tokens(Vec<Token>),
-}
+const OPTIONS: glob::MatchOptions = glob::MatchOptions {
+    case_sensitive: true,
+    require_literal_separator: true,
+    require_literal_leading_dot: false,
+};
 
 /// A compiled glob pattern.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct Glob {
     source: String,
-    segments: Vec<Segment>,
+    pattern: glob::Pattern,
 }
+
+impl PartialEq for Glob {
+    fn eq(&self, other: &Glob) -> bool {
+        self.source == other.source
+    }
+}
+
+impl Eq for Glob {}
 
 impl fmt::Debug for Glob {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -91,7 +106,7 @@ impl Glob {
         if source.ends_with('/') {
             return Err(GlobError::TrailingSlash(source.to_string()));
         }
-        let mut segments = Vec::new();
+        let mut components = Vec::new();
         for component in source.split('/') {
             if component.is_empty() {
                 return Err(GlobError::EmptyComponent(source.to_string()));
@@ -102,18 +117,27 @@ impl Glob {
             if component == "." {
                 continue;
             }
-            if component == "**" {
-                segments.push(Segment::DoubleStar);
-                continue;
-            }
-            segments.push(Segment::Tokens(parse_tokens(component, source)?));
+            components.push(
+                normalize_component(component)
+                    .ok_or_else(|| GlobError::UnterminatedClass(source.to_string()))?,
+            );
         }
-        if segments.is_empty() {
+        if components.is_empty() {
             return Err(GlobError::Empty);
         }
+        let pattern = glob::Pattern::new(&components.join("/")).map_err(|err| {
+            if err.msg == "invalid range pattern" {
+                GlobError::UnterminatedClass(source.to_string())
+            } else {
+                GlobError::Syntax {
+                    pattern: source.to_string(),
+                    message: err.msg.to_string(),
+                }
+            }
+        })?;
         Ok(Glob {
             source: source.to_string(),
-            segments,
+            pattern,
         })
     }
 
@@ -123,100 +147,47 @@ impl Glob {
 
     /// Match a scope-relative path with `/` separators.
     pub fn matches(&self, path: &str) -> bool {
-        let components: Vec<&str> = path.split('/').collect();
-        match_segments(&self.segments, &components)
+        self.pattern.matches_with(path, OPTIONS)
     }
 }
 
-fn parse_tokens(component: &str, source: &str) -> Result<Vec<Token>, GlobError> {
-    let chars: Vec<char> = component.chars().collect();
-    let mut tokens = Vec::new();
-    let mut i = 0;
-    while i < chars.len() {
-        match chars[i] {
+/// Rewrite one component into the matcher's syntax with the same meaning: a
+/// run of `*` outside a class is one `*`, unless the whole component is the
+/// recursive `**`, and a class negated with `^` is negated with `!`. `None`
+/// when a class does not close inside this component.
+fn normalize_component(component: &str) -> Option<String> {
+    if component == "**" {
+        return Some(component.to_string());
+    }
+    let mut out = String::with_capacity(component.len());
+    let mut chars = component.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
             '*' => {
-                tokens.push(Token::Any);
-                // Collapse repeated stars inside one component.
-                while i + 1 < chars.len() && chars[i + 1] == '*' {
-                    i += 1;
+                out.push('*');
+                while chars.peek() == Some(&'*') {
+                    chars.next();
                 }
             }
-            '?' => tokens.push(Token::One),
             '[' => {
-                let mut j = i + 1;
-                let negated = j < chars.len() && (chars[j] == '!' || chars[j] == '^');
-                if negated {
-                    j += 1;
+                out.push('[');
+                if chars.next_if(|c| *c == '!' || *c == '^').is_some() {
+                    out.push('!');
                 }
-                let mut ranges = Vec::new();
-                let mut first = true;
+                // The first character of a class is literal, even `]`.
+                out.push(chars.next()?);
                 loop {
-                    if j >= chars.len() {
-                        return Err(GlobError::UnterminatedClass(source.to_string()));
-                    }
-                    let c = chars[j];
-                    if c == ']' && !first {
+                    let c = chars.next()?;
+                    out.push(c);
+                    if c == ']' {
                         break;
                     }
-                    first = false;
-                    if j + 2 < chars.len() && chars[j + 1] == '-' && chars[j + 2] != ']' {
-                        ranges.push((c, chars[j + 2]));
-                        j += 3;
-                    } else {
-                        ranges.push((c, c));
-                        j += 1;
-                    }
                 }
-                tokens.push(Token::Class { negated, ranges });
-                i = j;
             }
-            c => tokens.push(Token::Literal(c)),
+            c => out.push(c),
         }
-        i += 1;
     }
-    Ok(tokens)
-}
-
-fn match_segments(segments: &[Segment], components: &[&str]) -> bool {
-    match segments.first() {
-        None => components.is_empty(),
-        Some(Segment::DoubleStar) if segments.len() == 1 => {
-            // A trailing `**` matches everything inside a directory, but not
-            // a file with the directory's name.
-            !components.is_empty()
-        }
-        Some(Segment::DoubleStar) => {
-            // A leading or middle `**` matches zero or more components.
-            (0..=components.len()).any(|skip| match_segments(&segments[1..], &components[skip..]))
-        }
-        Some(Segment::Tokens(tokens)) => match components.first() {
-            None => false,
-            Some(component) => {
-                let chars: Vec<char> = component.chars().collect();
-                match_tokens(tokens, &chars) && match_segments(&segments[1..], &components[1..])
-            }
-        },
-    }
-}
-
-fn match_tokens(tokens: &[Token], chars: &[char]) -> bool {
-    match tokens.first() {
-        None => chars.is_empty(),
-        Some(Token::Any) => {
-            (0..=chars.len()).any(|skip| match_tokens(&tokens[1..], &chars[skip..]))
-        }
-        Some(Token::One) => !chars.is_empty() && match_tokens(&tokens[1..], &chars[1..]),
-        Some(Token::Literal(expected)) => {
-            chars.first() == Some(expected) && match_tokens(&tokens[1..], &chars[1..])
-        }
-        Some(Token::Class { negated, ranges }) => match chars.first() {
-            None => false,
-            Some(c) => {
-                let inside = ranges.iter().any(|(lo, hi)| lo <= c && c <= hi);
-                inside != *negated && match_tokens(&tokens[1..], &chars[1..])
-            }
-        },
-    }
+    Some(out)
 }
 
 #[cfg(test)]
@@ -253,6 +224,35 @@ mod tests {
     }
 
     #[test]
+    fn keeps_the_released_grammar() {
+        // One character is one Unicode scalar value, not one byte.
+        assert!(m("caf?.txt", "café.txt"));
+        assert!(m("[!a]", "ñ"));
+        assert!(m("[^a]", "b"));
+        assert!(!m("[^a]", "a"));
+        // Braces are ordinary characters.
+        assert!(m("{a,b}", "{a,b}"));
+        assert!(!m("{a,b}", "a"));
+        // A run of stars inside one component is one star.
+        assert!(m("a**b", "axxb"));
+        assert!(!m("a**b", "a/b"));
+        assert!(m("src/**.rs", "src/a.rs"));
+        assert!(m("***", "a"));
+        // `.` components are skipped.
+        assert!(m("./x", "x"));
+        assert!(m("x/./y", "x/y"));
+        // A class keeps a leading `]` and its stars.
+        assert!(m("[]a]", "]"));
+        assert!(m("[*]", "*"));
+        assert!(!m("[*]", "a"));
+        // A reversed range matches nothing.
+        assert!(!m("[z-a]", "m"));
+        // A leading dot is an ordinary character.
+        assert!(m("*", ".hidden"));
+        assert!(m("**/*.rs", ".cache/a.rs"));
+    }
+
+    #[test]
     fn rejects_unsupported_forms() {
         assert!(matches!(Glob::parse("!x"), Err(GlobError::Negation(_))));
         assert!(matches!(Glob::parse("/x"), Err(GlobError::Absolute(_))));
@@ -268,7 +268,12 @@ mod tests {
             Glob::parse("x/[a"),
             Err(GlobError::UnterminatedClass(_))
         ));
+        assert!(matches!(
+            Glob::parse("a[/]b"),
+            Err(GlobError::UnterminatedClass(_))
+        ));
         assert!(matches!(Glob::parse(""), Err(GlobError::Empty)));
+        assert!(matches!(Glob::parse("./."), Err(GlobError::Empty)));
         assert!(matches!(
             Glob::parse("a//b"),
             Err(GlobError::EmptyComponent(_))

@@ -1,7 +1,9 @@
 //! Advisory section mappings.
 //!
 //! A section is an optional reading hint authored in a tracked document. Its
-//! `files` must name selected sources in that document's scope. It adds or
+//! `files` name selected sources in that document's scope: literal paths,
+//! glob patterns that expand over the scope, and `!` exclusions that subtract
+//! from both. It adds or
 //! removes no input, never carries its own freshness, and never narrows the
 //! complete input state that an acknowledgement validates. One invalid
 //! mapping makes the whole document's advice unusable, so a reviewer falls
@@ -15,7 +17,8 @@
 use std::collections::BTreeSet;
 use std::fmt;
 
-use crate::path::ProjectPath;
+use crate::glob::{Glob, GlobError, is_pattern};
+use crate::path::{DirPath, ProjectPath};
 
 /// The selection policy version that section advice belongs to. It enters the
 /// review context so a policy change invalidates an outstanding token.
@@ -79,14 +82,19 @@ impl fmt::Display for SectionId {
     }
 }
 
-/// Why one authored `files` token is not a usable literal source path.
+/// Why one authored `files` token is not a usable path or pattern.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SectionPathError {
     Empty,
     Absolute,
     DrivePrefix,
     Backslash,
+    /// A character that neither a literal path nor a pattern may contain.
     Glob(char),
+    /// The pattern does not compile.
+    Pattern(GlobError),
+    /// An exclusion must name a path or a pattern after exactly one `!`.
+    Negation,
     Whitespace,
     Quote,
     Control,
@@ -110,8 +118,12 @@ impl fmt::Display for SectionPathError {
             }
             SectionPathError::Glob(c) => write!(
                 f,
-                "path must be literal; the glob character {c:?} is not permitted"
+                "the character {c:?} is not permitted; a pattern uses only `*`, `?`, `**`, and `[...]`"
             ),
+            SectionPathError::Pattern(err) => write!(f, "{err}"),
+            SectionPathError::Negation => {
+                f.write_str("an exclusion is one `!` followed by a path or a pattern")
+            }
             SectionPathError::Whitespace => f.write_str(
                 "path must not contain whitespace; this section syntax cannot spell such a name",
             ),
@@ -133,10 +145,16 @@ impl std::error::Error for SectionPathError {}
 /// Longest authored path token this syntax accepts.
 pub const MAX_SECTION_PATH_BYTES: usize = 1024;
 
-/// Check one authored `files` token before it is resolved against the
-/// README's directory. Every rejection is explicit; nothing is repaired,
-/// percent-decoded, or escaped.
+/// Check one authored literal `files` token before it is resolved against
+/// the document's directory. Every rejection is explicit; nothing is
+/// repaired, percent-decoded, or escaped.
 pub fn validate_section_path(raw: &str) -> Result<(), SectionPathError> {
+    check_section_token(raw, false)
+}
+
+/// The grammar shared by literal paths and patterns. A pattern may also use
+/// `*`, `?`, `[`, and `]`. Braces are never permitted.
+fn check_section_token(raw: &str, pattern: bool) -> Result<(), SectionPathError> {
     if raw.is_empty() {
         return Err(SectionPathError::Empty);
     }
@@ -150,6 +168,7 @@ pub fn validate_section_path(raw: &str) -> Result<(), SectionPathError> {
         match c {
             '\\' => return Err(SectionPathError::Backslash),
             ':' => return Err(SectionPathError::DrivePrefix),
+            '*' | '?' | '[' | ']' if pattern => {}
             '*' | '?' | '[' | ']' | '{' | '}' => return Err(SectionPathError::Glob(c)),
             '"' | '\'' => return Err(SectionPathError::Quote),
             c if c.is_control() => return Err(SectionPathError::Control),
@@ -166,6 +185,200 @@ pub fn validate_section_path(raw: &str) -> Result<(), SectionPathError> {
         }
     }
     Ok(())
+}
+
+/// What one `files` token names, relative to the document's directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SectionTarget {
+    /// A literal path. It must name a selected source in the scope.
+    Path(String),
+    /// A glob pattern, matched against every source in the scope.
+    Pattern(Glob),
+}
+
+/// One authored `files` token.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SectionRule {
+    /// The token exactly as authored, including a leading `!`.
+    pub token: String,
+    /// A `!` token subtracts its matches from the section.
+    pub exclude: bool,
+    pub target: SectionTarget,
+}
+
+impl SectionRule {
+    /// Parse one token. A leading `!` makes an exclusion. A token with `*`,
+    /// `?`, or `[` is a pattern; any other token is a literal path.
+    pub fn parse(token: &str) -> Result<SectionRule, SectionPathError> {
+        let (exclude, raw) = match token.strip_prefix('!') {
+            Some(rest) if rest.starts_with('!') => return Err(SectionPathError::Negation),
+            Some(rest) => (true, rest),
+            None => (false, token),
+        };
+        let target = if is_pattern(raw) {
+            check_section_token(raw, true)?;
+            SectionTarget::Pattern(Glob::parse(raw).map_err(SectionPathError::Pattern)?)
+        } else {
+            check_section_token(raw, false)?;
+            SectionTarget::Path(raw.to_string())
+        };
+        Ok(SectionRule {
+            token: token.to_string(),
+            exclude,
+            target,
+        })
+    }
+
+    /// Whether this token names `path`, ignoring `!`.
+    pub fn matches(&self, dir: &DirPath, path: &ProjectPath) -> bool {
+        match &self.target {
+            SectionTarget::Path(raw) => {
+                ProjectPath::resolve_relative(dir, raw).is_ok_and(|named| &named == path)
+            }
+            SectionTarget::Pattern(glob) => {
+                path.strip_dir(dir).is_some_and(|rel| glob.matches(rel))
+            }
+        }
+    }
+}
+
+/// The `files` attribute of one section: includes and exclusions in authored
+/// order. The order never changes the result.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SectionFiles(Vec<SectionRule>);
+
+/// A `files` attribute with exclusions and nothing to include.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NothingIncluded;
+
+impl fmt::Display for NothingIncluded {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("section `files` needs at least one path or pattern to include; a `!` token only removes files")
+    }
+}
+
+/// The sources that one section maps in its document's scope.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SectionExpansion {
+    /// Every included source minus every excluded one, sorted.
+    pub sources: Vec<ProjectPath>,
+    /// The sources that a literal include names and no exclusion removes.
+    pub literals: Vec<ProjectPath>,
+    /// Tokens that match nothing: an include pattern with no source in the
+    /// scope, or an exclusion that removes no included source.
+    pub unmatched: Vec<String>,
+}
+
+impl SectionFiles {
+    /// A guide-only section has no `files`.
+    pub fn none() -> SectionFiles {
+        SectionFiles(Vec::new())
+    }
+
+    pub fn new(rules: Vec<SectionRule>) -> Result<SectionFiles, NothingIncluded> {
+        if !rules.is_empty() && rules.iter().all(|rule| rule.exclude) {
+            return Err(NothingIncluded);
+        }
+        Ok(SectionFiles(rules))
+    }
+
+    pub fn rules(&self) -> &[SectionRule] {
+        &self.0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// The authored tokens, in authored order.
+    pub fn tokens(&self) -> Vec<String> {
+        self.0.iter().map(|rule| rule.token.clone()).collect()
+    }
+
+    /// Whether any token is a pattern, included or excluded.
+    pub fn has_patterns(&self) -> bool {
+        self.0
+            .iter()
+            .any(|rule| matches!(rule.target, SectionTarget::Pattern(_)))
+    }
+
+    /// The literal include tokens, which must each name a source in scope.
+    pub fn literal_includes(&self) -> impl Iterator<Item = &str> {
+        self.0.iter().filter_map(|rule| match &rule.target {
+            SectionTarget::Path(raw) if !rule.exclude => Some(raw.as_str()),
+            _ => None,
+        })
+    }
+
+    /// The include tokens that name `path`, in authored order. An
+    /// exclusion that also names it is not listed.
+    pub fn includes_naming(&self, dir: &DirPath, path: &ProjectPath) -> Vec<String> {
+        self.0
+            .iter()
+            .filter(|rule| !rule.exclude && rule.matches(dir, path))
+            .map(|rule| rule.token.clone())
+            .collect()
+    }
+
+    /// Expand the rules over a document's scope. The union of all includes
+    /// minus the union of all exclusions, so authored order never matters.
+    /// `Err` lists the literal include tokens that name no source in `scope`.
+    pub fn expand(
+        &self,
+        dir: &DirPath,
+        scope: &BTreeSet<&ProjectPath>,
+    ) -> Result<SectionExpansion, Vec<String>> {
+        let mut included: BTreeSet<ProjectPath> = BTreeSet::new();
+        let mut literals: BTreeSet<ProjectPath> = BTreeSet::new();
+        let mut missing = Vec::new();
+        let mut unmatched = Vec::new();
+        for rule in self.0.iter().filter(|rule| !rule.exclude) {
+            match &rule.target {
+                SectionTarget::Path(raw) => match ProjectPath::resolve_relative(dir, raw) {
+                    Ok(path) if scope.contains(&path) => {
+                        literals.insert(path.clone());
+                        included.insert(path);
+                    }
+                    _ => missing.push(rule.token.clone()),
+                },
+                SectionTarget::Pattern(_) => {
+                    let mut matched = false;
+                    for path in scope {
+                        if rule.matches(dir, path) {
+                            matched = true;
+                            included.insert((*path).clone());
+                        }
+                    }
+                    if !matched {
+                        unmatched.push(rule.token.clone());
+                    }
+                }
+            }
+        }
+        if !missing.is_empty() {
+            return Err(missing);
+        }
+        // Every exclusion sees the same included set, so its hint does not
+        // depend on the order of the other exclusions.
+        let mut removed: BTreeSet<ProjectPath> = BTreeSet::new();
+        for rule in self.0.iter().filter(|rule| rule.exclude) {
+            let hits: Vec<&ProjectPath> = included
+                .iter()
+                .filter(|path| rule.matches(dir, path))
+                .collect();
+            if hits.is_empty() {
+                unmatched.push(rule.token.clone());
+            }
+            removed.extend(hits.into_iter().cloned());
+        }
+        let sources: Vec<ProjectPath> = included.difference(&removed).cloned().collect();
+        let literals = literals.difference(&removed).cloned().collect();
+        Ok(SectionExpansion {
+            sources,
+            literals,
+            unmatched,
+        })
+    }
 }
 
 /// Why one authored `guidance` token is not a usable guide path.
@@ -251,9 +464,17 @@ pub struct SectionMapping {
     pub heading: String,
     pub first_line: usize,
     pub last_line: usize,
-    /// Sorted, deduplicated owned sources this section describes. Empty only
-    /// for a guide-only section.
+    /// The authored `files` rules. Empty only for a guide-only section.
+    pub files: SectionFiles,
+    /// Sorted, deduplicated sources in the scope that the rules expand to.
+    /// Empty for a guide-only section or when no source matches.
     pub sources: Vec<ProjectPath>,
+    /// The sources that a literal include names, after exclusions. A
+    /// suggestion reads all of them; it reads a pattern match only when that
+    /// match changed.
+    pub literals: Vec<ProjectPath>,
+    /// Tokens that match nothing in the current scope. A lint hint only.
+    pub unmatched: Vec<String>,
     /// The resolved section guide this section names, if any. It is never
     /// part of the mapping identity.
     pub guidance: Option<ProjectPath>,
@@ -301,8 +522,10 @@ impl SectionMap {
 
     /// The comparable association set.
     ///
-    /// Body edits, heading text, moved line ranges, and the section guide do
-    /// not change this identity. A guide-only section contributes its id with
+    /// The set holds expanded sources, never authored tokens: a pattern and
+    /// the literal list it matches are the same association. Body edits,
+    /// heading text, moved line ranges, and the section guide do not change
+    /// this identity. A guide-only section contributes its id with
     /// no sources. Any change to it requires a full baseline review.
     pub fn identity(&self) -> SectionMapIdentity {
         match self {
@@ -371,9 +594,188 @@ mod tests {
             heading: "Heading".into(),
             first_line: 1,
             last_line: 2,
+            files: SectionFiles::none(),
             sources: sources.iter().map(|s| path(s)).collect(),
+            literals: sources.iter().map(|s| path(s)).collect(),
+            unmatched: Vec::new(),
             guidance: None,
         }
+    }
+
+    fn files(tokens: &[&str]) -> SectionFiles {
+        SectionFiles::new(
+            tokens
+                .iter()
+                .map(|token| SectionRule::parse(token).unwrap())
+                .collect(),
+        )
+        .unwrap()
+    }
+
+    fn expand(dir: &str, tokens: &[&str], scope: &[&str]) -> Result<SectionExpansion, Vec<String>> {
+        let scope: Vec<ProjectPath> = scope.iter().map(|s| path(s)).collect();
+        let scope: BTreeSet<&ProjectPath> = scope.iter().collect();
+        files(tokens).expand(&DirPath::parse(dir).unwrap(), &scope)
+    }
+
+    fn strings(paths: &[ProjectPath]) -> Vec<&str> {
+        paths.iter().map(ProjectPath::as_str).collect()
+    }
+
+    #[test]
+    fn tokens_are_literals_patterns_or_exclusions() {
+        let rule = SectionRule::parse("src/auth/login.rs").unwrap();
+        assert!(!rule.exclude);
+        assert_eq!(rule.target, SectionTarget::Path("src/auth/login.rs".into()));
+        let rule = SectionRule::parse("!src/auth/tests/**").unwrap();
+        assert!(rule.exclude);
+        assert_eq!(rule.token, "!src/auth/tests/**");
+        assert!(matches!(rule.target, SectionTarget::Pattern(_)));
+        assert!(matches!(
+            SectionRule::parse("!generated.rs").unwrap().target,
+            SectionTarget::Path(_)
+        ));
+        // Contextual rules stay here; the glob grammar is shared.
+        for (token, err) in [
+            ("!", SectionPathError::Empty),
+            ("!!x.rs", SectionPathError::Negation),
+            ("src/{a,b}.rs", SectionPathError::Glob('{')),
+            ("src/a].rs", SectionPathError::Glob(']')),
+            ("src/*.rs\\x", SectionPathError::Backslash),
+            ("./src/*.rs", SectionPathError::DotComponent),
+            ("../*.rs", SectionPathError::DotComponent),
+            ("/src/*.rs", SectionPathError::Absolute),
+            ("src//*.rs", SectionPathError::EmptyComponent),
+            ("src/", SectionPathError::EmptyComponent),
+        ] {
+            assert_eq!(SectionRule::parse(token).unwrap_err(), err, "{token}");
+        }
+        assert!(matches!(
+            SectionRule::parse("src/[a.rs"),
+            Err(SectionPathError::Pattern(GlobError::UnterminatedClass(_)))
+        ));
+        // Only exclusions is an error; no files at all is a guide-only section.
+        assert_eq!(
+            SectionFiles::new(vec![SectionRule::parse("!a.rs").unwrap()]),
+            Err(NothingIncluded)
+        );
+        assert!(SectionFiles::new(vec![]).unwrap().is_empty());
+    }
+
+    const AUTH: [&str; 5] = [
+        "src/auth/generated.rs",
+        "src/auth/login.rs",
+        "src/auth/passkeys.rs",
+        "src/auth/tests/login.rs",
+        "src/main.rs",
+    ];
+
+    #[test]
+    fn includes_union_and_exclusions_subtract_in_any_order() {
+        let tokens = [
+            "src/auth/**",
+            "!src/auth/tests/**",
+            "!src/auth/generated.rs",
+        ];
+        let expected = ["src/auth/login.rs", "src/auth/passkeys.rs"];
+        let mut orders = vec![tokens.to_vec()];
+        orders.push(tokens.iter().rev().copied().collect());
+        orders.push(vec![tokens[1], tokens[0], tokens[2]]);
+        for order in orders {
+            let out = expand("", &order, &AUTH).unwrap();
+            assert_eq!(strings(&out.sources), expected, "{order:?}");
+            assert!(out.literals.is_empty());
+            assert!(out.unmatched.is_empty());
+        }
+        // Overlapping includes are one union, and a literal that a pattern
+        // also matches is listed once.
+        let out = expand("", &["src/auth/*.rs", "src/auth/login.rs", "src/**"], &AUTH).unwrap();
+        assert_eq!(out.sources.len(), 5);
+        assert_eq!(strings(&out.literals), ["src/auth/login.rs"]);
+        // An exclusion also subtracts a literal include.
+        let out = expand(
+            "",
+            &["src/auth/login.rs", "src/main.rs", "!src/auth/**"],
+            &AUTH,
+        )
+        .unwrap();
+        assert_eq!(strings(&out.sources), ["src/main.rs"]);
+        assert_eq!(strings(&out.literals), ["src/main.rs"]);
+    }
+
+    #[test]
+    fn tokens_resolve_against_the_document_directory() {
+        let out = expand("src", &["auth/*.rs", "!auth/generated.rs"], &AUTH[..4]).unwrap();
+        assert_eq!(
+            strings(&out.sources),
+            ["src/auth/login.rs", "src/auth/passkeys.rs"]
+        );
+        // A pattern never reaches a path outside the given scope.
+        let out = expand("src/auth", &["**"], &AUTH[..2]).unwrap();
+        assert_eq!(out.sources.len(), 2);
+    }
+
+    #[test]
+    fn empty_matches_are_hints_and_missing_literals_are_errors() {
+        let out = expand("", &["docs/**", "src/main.rs", "!src/auth/**"], &AUTH).unwrap();
+        assert_eq!(strings(&out.sources), ["src/main.rs"]);
+        assert_eq!(out.unmatched, ["docs/**", "!src/auth/**"]);
+        // A section that expands to nothing is still a valid mapping.
+        let out = expand("", &["docs/**"], &AUTH).unwrap();
+        assert!(out.sources.is_empty());
+        // A literal include must name a source in the scope.
+        assert_eq!(
+            expand("", &["src/gone.rs", "src/**", "lib.rs"], &AUTH).unwrap_err(),
+            ["src/gone.rs", "lib.rs"]
+        );
+        // A literal exclusion of a missing file is only unmatched.
+        let out = expand("", &["src/**", "!src/gone.rs"], &AUTH).unwrap();
+        assert_eq!(out.unmatched, ["!src/gone.rs"]);
+    }
+
+    #[test]
+    fn a_pattern_follows_additions_deletions_and_renames() {
+        let tokens = ["src/auth/**", "!src/auth/tests/**"];
+        let before = expand("", &tokens, &AUTH).unwrap();
+        let mut renamed: Vec<&str> = AUTH.to_vec();
+        renamed.retain(|p| *p != "src/auth/login.rs");
+        renamed.push("src/auth/sign_in.rs");
+        renamed.retain(|p| *p != "src/auth/generated.rs");
+        let after = expand("", &tokens, &renamed).unwrap();
+        assert_eq!(strings(&before.sources).len(), 3);
+        assert_eq!(
+            strings(&after.sources),
+            ["src/auth/passkeys.rs", "src/auth/sign_in.rs"]
+        );
+        // The same rename makes a literal mapping unusable.
+        assert!(expand("", &["src/auth/login.rs"], &renamed).is_err());
+    }
+
+    #[test]
+    fn identity_is_the_expansion_not_the_tokens() {
+        let scope: Vec<ProjectPath> = AUTH.iter().map(|s| path(s)).collect();
+        let scope: BTreeSet<&ProjectPath> = scope.iter().collect();
+        let dir = DirPath::root();
+        let map = |tokens: &[&str]| {
+            let rules = files(tokens);
+            let expansion = rules.expand(&dir, &scope).unwrap();
+            SectionMap::Valid(vec![SectionMapping {
+                files: rules,
+                sources: expansion.sources,
+                literals: expansion.literals,
+                ..mapping("auth", &[])
+            }])
+        };
+        let pattern = map(&["src/auth/*.rs", "!src/auth/generated.rs"]);
+        let literal = map(&["src/auth/login.rs", "src/auth/passkeys.rs"]);
+        assert_eq!(pattern.identity(), literal.identity());
+        assert_ne!(pattern.identity(), map(&["src/auth/*.rs"]).identity());
+        assert_eq!(pattern.sections_for(&path("src/auth/passkeys.rs")).len(), 1);
+        assert!(
+            pattern
+                .sections_for(&path("src/auth/generated.rs"))
+                .is_empty()
+        );
     }
 
     #[test]

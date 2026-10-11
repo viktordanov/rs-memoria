@@ -7,6 +7,9 @@ rust-version.workspace = true
 description = "Pure domain model for Memoria: paths, ownership, imports, manifests, and review state."
 
 [dependencies]
+# Pure pattern matching for selection rules and section mappings: no I/O and
+# no transitive dependencies.
+glob = "0.3.4"
 
 [dev-dependencies]
 proptest = "1.11"

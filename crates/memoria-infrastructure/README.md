@@ -162,6 +162,11 @@ structural. A section-like line that is not a well-formed declaration still
 reaches that channel, including a wrongly indented one. It never disappears in
 silence, because a mistyped mapping must not quietly narrow a review.
 
+The parser turns each `files` token into a domain `SectionRule` while it reads
+the marker: a literal path, a compiled pattern, or a `!` exclusion. A bad
+token, a duplicate, or a list of exclusions only is a section problem. The
+parser never expands a pattern, because expansion needs the document's scope.
+
 The parser tracks section nesting separately from export and import nesting.
 An export can sit wholly inside a section. A section cannot sit inside or
 cross an export or an import. Marker text inside fenced or indented code stays

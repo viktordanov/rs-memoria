@@ -121,6 +121,11 @@ Stage 3 never validates only the suggested reads, the suggested sections, or
 the changed files. A small artifact narrows the reading list. It never narrows
 the validated state.
 
+A suggested section lists every literal source as a read, and a pattern match
+only when that match changed. Section resolution expands each pattern over the
+complete scope first, so the mapping identity and the token still bind every
+matched source.
+
 Stage 3 starts with the write lock. If another write command holds it, the
 lock adapter retries for its wait budget. A lock that stays busy causes
 `state_busy` with exit 3, and its message says to repeat the same command,

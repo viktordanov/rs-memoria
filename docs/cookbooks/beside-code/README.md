@@ -1,19 +1,21 @@
 # Cookbook: documents beside the code
 
-Keep a design note or a runbook in the folder of the code it describes, and give it a Memoria marker.
-The marker makes the page a tracked document. The page then shares its folder with the README, and its sections tell a review which part to read first.
-Every output on this page comes from a real run of one small project.
-Read [Memoria concepts](../../concepts.md) first if scopes and handoffs are new to you. The [cookbook index](../README.md) lists the other cookbooks.
+Keep a design note or a runbook in the folder of the code that it describes, and give it a Memoria marker. The marker makes the page a tracked document. It covers its folder like the README there, so a code change reaches it directly, and its section markers point each review at the part that describes the changed file.
+
+Choose this pattern when an explanation is too long for the README and belongs next to its code. The cost is one more review for every change in that folder, because each tracked page there gets its own. Every output below comes from a real, tested run of one small project. Read [Memoria concepts](../../concepts.md) first if scopes and handoffs are new to you, and the [cookbook index](../README.md) to compare the other patterns.
 
 ## Contents
 
-1. [The problem](#the-problem)
-2. [The project](#the-project)
-3. [An unmarked page is only a source](#an-unmarked-page-is-only-a-source)
-4. [A code change reaches every page of its folder](#a-code-change-reaches-every-page-of-its-folder)
-5. [A mapped file is renamed](#a-mapped-file-is-renamed)
-6. [A decision changes and no file does](#a-decision-changes-and-no-file-does)
-7. [Tradeoffs](#tradeoffs)
+1. Set up
+   - [The problem](#the-problem)
+   - [The project](#the-project)
+2. What happens when
+   - [An unmarked page changes](#an-unmarked-page-is-only-a-source)
+   - [Code changes in a shared folder](#a-code-change-reaches-every-page-of-its-folder)
+   - [A mapped file is renamed](#a-mapped-file-is-renamed)
+   - [A pattern meets a new file](#a-pattern-follows-a-new-file)
+   - [A decision changes but no file does](#a-decision-changes-and-no-file-does)
+3. [Tradeoffs](#tradeoffs), including when not to adopt the pattern
 
 ## The problem
 
@@ -204,10 +206,12 @@ Explain billing/tax.rs
   reason   eligible in Git and matched by no Memoria rule
   covered by billing/README.md, billing/design.md
   handed off by README.md (link at README.md:5) to billing/README.md
+  section  billing/design.md#tax via tax.rs
 ```
 
 The status counts 2 opted-in documents beside 3 READMEs. Five sources are covered by more than one document.
 `billing/tax.rs` is covered by `billing/README.md` and `billing/design.md`. The root `README.md` does not cover it, because its link hands `billing/` off.
+The last line names the section that maps the file, and the `files` token that names it.
 
 ## An unmarked page is only a source
 
@@ -311,14 +315,15 @@ What changed since that review:
       -A refund needs a credit note. We have no design for credit notes yet.
       Note (removed_file): This input was removed from the requested boundary. A full export carries the old body without a deletion hunk. This explanation retains the verified deletion evidence.
 How to read:
-  Mode: full baseline. Read the complete current scope.
+  Mode: full baseline. Review the whole document against its complete current scope, not only the changes.
   document_classification_changed [billing/notes.md]: a source gained a Memoria marker and is now a tracked document, so it left this document's scope; review the complete current scope
-  Read:
+  Read first:
     billing/design.md (whole_document)
+  Then read the rest of the scope: 2 unchanged sources. List the sources: memoria status --explain billing/design.md
   Whole document pass: required
   Guidance: memoria guidance billing/design.md
 Next:
-  1. Read the whole document and the listed inputs; edit billing/design.md if it is wrong.
+  1. Read the whole document and the listed inputs, then the rest of the scope; edit billing/design.md if it is wrong.
   2. After any edit, save a fresh artifact: dir=$(mktemp -d); memoria review billing/design.md --save "$dir"
   3. Record the result: memoria ack billing/design.md --packet <saved file> --reviewer <you> --result <updated|no-update> --note "<why>"
 ```
@@ -330,10 +335,11 @@ Next:
 <!-- cookbook-output: review-notes-first -->
 ```text
 How to read:
-  Mode: full baseline. Read the complete current scope.
+  Mode: full baseline. Review the whole document against its complete current scope, not only the changes.
   baseline_missing [billing/notes.md]: this document has no previous review to compare against; review its complete scope
-  Read:
+  Read first:
     billing/notes.md (whole_document)
+  Then read the rest of the scope: 2 unchanged sources. List the sources: memoria status --explain billing/notes.md
   Whole document pass: required
   Guidance: memoria guidance billing/notes.md
 ```
@@ -488,11 +494,12 @@ Each document gets its own review, its own artifact, and its own acknowledgement
 <!-- cookbook-output: review-readme-tax -->
 ```text
 How to read:
-  Mode: full baseline. Read the complete current scope.
+  Mode: full baseline. Review the whole document against its complete current scope, not only the changes.
   unmapped_change [billing/tax.rs]: no valid section describes this changed source, so the review cannot narrow to a part of the document
-  Read:
+  Read first:
     billing/README.md (whole_document)
     billing/tax.rs (changed_source)
+  Then read the rest of the scope: 1 unchanged source. List the sources: memoria status --explain billing/README.md
   Whole document pass: required
   Guidance: memoria guidance billing/README.md
 ```
@@ -525,24 +532,25 @@ A broken mapping is a warning, so `lint` passes. The section stays in the page, 
 <!-- cookbook-output: review-runbook-rename -->
 ```text
 How to read:
-  Mode: full baseline. Read the complete current scope.
+  Mode: full baseline. Review the whole document against its complete current scope, not only the changes.
   mapping_invalid [deploy/runbook.md]: the document's section mappings are invalid, so none of its advice can narrow this review; see the section_mapping_invalid diagnostics
   path_set_changed [deploy/deploy.sh]: a source left this document's scope; a rename appears as a removal plus an addition
   path_set_changed [deploy/release.sh]: a source was added to this document's scope; a rename appears as a removal plus an addition
-  Read:
+  Read first:
     deploy/runbook.md (whole_document)
     deploy/release.sh (changed_source)
+  Then read the rest of the scope: 1 unchanged source. List the sources: memoria status --explain deploy/runbook.md
   Whole document pass: required
   Guidance: memoria guidance deploy/runbook.md
 ```
 
 One invalid mapping withdraws the advice of the whole page, so the `settings` section suggests nothing either. The review is a full baseline. A rename appears as one removed source and one added source.
 
-3. Correct the mapping and the step in `deploy/runbook.md`. Make the same correction in the file list of `deploy/README.md`:
+3. Correct the mapping and the step in `deploy/runbook.md`. The `release` section describes the shell scripts of the folder, so map them with the pattern `*.sh` instead of one name. Then correct the file list of `deploy/README.md`:
 
 ```diff
 -<!-- memoria:section id="release" files="deploy.sh" -->
-+<!-- memoria:section id="release" files="release.sh" -->
++<!-- memoria:section id="release" files="*.sh" -->
  ## Release
 
 -1. Run `./deploy.sh` from the `deploy/` folder.
@@ -561,20 +569,108 @@ Documents 6 (3 README(s)): 0 error(s), 0 warning(s), 0 hint(s)
 <!-- cookbook-output: save-runbook-fixed -->
 ```text
 How to read:
-  Mode: full baseline. Read the complete current scope.
+  Mode: full baseline. Review the whole document against its complete current scope, not only the changes.
   mapping_changed [deploy/runbook.md]: the document's section mappings changed since the last review; a changed association cannot reduce the required scope
   path_set_changed [deploy/deploy.sh]: a source left this document's scope; a rename appears as a removal plus an addition
   path_set_changed [deploy/release.sh]: a source was added to this document's scope; a rename appears as a removal plus an addition
-  Read:
+  Read first:
     deploy/runbook.md (whole_document)
     deploy/release.sh (changed_source)
+  Then read the rest of the scope: 1 unchanged source. List the sources: memoria status --explain deploy/runbook.md
   Whole document pass: required
   Guidance: memoria guidance deploy/runbook.md
 ```
 
 The corrected mapping is a changed association, so the cause is `mapping_changed`. The review stays a full baseline. The next change to `release.sh` gets a focused candidate again.
+Memoria compares the files that a mapping names, not its text. `*.sh` names `release.sh`, and the last review saw `deploy.sh`, so the association changed.
 
 6. Record the result for `deploy/runbook.md`. Then review and acknowledge `deploy/README.md`.
+
+## A pattern follows a new file
+
+The team adds `deploy/rollback.sh`, which returns the server to the previous release. Nobody edits the runbook marker.
+
+1. Run `memoria review`:
+
+<!-- cookbook-output: plan-rollback -->
+```text
+Review plan: 2 pending documents (dependency order)
+  5. deploy/README.md  README · input changed: deploy/rollback.sh · ready · also covered by deploy/runbook.md
+  6. deploy/runbook.md  opted-in document · input changed: deploy/rollback.sh · ready · also covered by deploy/README.md
+Next: memoria review deploy/README.md
+```
+
+A new file in `deploy/` makes both documents of the folder pending, as any added source does.
+
+2. Run `memoria review deploy/runbook.md`:
+
+<!-- cookbook-output: review-runbook-added -->
+```text
+Review deploy/runbook.md — opted-in document, pending since revision 2
+Scope: 3 sources in deploy/ and below
+Baseline: revision 2 by docs-agent (updated)
+What changed since that review:
+  added    deploy/rollback.sh · scope source · section "release" describes it · also covered by 1 other document
+Also pending for the same changes:
+  deploy/README.md (covers the same folder; pending)
+How to read:
+  Mode: full baseline. Review the whole document against its complete current scope, not only the changes.
+  path_set_changed [deploy/rollback.sh]: a source was added to this document's scope; a rename appears as a removal plus an addition
+  Read first:
+    deploy/runbook.md (whole_document)
+    deploy/rollback.sh (changed_source)
+  Then read the rest of the scope: 2 unchanged sources. List the sources: memoria status --explain deploy/runbook.md
+  Whole document pass: required
+  Guidance: memoria guidance deploy/runbook.md
+Next:
+  1. Read the whole document and the listed inputs, then the rest of the scope; edit deploy/runbook.md if it is wrong.
+  2. After any edit, save a fresh artifact: dir=$(mktemp -d); memoria review deploy/runbook.md --save "$dir"
+  3. Record the result: memoria ack deploy/runbook.md --packet <saved file> --reviewer <you> --result <updated|no-update> --note "<why>"
+```
+
+The `release` pattern `*.sh` already matches the new script, so the change line says `section "release" describes it`.
+The review is still a full baseline. An added file has no earlier review that a focused reading could build on, and the cause `path_set_changed` says so.
+
+3. Add a rollback step to the `release` section, then save and acknowledge the runbook. Add `rollback.sh` to the file list of `deploy/README.md`, then save and acknowledge it too.
+
+4. Run `memoria status --explain deploy/runbook.md` to see what each section maps now. The `Explain` part of the output is:
+
+<!-- cookbook-output: explain-runbook -->
+```text
+Explain deploy/runbook.md
+  outcome  document
+  reason   Markdown with a Memoria marker (first at line 5): an opted-in document
+  kind     opted_in
+  scope    3 source(s)
+             deploy/config.toml
+             deploy/release.sh
+             deploy/rollback.sh
+  sections valid
+  section  release: *.sh -> 2 source(s)
+             deploy/release.sh
+             deploy/rollback.sh
+  section  settings: config.toml -> 1 source(s)
+             deploy/config.toml
+```
+
+The output lists every source in the page's scope, then each section's tokens and every source that they match.
+
+5. A later change to `rollback.sh` gets a focused review. Run `memoria review deploy/runbook.md` after an edit to the script. The `How to read` part of the output is:
+
+<!-- cookbook-output: review-runbook-pattern -->
+```text
+How to read:
+  Mode: focused candidate. Eligibility only; it does not certify the prior review.
+  Suggested section release "Release" lines 6-10: *.sh (2 matches; read deploy/rollback.sh)
+  Read:
+    deploy/runbook.md (whole_document)
+    deploy/rollback.sh (changed_source)
+  Whole document pass: required
+  Guidance: memoria guidance deploy/runbook.md
+```
+
+The suggestion shows the authored pattern and its 2 matches. It lists only the match that changed as a read, so a pattern over a large folder does not make the reading list large.
+A literal path in `files` is always listed in full, as before.
 
 ## A decision changes and no file does
 
@@ -604,20 +700,21 @@ Only the runbook is pending. `deploy/README.md` shares the folder, but an invali
 
 <!-- cookbook-output: review-runbook-invalidate -->
 ```text
-Review deploy/runbook.md — opted-in document, pending since revision 2
-Scope: 2 sources in deploy/ and below
-Baseline: revision 2 by docs-agent (updated)
+Review deploy/runbook.md — opted-in document, pending since revision 4
+Scope: 3 sources in deploy/ and below
+Baseline: revision 4 by fixture (no-update)
 Semantic review requests:
   [1] The team no longer releases on Fridays.
 How to read:
-  Mode: full baseline. Read the complete current scope.
+  Mode: full baseline. Review the whole document against its complete current scope, not only the changes.
   semantic_invalidation [deploy/runbook.md]: invalidation 1 requires a semantic review: The team no longer releases on Fridays.
-  Read:
+  Read first:
     deploy/runbook.md (whole_document)
+  Then read the rest of the scope: 3 unchanged sources. List the sources: memoria status --explain deploy/runbook.md
   Whole document pass: required
   Guidance: memoria guidance deploy/runbook.md
 Next:
-  1. Read the whole document and the listed inputs; edit deploy/runbook.md if it is wrong.
+  1. Read the whole document and the listed inputs, then the rest of the scope; edit deploy/runbook.md if it is wrong.
   2. After any edit, save a fresh artifact: dir=$(mktemp -d); memoria review deploy/runbook.md --save "$dir"
   3. Record the result: memoria ack deploy/runbook.md --packet <saved file> --reviewer <you> --result <updated|no-update> --note "<why>"
 ```
@@ -641,7 +738,7 @@ memoria ack deploy/runbook.md --packet "$dir"/memoria-manifest-deploy_runbook.md
 
 <!-- cookbook-output: ack-runbook -->
 ```text
-Recorded deploy/runbook.md revision 3 (updated) by docs-agent
+Recorded deploy/runbook.md revision 5 (updated) by docs-agent
 Cleared invalidations: #1
 ```
 
@@ -660,14 +757,15 @@ OK: 6 document(s) current, imports rendered, no coverage or structure errors.
 
 - **One review for each page in the folder.** Each tracked page in a folder becomes pending for every change there. In this project, one change to `tax.rs` asks for three reviews.
 - **Every opted-in page adds a review.** Opting in `billing/notes.md` made it a third reviewer of every billing change. Opt in a page only when it explains the code in its folder.
-- **Mappings to maintain.** A rename, a move, or a deleted file breaks a mapping. The fix is an edit to the page, and that edit makes the page pending.
+- **Mappings to maintain.** A rename, a move, or a deleted file breaks a literal path in a mapping. The fix is an edit to the page, and that edit makes the page pending. A pattern such as `*.sh` follows renamed and new files with no edit. Use `!` to remove files from a pattern, for example `src/** !src/generated/**`.
 
 ### Limits
 
 - **Sections are advice only.** A section adds or removes no input. It has no freshness and no acknowledgement of its own.
 - **The whole-document pass always applies.** A focused candidate names a place to start. The reviewer still reads the whole page.
 - **One invalid mapping withdraws all advice.** Memoria cannot tell which mapping the author meant, so it suggests no section of that page.
-- **A section names only its own scope.** A path is relative to the page's folder, and Memoria refuses `..`. A page in `billing/` cannot map a file in `deploy/`.
+- **A section names only its own scope.** A path or a pattern is relative to the page's folder, and Memoria refuses `..`. A page in `billing/` cannot map a file in `deploy/`. A pattern matches only sources in the page's scope.
+- **A pattern does not make an added file focused.** A new file that a pattern matches is named in the review, but the review is a full baseline until that file is reviewed once.
 - **A link is not a marker.** Only an export, an import, or a section marker opts a page in. Marker text inside fenced code does not count.
 
 ### How this differs from the other patterns

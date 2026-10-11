@@ -29,12 +29,17 @@ fn excerpt(text: &str, from: &str, to: &str) -> String {
         .iter()
         .position(|line| line.starts_with(from))
         .unwrap_or_else(|| panic!("no line starts with {from:?} in:\n{text}"));
-    let end = start
-        + 1
-        + lines[start + 1..]
-            .iter()
-            .position(|line| line.starts_with(to))
-            .unwrap_or_else(|| panic!("no line starts with {to:?} in:\n{text}"));
+    // `END` takes every line to the end of the text.
+    let end = if to == "END" {
+        lines.len()
+    } else {
+        start
+            + 1
+            + lines[start + 1..]
+                .iter()
+                .position(|line| line.starts_with(to))
+                .unwrap_or_else(|| panic!("no line starts with {to:?} in:\n{text}"))
+    };
     lines[start..end].join("\n")
 }
 
@@ -217,6 +222,13 @@ fn the_beside_code_cookbook_matches_a_real_run() {
             "Next:",
         ),
     ));
+    // The fix maps every shell script, so the next rename needs no edit.
+    edit(
+        &project,
+        "deploy/runbook.md",
+        "files=\"deploy.sh\"",
+        "files=\"*.sh\"",
+    );
     for path in ["deploy/runbook.md", "deploy/README.md"] {
         let text = project.read_string(path);
         project.write(path, text.replace("deploy.sh", "release.sh"));
@@ -226,7 +238,7 @@ fn the_beside_code_cookbook_matches_a_real_run() {
         &project,
         "deploy/runbook.md",
         "updated",
-        "The release section and its mapping name release.sh instead of deploy.sh.",
+        "The release step names release.sh, and the release section maps every shell script.",
     );
     captured.push((
         "save-runbook-fixed",
@@ -241,7 +253,74 @@ fn the_beside_code_cookbook_matches_a_real_run() {
     assert!(project.pending().is_empty());
     project.commit_all("rename");
 
-    // Scenario 5: a decision changes, and no file does.
+    // Scenario 5: a pattern follows a new file.
+    project.write(
+        "deploy/rollback.sh",
+        "#!/bin/sh\n# Return the server to the previous release.\nset -eu\nscp ledger.prev ledger.example.com:/srv/ledger/ledger\n",
+    );
+    captured.push(("plan-rollback", cookbook_run(&project, &["review"])));
+    assert_eq!(
+        project.pending(),
+        vec!["deploy/README.md", "deploy/runbook.md"]
+    );
+    captured.push((
+        "review-runbook-added",
+        cookbook_run(&project, &["review", "deploy/runbook.md"]),
+    ));
+    edit(
+        &project,
+        "deploy/runbook.md",
+        "The release succeeded when the page shows `ok`.\n",
+        "The release succeeded when the page shows `ok`.\n3. If the page does not show `ok`, run `./rollback.sh`.\n",
+    );
+    save_and_ack(
+        &project,
+        "deploy/runbook.md",
+        "updated",
+        "The release section now says to run rollback.sh when the health page fails.",
+    );
+    edit(
+        &project,
+        "deploy/README.md",
+        "- `release.sh` builds the release binary and copies it to the server.\n",
+        "- `release.sh` builds the release binary and copies it to the server.\n- `rollback.sh` returns the server to the previous release.\n",
+    );
+    save_and_ack(
+        &project,
+        "deploy/README.md",
+        "updated",
+        "The file list now names rollback.sh and what it does.",
+    );
+    assert!(project.pending().is_empty());
+    project.commit_all("rollback");
+    captured.push((
+        "explain-runbook",
+        excerpt(
+            &cookbook_run(&project, &["status", "--explain", "deploy/runbook.md"]),
+            "Explain",
+            "END",
+        ),
+    ));
+    edit(
+        &project,
+        "deploy/rollback.sh",
+        "scp ledger.prev",
+        "scp -p ledger.prev",
+    );
+    captured.push((
+        "review-runbook-pattern",
+        excerpt(
+            &cookbook_run(&project, &["review", "deploy/runbook.md"]),
+            "How to read:",
+            "Next:",
+        ),
+    ));
+    project.ack_ok("deploy/runbook.md");
+    project.ack_ok("deploy/README.md");
+    assert!(project.pending().is_empty());
+    project.commit_all("rollback flag");
+
+    // Scenario 6: a decision changes, and no file does.
     captured.push((
         "invalidate",
         cookbook_run(
@@ -280,6 +359,20 @@ fn the_beside_code_cookbook_matches_a_real_run() {
             println!("<<<{key}\n{text}\n>>>");
         } else {
             assert_eq!(&cookbook_block(&page, "output", key), text, "{key}");
+        }
+    }
+
+    // The root README shows the same run in "The CLI at a glance".
+    if !print {
+        let readme =
+            fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("README.md"))
+                .unwrap();
+        for key in ["plan-tax", "review-design-tax", "ack-design"] {
+            let (_, text) = captured.iter().find(|(k, _)| *k == key).unwrap();
+            assert!(
+                readme.contains(text.as_str()),
+                "README.md does not show the current {key} output"
+            );
         }
     }
 }

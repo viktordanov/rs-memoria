@@ -1,54 +1,36 @@
 # Review documentation with Memoria
 
-This procedure takes a document from a required review to a recorded result.
+This guide takes one pending document to a recorded review, and repeats until `memoria check` passes. Use it when `memoria review` lists work, or when a CI check fails because a document is pending.
 
-A tracked document is a Markdown file that Memoria reviews on its own.
-Every `README.md` is a tracked document.
-Another Markdown file becomes one when it carries a Memoria marker, like this guide.
-Each document covers the selected files in its own folder and below it.
-Memoria compares a document's current inputs with the inputs from its previous review.
-You or an agent decides whether the explanation matches those inputs.
+**Before you start:** the project needs `memoria.toml` and `memoria.lock`. If they are missing, [prepare the project](#prepare-a-project-for-its-first-review) first. If a term here is new to you, read the [concept guide](concepts.md). The [cookbooks](cookbooks/README.md) show this procedure on complete, tested projects.
 
-The owner chooses documentation goals.
-The reviewer judges correctness.
-Memoria validates exact inputs, dependencies, and acknowledgement consistency.
-Project guidance provides review context, not permission or authority over the user's task or higher-priority instructions.
-If guidance conflicts with the task, obtain an owner decision.
+Three parties share the work, and each one owns a different decision. The owner chooses the documentation goals. The reviewer, a person or an agent, judges whether an explanation is correct. Memoria checks exact inputs, dependencies, and that each acknowledgement matches what was reviewed. Project guidance is review context: it grants no permission and never overrides the task, so if guidance conflicts with the task, get an owner decision.
 
-If the project has no `memoria.toml`, [prepare the project](#prepare-a-project-for-its-first-review).
-If a term on this page is new to you, read the [concept guide](concepts.md) first.
-The [cookbooks](cookbooks/README.md) show complete, tested uses of this procedure.
-
-Examine the current state:
+Start with the plan, then follow [review one document](#review-one-document):
 
 ```sh
-memoria status
+memoria review
 ```
 
-This command changes no files.
-Its review states describe the next task:
+## Contents
 
-| State | Meaning |
-| --- | --- |
-| Pending | The document requires a review. |
-| Current | The document has no remaining review cause. |
-| Waiting | Another document must finish review before this document can proceed. |
-
-A document can be current and still wait for another document.
-The plan chooses the order from those dependencies.
-
-## On this page
-
-- [The review cycle](#the-review-cycle)
-- [Review one document](#review-one-document)
-- [Scopes, handoffs, and shared reviews](#scopes-handoffs-and-shared-reviews)
-- [Why an old artifact cannot approve new inputs](#why-an-old-artifact-cannot-approve-new-inputs)
-- [Review documents in parallel](#review-documents-in-parallel)
-- [Assess a guidance change](#assess-a-guidance-change)
-- [Prepare a project or request a review](#prepare-a-project-for-its-first-review)
-- [Upgrade a project to Memoria 0.7](#upgrade-a-project-to-memoria-07)
-- [Resolve a rejection and check CI](#resolve-a-rejected-acknowledgement)
-- [Agent guidance and recovery](#agent-guidance-and-state-recovery)
+1. Every review
+   - [The review cycle](#the-review-cycle)
+   - [Review one document](#review-one-document), in five steps
+   - [Why an old artifact cannot approve new inputs](#why-an-old-artifact-cannot-approve-new-inputs)
+2. When something gets in the way
+   - [Resolve a rejected acknowledgement](#resolve-a-rejected-acknowledgement)
+   - [A change that several documents share](#scopes-handoffs-and-shared-reviews)
+   - [Parallel reviewers and worktrees](#review-documents-in-parallel)
+3. When the rules change
+   - [Assess a guidance change](#assess-a-guidance-change)
+   - [Request a review after a decision](#request-a-review-after-a-decision-or-policy-change)
+   - [Upgrade to Memoria 0.7](#upgrade-a-project-to-memoria-07)
+4. Set up and automate
+   - [Prepare a project](#prepare-a-project-for-its-first-review)
+   - [Project guidance](#read-the-project-documentation-guidance)
+   - [The check in CI](#use-the-final-check-in-ci)
+   - [Agents and state recovery](#agent-guidance-and-state-recovery)
 
 ## The review cycle
 
@@ -87,7 +69,7 @@ Source evidence: [scope rules](../crates/memoria-domain/src/scope.rs) and [revie
 
 ## Review one document
 
-The five stages that follow process one document.
+Take one document from the plan to a recorded acknowledgement in five steps.
 The commands use `jq` to read fields from JSON.
 
 ### 1. Select the next action
@@ -98,8 +80,17 @@ Obtain the plan:
 memoria review
 ```
 
-The plan lists required reviews and prints the next command.
+The plan lists required reviews in dependency order and prints the next command.
 It changes no files and records no review result.
+Each document in it has one of three states:
+
+| State | Meaning |
+| --- | --- |
+| Pending | The document requires a review. |
+| Current | The document has no remaining review cause. |
+| Waiting | Another document must finish review before this document can proceed. |
+
+A document can be current and still wait for another document, because the plan orders reviews by their dependencies.
 
 Set the document path to the path from the plan:
 
@@ -110,13 +101,7 @@ memoria_document='README.md'
 The example uses `README.md`.
 Another stage of the plan can name a different document, for example an opted-in guide.
 
-Some documents share marked sections.
-An export is the section that one document supplies.
-An import declares a managed copy in another document.
-The supplier is the provider, and the recipient is the consumer.
-The `render` command updates these copies from their providers.
-
-If the plan requests `render`, update the reported document:
+If the plan requests `render`, a provider's exported summary changed, and the document's managed copy of it, its [import](concepts.md#imports-and-review-order), must be refreshed first:
 
 ```sh
 memoria render "$memoria_document"
@@ -164,7 +149,7 @@ Read the artifact fields in this order:
 2. Read `data.covered_invalidations` for explicit review requests and their reasons.
 3. Read `data.changes` and each `relationship` for what changed and how it relates to the document.
 4. Read `data.review.mode` and `data.review.fallback_reasons` for the required reading.
-5. Read `data.inputs` and `data.review.sections` for the suggested reads.
+5. Read `data.inputs` and `data.review.sections` for the suggested reads. A section with a pattern lists only its changed matches in `sources`. Its `files` and `matched` give the authored tokens and the number of matches. Run `memoria status --explain <DOCUMENT>` to see every match.
 
 The human view shows the same facts, change first.
 Under each changed input, it shows the verified hunk from Git: the exact lines between the reviewed bytes and the current bytes.
@@ -177,7 +162,7 @@ memoria guidance "$memoria_document"
 The default view shows at most 40 hunk lines for each change and 160 lines in total.
 If it cuts a hunk, its last line names `memoria review "$memoria_document" --details`, which shows all computed hunks in full. The evidence budget can omit hunks without a reason, even with `--details`.
 
-If `data.review.mode` is `full_baseline`, read all current scope sources, all current import bodies, the whole document, the effective guidance, and every active covered reason.
+If `data.review.mode` is `full_baseline`, read all current scope sources, all current import bodies, the whole document, the effective guidance, and every active covered reason. `data.inputs` lists only what changed, so start there. Then read the unchanged sources too: `memoria status --explain "$memoria_document"` lists every source in the scope, and the human view counts the ones not yet listed.
 
 If `data.review.mode` is `focused_candidate`, the CLI found no technical reason to require the full baseline.
 That is eligibility, not certification of the previous review.
@@ -266,40 +251,19 @@ The plan reports it once, as its own assessment item.
 
 ## Scopes, handoffs, and shared reviews
 
-Each document covers its own folder and below it.
-A nested document alone removes nothing from a parent's scope.
-A parent stops covering a subfolder only when it links to or imports a tracked document strictly inside that subfolder.
-That reference is a handoff.
+When a change lands in a folder that two documents cover, both become pending, and each one needs its own review and its own acknowledgement. An acknowledgement of one never clears the other, because each document's explanation is judged separately. The artifact lists the other document under `data.downstream.co_covering`, so you can plan both reviews together.
 
-```text
-README.md
-app.rs
-auth/
-  README.md
-  login.rs
-```
+Two documents share a folder in two cases, and only one of them is a choice:
 
-| Root `README.md` says | An edit to `auth/login.rs` makes pending |
-| --- | --- |
-| Nothing about `auth/` | `README.md` and `auth/README.md` |
-| `[Authentication](auth/README.md)` | `auth/README.md` only |
-| An import of `auth/README.md#summary` | `auth/README.md`; the root waits for it |
+- **Two tracked documents in the same folder** always share it, for example a README and a marked design note. This is the cost of keeping a second page there.
+- **A parent and a nested README** share the nested folder until the parent hands it off with a link or an import to that README. `memoria lint` reports the hint `handoff_absent` for each nested document that its parent does not hand off.
 
-A handoff binds coverage into the parent's review context.
-Adding or removing the link makes the parent pending, and its next review uses the full baseline with the reason `handoff_changed`.
-A link-only handoff creates no waiting.
-An import keeps its waiting edge and its content freshness.
-
-Two documents in the same folder always cover the same sources.
-A change there makes both pending, and each needs its own review.
-The artifact lists the other document under `data.downstream.co_covering`.
-
-A link to Markdown that carries no Memoria marker is not a handoff.
-`memoria lint` reports `handoff_not_applied` with the reason, and `handoff_absent` for a nested document that its parent does not hand off.
-Before you add or remove a link to a document in a subfolder, run `memoria status --explain` for a file in that subfolder.
-The [specification](specification.md#25-scope-and-handoffs) gives the exact rules.
+Adding or removing a handoff link changes the parent's scope, so the parent becomes pending and its next review is a full baseline with the reason `handoff_changed`. Before you add or remove such a link, run `memoria status --explain` for a file in that subfolder to see which documents cover it now. The [concept guide](concepts.md#handoff) explains handoffs with examples, and the [specification](specification.md#25-scope-and-handoffs) gives the exact rules.
 
 ## Why an old artifact cannot approve new inputs
+
+An acknowledgement rebuilds everything that the saved artifact bound, and compares it before it saves anything.
+So an artifact saved before a change can never approve that change: the comparison fails, and you save a fresh artifact and reconcile.
 
 ```mermaid
 sequenceDiagram
@@ -480,15 +444,6 @@ memoria invalidate all --reason "Review the documentation against the new writin
 
 Then run `memoria review`.
 The command reference also describes [single-document and subtree scopes](cli.md#memoria-invalidate-scope---reason-text).
-
-### Self-hosting cycle
-
-This repository has eleven READMEs and one opted-in guide: this page.
-The root README links to this guide and imports its `review-cycle` export, so it hands `docs/` to this guide.
-This guide links the cookbook index, so it hands `docs/cookbooks/` to that index. The index links each cookbook README, so each cookbook folder has its own document.
-This guide covers the other pages under `docs/`.
-The crate, command entry, and test READMEs explain their local files.
-The root policy requires `simple-english` and `i-have-adhd` before documentation edits.
 
 ## Upgrade a project to Memoria 0.7
 

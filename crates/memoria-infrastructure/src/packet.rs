@@ -783,6 +783,20 @@ fn decode_requirements(mut data: ObjectReader, ctx: &str) -> Result<ReviewManife
                 "{section_ctx}.lines must be a 1-based inclusive range"
             )));
         }
+        let mut files = Vec::new();
+        for (i, value) in entry.take_array("files")?.into_iter().enumerate() {
+            let token_ctx = format!("{section_ctx}.files[{i}]");
+            let token = expect_string(value, &token_ctx)?;
+            memoria_domain::SectionRule::parse(&token)
+                .map_err(|e| schema(format!("{token_ctx}: {e}")))?;
+            files.push(token);
+        }
+        if files.is_empty() {
+            return Err(schema(format!(
+                "{section_ctx}.files must name at least one token; a guide-only section is never suggested"
+            )));
+        }
+        let matched = entry.take_u64("matched")? as usize;
         let mut sources = Vec::new();
         for (i, value) in entry.take_array("sources")?.into_iter().enumerate() {
             let source_ctx = format!("{section_ctx}.sources[{i}]");
@@ -800,6 +814,8 @@ fn decode_requirements(mut data: ObjectReader, ctx: &str) -> Result<ReviewManife
             heading,
             first_line: bounds[0],
             last_line: bounds[1],
+            files,
+            matched,
             sources,
             guidance,
         });

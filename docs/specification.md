@@ -578,23 +578,68 @@ The grammar is exact and small:
 | --- | --- |
 | Markers | Column zero. The attribute order is fixed. Trailing spaces, tabs, LF, and CRLF are permitted. No trailing prose. |
 | `id` | `[A-Za-z][A-Za-z0-9_-]{0,63}`. Case-sensitive and unique in one document. It implies no identity across documents. |
-| `files` | Optional when `guidance` is present. One or more literal paths relative to the document's folder, separated by exactly one space. |
+| `files` | Optional when `guidance` is present. One or more tokens relative to the document's folder, separated by exactly one space. A token is a literal path, a glob pattern, or a `!` exclusion. |
 | `guidance` | Optional, and always the last attribute. Exactly one path to a registered section guide (§2.6), relative to the document's folder. |
 | Body | Nonempty authored Markdown. The first block must be a Markdown heading. |
 | Nesting | Sections do not nest. An export or import can sit wholly inside a section. A section cannot sit inside or cross an export or import. |
 
-A path must resolve to a selected regular source file in this document's scope.
-Memoria must reject a glob, an absolute path, a drive prefix, a backslash, a
-`.` or `..` component, an empty component, a control character, whitespace, a
-quote, a duplicate, a reserved file, a guidance file, a tracked document, an
-ignored input, a symlink, and a handed-off path. A mapping that names a file
+A section describes a kind of file, so its `files` can name a pattern as well
+as a path:
+
+```markdown
+<!-- memoria:section id="auth" files="src/auth/** !src/auth/tests/** !src/auth/generated.rs" -->
+## Authentication
+<!-- /memoria:section -->
+```
+
+Each token has one of three forms:
+
+| Token | Form | Meaning |
+| --- | --- | --- |
+| Literal path | No `*`, `?`, or `[` | One source. It must resolve to a selected regular source file in this document's scope. |
+| Pattern | Contains `*`, `?`, or `[` | Every source in this document's scope whose path, relative to the document's folder, matches. |
+| Exclusion | `!` followed by a literal path or a pattern | Removes every matching source from the section. |
+
+A section maps the union of its literal paths and patterns, minus the union of
+its exclusions. The order of the tokens never changes the result. An exclusion
+also removes a source that a literal path names. A section must include at
+least one token; exclusions alone are invalid.
+
+Patterns use the same glob grammar as selection rules (§2.3): `*` and `?`
+stay within one path component, `[...]` is a character class, and `**` matches
+directories. Memoria matches patterns with one shared engine for selection
+rules and sections. A pattern matches only sources in the document's effective
+scope, so it never matches a tracked document, a reserved or guidance file, an
+ignored input, or a handed-off path. Memoria expands each pattern to concrete
+files at every resolution. All later rules, including the mapping identity,
+use those files.
+
+Memoria must reject an absolute path, a drive prefix, a backslash, a `.` or
+`..` component, an empty component, a control character, whitespace, a quote,
+a brace, an unclosed character class, a second `!`, and a duplicate token. A
+literal path must also not name a reserved file, a guidance file, a tracked
+document, an ignored input, a symlink, or a handed-off path. A literal path
+must not contain `]`. A mapping that names a file
 that became a tracked document reports: "`docs/workflow.md` is now a tracked
 document, not a source in this document's scope; name the sources that the
 section describes". This syntax cannot spell a
-filename that contains a space. Such a file stays a valid ordinary input.
+filename that contains a space, starts with `!`, or contains `*`, `?`, `[`,
+`]`, `{`, or `}`. Such a file stays a valid ordinary input, and a pattern can
+still match it.
+
+A pattern or an exclusion that matches nothing is valid. `memoria lint`
+reports it as the hint `section_pattern_empty`, and `status --explain` lists it
+for one document. Other commands do not report it.
 
 One source can belong to several sections. After that source changes, all of
 those sections become suggestions.
+
+A suggestion lists the sources to read for that section: every literal path,
+and each pattern match that changed. It also carries the authored tokens and
+the number of sources they match. The complete expansion is available on
+demand from `status --explain`. This limit applies to the reading list only.
+Freshness, scope, the input manifest, and acknowledgement always use every
+source in the scope, whether or not a pattern matches it.
 
 Marker text inside fenced or indented code is inert. Section-like text inside
 a generated import body is inert for the consumer.
@@ -608,8 +653,17 @@ baseline. `ack` can accept that full review when the structural requirements
 stay valid.
 
 Mapping identity uses the sorted section identifiers and each section's sorted
-normalized source set. Body edits, heading text, moved line ranges, and the
-section guide do not change it. Any changed association requires a full baseline.
+normalized source set. For a pattern, the source set is its expansion over the
+scope. Body edits, heading text, moved line ranges, the section guide, and a
+rewrite of the tokens that keeps the same source set do not change it. Any
+changed association requires a full baseline.
+
+A pattern does not make an added file a focused review. An added or removed
+source is a changed path set, so that review is a full baseline. The change
+still names the sections whose patterns match the added file. After that review
+is acknowledged, the next change to the file can suggest those sections. A
+literal path to a deleted or renamed file makes the mapping invalid until the
+document is edited. A pattern keeps the mapping valid.
 
 #### Section guides
 
