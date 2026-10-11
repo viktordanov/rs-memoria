@@ -13,7 +13,7 @@
   --paper: #f4f0e6;
   --ink: #24211b;
   --muted: #8a8170;
-  --accent: #a67c00;
+  --accent: #b06a00;
   --attention: #9a6a12;
   --added: #2f7d35;
   --removed: #c0392b;
@@ -45,7 +45,8 @@ p { margin: 0; max-width: 70ch; }
 .ad { color: var(--added); } .rm { color: var(--removed); } .ok { color: var(--good); }
 .a { color: var(--accent); }
 code { font: inherit; color: var(--ink); }
-.pa { fill: var(--accent); } .pi { fill: var(--ink); }
+.pitch code, section p code, .sub code, .rules code, .uses code, .says code, .caption code, .note code { padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--ink) 9%, transparent); white-space: nowrap; }
+.pa { fill: var(--accent); } .pm { fill: var(--muted); } .pi { fill: var(--ink); }
 svg.defs { position: absolute; width: 0; height: 0; }
 pre { margin: 0; font: inherit; white-space: pre; overflow-x: auto; }
 
@@ -81,7 +82,7 @@ h1::before { content: ""; position: absolute; left: -70%; top: -320%; width: 260
 .cmd .btn.hot:hover { color: var(--paper); background: var(--accent); }
 .install small { color: var(--muted); font-size: 13px; }
 .ctas { display: flex; flex-wrap: wrap; gap: 10px 32px; font-size: 14px; }
-.ctas a::before { content: "↓ "; color: var(--accent); }
+.ctas a::before { content: "↓ "; color: var(--muted); }
 .unused-scroll { position: absolute; left: clamp(20px, 5vw, 64px); bottom: 22px; font-size: 12px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
 
 /* ---------- section headers, like the art ---------- */
@@ -105,14 +106,14 @@ section::before { content: ""; position: absolute; left: 50%; top: 0; width: min
 .steps button { font: 13px var(--mono); color: var(--muted); background: none; border: 0; border-top: 1.5px solid var(--rule); padding: 10px 4px 0; cursor: pointer; text-align: left; position: relative; }
 .steps button:hover { color: var(--ink); }
 .steps button[aria-pressed="true"] { color: var(--ink); }
-.steps button .bar { position: absolute; left: 0; top: -1.5px; height: 1.5px; width: 0; background: var(--accent); }
+.steps button .bar { position: absolute; left: 0; top: -1.5px; height: 1.5px; width: 0; background: var(--ink); }
 .steps button.done .bar { width: 100%; }
 .steps button[aria-pressed="true"] .bar { width: 100%; }
 .steps button.run .bar { animation: fill var(--dur, 4.6s) linear both; }
 @keyframes fill { from { width: 0; } to { width: 100%; } }
 .steps .pp { border-top-color: transparent; color: var(--muted); padding-inline: 0; width: 3ch; text-align: center; }
 .caption { font-size: 17px; line-height: 1.5; height: 4.5em; max-width: 64ch; margin: 0 0 14px; }
-.caption b { font-weight: 500; color: var(--accent); }
+.caption b { font-weight: 600; color: var(--ink); }
 .demo { display: grid; grid-template-columns: 1fr 72px 1fr; align-items: center; }
 .link { height: 1.5px; background: var(--muted); position: relative; transition: background .4s; }
 .link::before { content: ""; position: absolute; left: -2px; top: -5px; border: 6px solid transparent; border-right: 9px solid var(--muted); border-left: 0; transition: border-color .4s; }
@@ -130,7 +131,7 @@ section::before { content: ""; position: absolute; left: 50%; top: 0; width: min
 .flash { animation: flash 1.1s ease-out; }
 @keyframes flash { 0% { background: color-mix(in srgb, var(--accent) 22%, transparent); } 100% { background: transparent; } }
 .term { height: 372px; }
-.mk { color: var(--attention); }
+.mk { color: var(--ink); }
 .ghost { visibility: hidden; }
 .eline .cursor { margin-left: 0; margin-right: -2px; }
 .vl { color: var(--muted); display: inline-block; width: 3ch; text-align: right; margin-right: 1.5ch; user-select: none; }
@@ -156,7 +157,7 @@ section::before { content: ""; position: absolute; left: 50%; top: 0; width: min
 .trees .says { color: var(--muted); font-size: 13px; margin-bottom: 12px; min-height: 2.6em; }
 .rules { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; max-width: 74ch; align-self: center; }
 .rules li { display: grid; grid-template-columns: 3ch 1fr; }
-.rules li::before { content: "─"; color: var(--accent); }
+.rules li::before { content: "─"; color: var(--muted); }
 
 /* ---------- onboarding ---------- */
 .onb { display: grid; grid-template-columns: 1.25fr 1fr; gap: 34px 18px; align-items: start; }
@@ -181,7 +182,7 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
 .docs .big { font-size: clamp(30px, 4.6vw, 48px); font-weight: 500; letter-spacing: -.015em; margin: 0; }
 .guides { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px 96px; width: 100%; margin-top: 44px; text-align: left; }
 .guides > div { display: grid; grid-template-columns: 1fr; gap: 3px; align-content: start; }
-.guides .gh { text-transform: uppercase; letter-spacing: .06em; font-size: 12px; color: var(--accent); padding-bottom: 10px; margin-bottom: 8px; border-bottom: 1.5px solid var(--ink); }
+.guides .gh { text-transform: uppercase; letter-spacing: .06em; font-size: 12px; color: var(--muted); padding-bottom: 10px; margin-bottom: 8px; border-bottom: 1.5px solid var(--ink); }
 .guides a { font-weight: 500; margin-top: 14px; }
 .guides a:hover { color: var(--accent); }
 .guides .m { font-size: 13px; }
@@ -192,13 +193,13 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
 .map { position: fixed; left: max(12px, calc((100vw - 980px) / 4 - 150px)); top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 14px; padding-left: 22px; font-size: 12px; line-height: 18px; opacity: 0; pointer-events: none; transition: opacity .35s; z-index: 2; }
 .map.show { opacity: 1; pointer-events: auto; }
 .map .track { position: absolute; left: 3px; top: 9px; bottom: 9px; width: 2px; background: var(--rule); }
-.map .track i { display: block; width: 100%; height: 0; background: var(--accent); box-shadow: 0 0 8px var(--glow); }
+.map .track i { display: block; width: 100%; height: 0; background: var(--ink); }
 .map a { color: var(--muted); position: relative; transition: color .2s; white-space: nowrap; }
 .map a::before { content: ""; position: absolute; left: -22px; top: 5px; width: 8px; height: 8px; background: var(--paper); border: 1.5px solid var(--rule); box-sizing: border-box; transition: background .2s, border-color .2s; }
 .map a:hover { color: var(--ink); }
-.map a.past::before { background: var(--accent); border-color: var(--accent); }
+.map a.past::before { background: var(--muted); border-color: var(--muted); }
 .map a.cur { color: var(--ink); }
-.map a.cur::before { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 8px var(--glow), 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.map a.cur::before { background: var(--ink); border-color: var(--ink); }
 @media (max-width: 1319px) { .map { display: none; } }
 
 /* ---------- feature clusters ---------- */
@@ -206,8 +207,8 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
 .share .via { align-self: center; }
 .share .frame, .guide .frame, .plug .frame { font-size: 13px; }
 .via { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 12px; }
-.via .link { width: 72%; transform: scaleX(-1); background: var(--accent); }
-.via .link::before { border-right-color: var(--accent); }
+.via .link { width: 72%; transform: scaleX(-1); background: var(--muted); }
+.via .link::before { border-right-color: var(--muted); }
 .guide { display: grid; grid-template-columns: 1.15fr 1fr; gap: 34px 18px; }
 .share pre, .guide pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .plug pre { white-space: pre; overflow-x: auto; }
@@ -224,8 +225,8 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
 .ar-row .note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ar-row code { white-space: pre-wrap; overflow-wrap: anywhere; }
 .ar-row .note { color: var(--muted); font-size: 13px; }
-.ar-row .note b { color: var(--accent); font-weight: 500; }
-.ar-row.on > code { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.ar-row .note b { color: var(--ink); font-weight: 600; }
+.ar-row.on > code { background: color-mix(in srgb, var(--ink) 7%, transparent); }
 .loop-label { text-align: center; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .05em; margin-bottom: -16px; }
 
 /* ---------- onboard ---------- */
@@ -239,15 +240,17 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
     50% { box-shadow: 0 0 28px 2px color-mix(in srgb, var(--accent) 26%, transparent); }
   }
 }
-.top a.cta-onb, .ctas a.cta-onb { color: var(--accent); }
-.top a.cta-onb:hover, .ctas a.cta-onb:hover { color: var(--ink); }
 .tl.off { visibility: hidden; }
 .say .m { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
 .say code { color: var(--ink); }
 .onb-term { font-size: 13.5px; line-height: 1.55; }
 .onb-term pre { overflow-x: auto; }
 .onb-term .p { color: var(--ink); }
-.c-acc { color: var(--accent); } .c-mut { color: var(--muted); } .c-att { color: var(--attention); }
+.c-acc { color: var(--ink); font-weight: 600; } .c-mut { color: var(--muted); } .c-att { color: var(--attention); }
+.integ { display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; }
+.irow { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 24px; align-items: baseline; }
+.irow code { font-weight: 600; white-space: nowrap; overflow-x: auto; }
+.inote { margin-top: 6px; font-size: 13px; }
 .deeper { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px 18px; }
 .deeper .frame { display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
 .deeper .cmdl { color: var(--accent); }
@@ -261,12 +264,13 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
 .cycle .back { flex-basis: 100%; color: var(--muted); font-size: 13px; text-align: center; }
 .uses { display: flex; flex-direction: column; border-top: 1.5px solid var(--ink); }
 .uses div { display: grid; grid-template-columns: 1fr 1.2fr; gap: 48px; padding-block: 24px; border-bottom: 1px dashed var(--rule); line-height: 1.5; }
-.uses div > span:first-child::before { content: "› "; color: var(--accent); }
+.uses div > span:first-child::before { content: "› "; color: var(--muted); }
 .uses .m { font-size: 14px; }
 .uses div > span:first-child { font-weight: 500; }
 .never { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px 18px; }
-.never .frame { font-size: 14px; }
-.never .ft { color: var(--accent); }
+.never .frame { font-size: 14px; border: 0; padding: 0; }
+.never .frame > .ft { position: static; padding: 0; background: none; display: block; margin-bottom: 8px; }
+.never .ft { color: var(--ink); }
 .unused-end { display: flex; flex-direction: column; align-items: center; gap: 18px; border-top: 1.5px solid var(--ink); padding-top: 44px; text-align: center; }
 .end .big { font-size: clamp(18px, 3vw, 24px); font-weight: 500; }
 .links { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 24px; font-size: 14px; }
@@ -284,7 +288,8 @@ footer { color: var(--muted); font-size: 12px; }
   .demo .link i { display: none; }
   .demo .frame:first-child { order: 3; }
   .demo .link { order: 2; }
-  .trees, .never, .onb, .guides, .deeper, .guide, .plug, .plug .frame, .ar-row { grid-template-columns: 1fr; }
+  .trees, .never, .onb, .guides, .deeper, .guide, .plug, .plug .frame, .ar-row, .irow { grid-template-columns: 1fr; }
+  .irow { gap: 2px; }
   .ar-row { gap: 2px; }
   .ar-row .note:empty { display: none; }
   .share { grid-template-columns: 1fr; gap: 10px; }
@@ -308,9 +313,12 @@ footer { color: var(--muted); font-size: 12px; }
     <pattern id="d1" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="2" height="2" class="pa"/></pattern>
     <pattern id="d2" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="2" height="2" class="pa"/><rect x="2" y="2" width="2" height="2" class="pa"/></pattern>
     <pattern id="d3" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="2" height="2" class="pa"/><rect x="2" width="2" height="2" class="pa"/><rect x="2" y="2" width="2" height="2" class="pa"/></pattern>
+    <pattern id="m1" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="2" height="2" class="pm"/></pattern>
+    <pattern id="m2" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="2" height="2" class="pm"/><rect x="2" y="2" width="2" height="2" class="pm"/></pattern>
+    <pattern id="m3" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="2" height="2" class="pm"/><rect x="2" width="2" height="2" class="pm"/><rect x="2" y="2" width="2" height="2" class="pm"/></pattern>
     <pattern id="i3" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="2" height="2" class="pi"/><rect x="2" width="2" height="2" class="pi"/><rect x="2" y="2" width="2" height="2" class="pi"/></pattern>
-    <symbol id="dl" viewBox="0 0 45 18"><rect width="9" height="18" fill="url(#d1)"/><rect x="9" width="9" height="18" fill="url(#d2)"/><rect x="18" width="9" height="18" fill="url(#d3)"/><rect x="27" width="18" height="18" class="pa"/></symbol>
-    <symbol id="dr" viewBox="0 0 45 18"><rect width="18" height="18" class="pa"/><rect x="18" width="9" height="18" fill="url(#d3)"/><rect x="27" width="9" height="18" fill="url(#d2)"/><rect x="36" width="9" height="18" fill="url(#d1)"/></symbol>
+    <symbol id="dl" viewBox="0 0 45 18"><rect width="9" height="18" fill="url(#m1)"/><rect x="9" width="9" height="18" fill="url(#m2)"/><rect x="18" width="9" height="18" fill="url(#m3)"/><rect x="27" width="18" height="18" class="pm"/></symbol>
+    <symbol id="dr" viewBox="0 0 45 18"><rect width="18" height="18" class="pm"/><rect x="18" width="9" height="18" fill="url(#m3)"/><rect x="27" width="9" height="18" fill="url(#m2)"/><rect x="36" width="9" height="18" fill="url(#m1)"/></symbol>
     <symbol id="edited" viewBox="0 0 14 14"><rect width="14" height="14" fill="url(#i3)"/></symbol>
   </defs>
 </svg>
@@ -332,7 +340,7 @@ footer { color: var(--muted); font-size: 12px; }
       </h1>
       <div class="tag" id="tag">Never ship <span class="a">stale</span> <span id="rot">docs again.</span><span class="cursor"></span></div>
       <div class="pitch">
-        <p><strong>Memoria is CI for your docs.</strong> When code changes, it tells you which docs now need a look and shows exactly what changed. <code class="a">memoria check</code> keeps the build red until someone has checked them.</p>
+        <p><strong>Memoria is CI for your docs.</strong> When code changes, it tells you which docs now need a look and shows exactly what changed. <code>memoria check</code> keeps the build red until someone has checked them.</p>
         <p class="m">You write the docs. Memoria makes sure someone checks them every time the code they describe changes.</p>
       </div>
       <div class="install">
@@ -351,7 +359,6 @@ footer { color: var(--muted); font-size: 12px; }
   <a href="#cycle">document markers</a>
   <a href="#render">exports and imports</a>
   <a href="#guidance">project guidance</a>
-  <a href="#automate">agents and CI</a>
   <a href="#uses">when to use memoria</a>
   <a href="#never">design principles</a>
   <a href="#onboard">onboard your agent</a>
@@ -423,7 +430,7 @@ footer { color: var(--muted); font-size: 12px; }
       <h2 class="hd" id="h-cycle"><svg aria-hidden="true"><use href="#dl"/></svg>Document markers<svg aria-hidden="true"><use href="#dr"/></svg></h2>
       <p class="sub">Folders do most of the work. Plain HTML comments add the rest: which part of a doc describes which code, and which summary other docs reuse. Nothing else in your Markdown changes.</p>
     </header>
-    <div class="frame annot"><span class="ft">src/auth/README.md</span><div class="ar-row on"><code><span class="vl">1</span># Auth</code><span class="note"><b>tracked</b> · covers src/auth/ and below</span></div><div class="ar-row"><code><span class="vl">2</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">3</span><span class="mk">&lt;!-- memoria:export id="summary" --&gt;</span></code><span class="note"><b>export</b> · a summary other docs reuse</span></div><div class="ar-row"><code><span class="vl">4</span>Auth signs users in with a password or a passkey.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">5</span><span class="mk">&lt;!-- /memoria:export --&gt;</span></code><span class="note"></span></div><div class="ar-row"><code><span class="vl">6</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">7</span><span class="mk">&lt;!-- memoria:section id="sessions" files="src/auth/**" --&gt;</span></code><span class="note"><b>section</b> · edits to src/auth/** start here</span></div><div class="ar-row"><code><span class="vl">8</span>## Sessions</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">9</span>A session lasts 15 minutes, then the user signs in again.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">10</span><span class="mk">&lt;!-- /memoria:section --&gt;</span></code><span class="note"></span></div></div>
+    <div class="frame annot"><span class="ft">src/auth/README.md</span><div class="ar-row on"><code><span class="vl">1</span># Auth</code><span class="note"><b>tracked</b> · covers src/auth/ and below</span></div><div class="ar-row"><code><span class="vl">2</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">3</span><span class="mk">&lt;!-- memoria:export id="summary" --&gt;</span></code><span class="note"><b>export</b> · a summary other docs reuse</span></div><div class="ar-row"><code><span class="vl">4</span>Auth signs users in with a password or a passkey.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">5</span><span class="mk">&lt;!-- /memoria:export --&gt;</span></code><span class="note"></span></div><div class="ar-row"><code><span class="vl">6</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">7</span><span class="mk">&lt;!-- memoria:section id="sessions" files="src/auth/**" --&gt;</span></code><span class="note"><b>section</b> · maps src/auth/**</span></div><div class="ar-row"><code><span class="vl">8</span>## Sessions</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">9</span>A session lasts 15 minutes, then the user signs in again.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">10</span><span class="mk">&lt;!-- /memoria:section --&gt;</span></code><span class="note"></span></div></div>
     <div class="label loop-label">every change runs the same loop</div>
     <div class="cycle" id="cyc">
       <div class="box">login.rs changes<small>git commit</small></div><span class="ar">─▸</span>
@@ -448,11 +455,7 @@ footer { color: var(--muted); font-size: 12px; }
       <div class="frame"><span class="ft">README.md · reuses it</span>
 <pre><span class="ln c-mut">&lt;!-- memoria:import src="auth/README.md#summary" --&gt;</span><span class="ln hot" id="imp-line" data-text="Auth signs users in with a password or a passkey.">Auth signs users in with a password or a passkey.</span><span class="ln c-mut">&lt;!-- /memoria:import --&gt;</span></pre></div>
     </div>
-    <ul class="rules">
-      <li><span><strong>The source is checked first.</strong> <span class="m">Docs that reuse a summary wait for its review, so nobody checks a half-finished copy.</span></span></li>
-      <li><span><strong>Copies only.</strong> <span class="m">Render rewrites the marked copy and leaves the rest of the file alone.</span></span></li>
-      <li><span><strong>Change it once.</strong> <span class="m">Edit the summary in one place, and every doc that reuses it is queued for review in the right order.</span></span></li>
-    </ul>
+    <p>The source is reviewed first, so nobody checks a half-finished copy. Render only rewrites the marked copy and leaves the rest of the file alone. Change the summary once, and every doc that reuses it is queued for review in the right order.</p>
   </section>
 
   <section id="guidance" aria-labelledby="h-guidance">
@@ -481,44 +484,15 @@ guidance_files = [<span class="c-acc">"docs/writing-guidance.md"</span>]</pre></
     </ul>
   </section>
 
-  <section id="automate" aria-labelledby="h-automate">
-    <header class="sh">
-      <h2 class="hd" id="h-automate"><svg aria-hidden="true"><use href="#dl"/></svg>Agents and CI<svg aria-hidden="true"><use href="#dr"/></svg></h2>
-      <p class="sub">Three optional pieces. Each one can be removed again, and none of them reviews a doc for you.</p>
-    </header>
-    <div class="plug">
-      <div class="frame"><span class="ft">agent skill</span>
-<pre><span class="c-acc">memoria agent install --target claude</span>
-<span class="c-mut">.claude/</span>
-<span class="c-mut">└─</span> skills/
-   <span class="c-mut">└─</span> <span class="hl">memoria/</span></pre>
-        <p class="m">Teaches Claude Code or Codex the full review procedure.</p></div>
-      <div class="frame"><span class="ft">stop hook</span>
-<pre><span class="c-acc">memoria agent hook install --target claude</span>
-<span class="c-mut">agent stops</span>
-<span class="c-mut">└─</span> <span class="hl">1 document needs review</span>
-   <span class="c-mut">→ memoria review</span></pre>
-        <p class="m">When the agent stops, it says how many docs need a review. It never keeps the agent going.</p></div>
-      <div class="frame"><span class="ft">github check</span>
-<pre><span class="c-acc">memoria integrations github install</span>
-<span class="c-mut">.github/workflows/</span>
-<span class="c-mut">└─</span> <span class="hl">memoria.yml</span>
-   <span class="c-mut">runs memoria check</span></pre>
-        <p class="m">Fails the build while any doc is pending. The runner installs a verified Memoria.</p></div>
-    </div>
-  </section>
-
   <section id="uses" aria-labelledby="h-uses">
     <header class="sh">
       <h2 class="hd" id="h-uses"><svg aria-hidden="true"><use href="#dl"/></svg>When to use Memoria<svg aria-hidden="true"><use href="#dr"/></svg></h2>
-      <p class="sub">Six jobs it does well, from one stale file to a blocked merge.</p>
+      <p class="sub">Four jobs it does well, from one stale file to a blocked merge.</p>
     </header>
     <div class="uses">
       <div><span>Find every doc a feature change touches</span><span class="m">Each doc that covers a changed file is flagged, in the order to review them.</span></div>
       <div><span>Block a merge until the docs are checked</span><span class="m"><code>memoria check</code> fails in CI while any review is pending.</span></div>
-      <div><span>Give an agent one well-defined review</span><span class="m">One file holds what changed, what to read, and which rules apply.</span></div>
       <div><span>Keep AGENTS.md and CLAUDE.md honest</span><span class="m">Both are tracked, and shared writing rules apply to each section that names them.</span></div>
-      <div><span>Share one summary across docs</span><span class="m"><code>memoria render</code> copies it into each doc that uses it, after its source is reviewed.</span></div>
       <div><span>Re-check docs after a decision, not a diff</span><span class="m"><code>memoria invalidate</code> asks for a review and records your reason.</span></div>
     </div>
   </section>
@@ -569,10 +543,11 @@ Go deeper
   <span class="c-acc">memoria onboard review</span>     <span class="c-mut">review a pending document, step by step</span>
   <span class="c-acc">memoria onboard agent</span>      <span class="c-mut">let an agent keep your docs current</span>
   <span class="c-acc">memoria onboard ci</span>         <span class="c-mut">block merges while docs are pending</span></pre></div>
-    <div class="deeper">
-      <div class="frame"><span class="ft">review</span><pre class="cmdl">memoria onboard review</pre><p class="m">Review a flagged doc in five steps, from the plan to the ack.</p></div>
-      <div class="frame"><span class="ft">agent</span><pre class="cmdl">memoria onboard agent</pre><p class="m">Set up the review skill and the optional Stop hook.</p></div>
-      <div class="frame"><span class="ft">ci</span><pre class="cmdl">memoria onboard ci</pre><p class="m">Add the GitHub check that blocks merges while docs are pending.</p></div>
+    <div class="frame integ"><span class="ft">optional integrations</span>
+      <div class="irow"><code>memoria agent install --target claude</code><span class="m">the review skill for Claude Code or Codex</span></div>
+      <div class="irow"><code>memoria agent hook install --target claude</code><span class="m">a Stop hook that reports docs needing review</span></div>
+      <div class="irow"><code>memoria integrations github install</code><span class="m">a GitHub check that fails while a doc is pending</span></div>
+      <p class="m inote">Each one can be removed again, and none of them reviews a doc for you. <code>memoria onboard agent</code> and <code>memoria onboard ci</code> walk through them.</p>
     </div>
   </section>
 </main>
