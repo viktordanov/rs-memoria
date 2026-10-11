@@ -345,22 +345,22 @@ footer { color: var(--muted); font-size: 12px; }
 
 <nav class="map" id="map" aria-label="On this page">
   <div class="track"><i id="mapfill"></i></div>
-  <a href="#flow">see it work</a>
-  <a href="#how">what gets flagged</a>
-  <a href="#cycle">markers</a>
-  <a href="#render">shared summaries</a>
-  <a href="#guidance">writing rules</a>
+  <a href="#flow">review flow</a>
+  <a href="#how">folder scopes</a>
+  <a href="#cycle">document markers</a>
+  <a href="#render">exports and imports</a>
+  <a href="#guidance">project guidance</a>
   <a href="#automate">agents and CI</a>
-  <a href="#uses">use cases</a>
-  <a href="#never">what it won't do</a>
+  <a href="#uses">when to use memoria</a>
+  <a href="#never">design principles</a>
   <a href="#onboard">onboard your agent</a>
-  <a href="#docs">docs</a>
+  <a href="#docs">read the docs</a>
 </nav>
 
 <main class="sheet">
   <section id="flow" aria-labelledby="h-demo">
     <header class="sh">
-      <h2 class="hd" id="h-demo"><svg aria-hidden="true"><use href="#dl"/></svg>A code change flags the doc that explains it<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <h2 class="hd" id="h-demo"><svg aria-hidden="true"><use href="#dl"/></svg>The review flow<svg aria-hidden="true"><use href="#dr"/></svg></h2>
       <p class="sub">Watch one change go through. A commit edits <code>login.rs</code>, and Memoria marks the README that describes it as <b class="a">pending</b>: it needs a look. Then it shows the diff and records the fix.</p>
     </header>
     <div class="player">
@@ -393,7 +393,7 @@ footer { color: var(--muted); font-size: 12px; }
 
   <section id="how" aria-labelledby="h-how">
     <header class="sh">
-      <h2 class="hd" id="h-how"><svg aria-hidden="true"><use href="#dl"/></svg>Your folders decide what gets flagged<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <h2 class="hd" id="h-how"><svg aria-hidden="true"><use href="#dl"/></svg>Folder scopes<svg aria-hidden="true"><use href="#dr"/></svg></h2>
       <p class="sub">A README covers its own folder and everything below it. One edit to <code>auth/login.rs</code>, and three ways the root README can treat <code>auth/</code>:</p>
     </header>
     <div class="trees">
@@ -419,7 +419,7 @@ footer { color: var(--muted); font-size: 12px; }
 
   <section id="cycle" aria-labelledby="h-cycle">
     <header class="sh">
-      <h2 class="hd" id="h-cycle"><svg aria-hidden="true"><use href="#dl"/></svg>A few comments fill in the details<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <h2 class="hd" id="h-cycle"><svg aria-hidden="true"><use href="#dl"/></svg>Document markers<svg aria-hidden="true"><use href="#dr"/></svg></h2>
       <p class="sub">Folders do most of the work. Plain HTML comments add the rest: which part of a doc describes which code, and which summary other docs reuse. Nothing else in your Markdown changes.</p>
     </header>
     <div class="frame annot"><span class="ft">src/auth/README.md</span><div class="ar-row on"><code><span class="vl">1</span># Auth</code><span class="note"><b>tracked</b> · covers src/auth/ and below</span></div><div class="ar-row"><code><span class="vl">2</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">3</span><span class="mk">&lt;!-- memoria:export id="summary" --&gt;</span></code><span class="note"><b>export</b> · a summary other docs reuse</span></div><div class="ar-row"><code><span class="vl">4</span>Auth signs users in with a password or a passkey.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">5</span><span class="mk">&lt;!-- /memoria:export --&gt;</span></code><span class="note"></span></div><div class="ar-row"><code><span class="vl">6</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">7</span><span class="mk">&lt;!-- memoria:section id="sessions" files="src/auth/**" --&gt;</span></code><span class="note"><b>section</b> · edits to src/auth/** start here</span></div><div class="ar-row"><code><span class="vl">8</span>## Sessions</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">9</span>A session lasts 15 minutes, then the user signs in again.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">10</span><span class="mk">&lt;!-- /memoria:section --&gt;</span></code><span class="note"></span></div></div>
@@ -437,7 +437,7 @@ footer { color: var(--muted); font-size: 12px; }
 
 <section id="render" aria-labelledby="h-render">
     <header class="sh">
-      <h2 class="hd" id="h-render"><svg aria-hidden="true"><use href="#dl"/></svg>Write a summary once, keep every copy in sync<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <h2 class="hd" id="h-render"><svg aria-hidden="true"><use href="#dl"/></svg>Exports and imports<svg aria-hidden="true"><use href="#dr"/></svg></h2>
       <p class="sub">Mark a summary in one doc and reuse it in others. <code>memoria render</code> copies it into place, so five READMEs never drift apart.</p>
     </header>
     <div class="share">
@@ -456,7 +456,7 @@ footer { color: var(--muted); font-size: 12px; }
 
   <section id="guidance" aria-labelledby="h-guidance">
     <header class="sh">
-      <h2 class="hd" id="h-guidance"><svg aria-hidden="true"><use href="#dl"/></svg>Every review comes with your writing rules<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <h2 class="hd" id="h-guidance"><svg aria-hidden="true"><use href="#dl"/></svg>Project guidance<svg aria-hidden="true"><use href="#dr"/></svg></h2>
       <p class="sub">Write your documentation rules once in <code>memoria.toml</code>. Every review lists them, and <code>memoria guidance</code> prints them for any doc.</p>
     </header>
     <div class="guide">
@@ -482,7 +482,7 @@ guidance_files = [<span class="c-acc">"docs/writing-guidance.md"</span>]</pre></
 
   <section id="automate" aria-labelledby="h-automate">
     <header class="sh">
-      <h2 class="hd" id="h-automate"><svg aria-hidden="true"><use href="#dl"/></svg>It fits into your agent and your CI<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <h2 class="hd" id="h-automate"><svg aria-hidden="true"><use href="#dl"/></svg>Agents and CI<svg aria-hidden="true"><use href="#dr"/></svg></h2>
       <p class="sub">Three optional pieces. Each one can be removed again, and none of them reviews a doc for you.</p>
     </header>
     <div class="plug">
@@ -509,7 +509,7 @@ guidance_files = [<span class="c-acc">"docs/writing-guidance.md"</span>]</pre></
 
   <section id="uses" aria-labelledby="h-uses">
     <header class="sh">
-      <h2 class="hd" id="h-uses"><svg aria-hidden="true"><use href="#dl"/></svg>Where it earns its keep<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <h2 class="hd" id="h-uses"><svg aria-hidden="true"><use href="#dl"/></svg>When to use Memoria<svg aria-hidden="true"><use href="#dr"/></svg></h2>
       <p class="sub">Six jobs it does well, from one stale file to a blocked merge.</p>
     </header>
     <div class="uses">
@@ -524,7 +524,7 @@ guidance_files = [<span class="c-acc">"docs/writing-guidance.md"</span>]</pre></
 
   <section id="never" aria-labelledby="h-never">
     <header class="sh">
-      <h2 class="hd" id="h-never"><svg aria-hidden="true"><use href="#dl"/></svg>Your words stay yours<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <h2 class="hd" id="h-never"><svg aria-hidden="true"><use href="#dl"/></svg>Design principles<svg aria-hidden="true"><use href="#dr"/></svg></h2>
       <p class="sub">Memoria proves that someone checked. It never writes your docs or grades them.</p>
     </header>
     <div class="never">
@@ -579,7 +579,7 @@ Go deeper
 <section id="docs" class="docs" aria-labelledby="h-docs">
     <canvas id="field2" aria-hidden="true"></canvas>
     <div class="docs-in">
-      <h2 class="big" id="h-docs">Start with one README.</h2>
+      <h2 class="big" id="h-docs">Read the docs</h2>
       <p class="sub">Write the root README yourself: it is the one explanation only you can give. Run <code>memoria init --apply</code>, and Memoria tracks it and every README you add after it.</p>
       <div class="guides">
         <div><div class="gh">learn</div>
