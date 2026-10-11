@@ -33,6 +33,7 @@ Then run `memoria onboard` in your project. It shows what Memoria is, where the 
    - [Install](#install)
    - [Use cases](#use-cases)
    - [How it works](#how-it-works)
+   - [Features at a glance](#features-at-a-glance)
    - [The CLI at a glance](#the-cli-at-a-glance)
    - [Quick start](#quick-start)
 2. Use it every day
@@ -95,6 +96,38 @@ flowchart TD
 ```
 
 Memoria never edits your prose, except inside import blocks that you declare, and only when you run `memoria render`. The [concept guide](docs/concepts.md) explains each idea with an example and its limits.
+
+## Features at a glance
+
+Each row names the command or the setting that you use. The [command reference](docs/cli.md) gives every argument and failure.
+
+| Feature | What you get | Run |
+| --- | --- | --- |
+| **Track documents** | | |
+| Folder scopes | Each README covers its folder and below; a link or an import hands a subfolder to its own README. | `memoria status --explain <PATH>` |
+| Opted-in pages | Any Markdown file with an export, import, or section marker becomes a tracked document. | `memoria status` |
+| Map of the project | Documents, handoffs, imports, and their state, as text or JSON. | `memoria graph` |
+| **Review** | | |
+| Review plan | Every pending document, in dependency order, with the next command. | `memoria review` |
+| Change-first review | The verified Git hunks of each change, what to read, and the guidance that applies. | `memoria review <DOCUMENT>` |
+| Focused reviews | Section markers map files or `files` patterns, so a review can suggest where to start. | `memoria status --explain <DOCUMENT>` |
+| Why it is pending | Every cause, with available hunks, for a pending or a current document. | `memoria explain <DOCUMENT>` |
+| Bound acknowledgement | A review is recorded against the exact bytes read; an old artifact cannot approve new changes. | `memoria ack <DOCUMENT> --packet <FILE>` |
+| Offline handoff | One file with every reviewed byte, readable section by section. | `memoria review <DOCUMENT> --full --save <DIR>`, `memoria packet view` |
+| Review requests | Ask for a review after a decision that changed no file, with your reason. | `memoria invalidate doc:<DOCUMENT> --reason "..."` |
+| **Share text** | | |
+| Exports and imports | A provider marks a summary; consumers import it and wait for the provider's review. | `<!-- memoria:export -->`, `<!-- memoria:import -->` |
+| Render | Copies each export into its import blocks. It is the only command that edits a document. | `memoria render` |
+| **Guide reviewers** | | |
+| Project guidance | Writing rules from `memoria.toml` and guidance files, shown with every review. | `memoria guidance <DOCUMENT>` |
+| Section guides | Rules for one kind of section, reaching only the documents that name them. | `section_guidance_files` |
+| Guidance assessment | The reviewed documents whose guidance changed since their review. | `memoria guidance --changed` |
+| **Automate** | | |
+| CI gate | Fails while a review is pending; the generated workflow installs a verified Memoria. | `memoria check`, `memoria integrations github install` |
+| Agent skill and hook | The review procedure for Claude Code and Codex, and a `Stop` hook that reports pending work. | `memoria agent install`, `memoria agent hook install` |
+| Onboarding | What Memoria is, where the project stands, and the next step, in under 1,000 tokens. | `memoria onboard` |
+| Committed state | `memoria.lock` travels with the repository; inspect it or compare two copies. | `memoria state inspect`, `memoria state diff` |
+| JSON and color | Every command speaks `--format json`; human output is colored on a terminal only. | `--format json`, `--color` |
 
 ## The CLI at a glance
 

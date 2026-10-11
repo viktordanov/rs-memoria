@@ -181,8 +181,12 @@ The `lint` command examines documentation structure without writes.
 The `check` command also requires current reviews and current imported text.
 Neither command records an acknowledgement.
 
-The read-only commands include `status`, `guidance`, `state_inspect`, `state_diff`, `explain`, `plan`, `lint`, `check`, and `graph`.
+The read-only commands include `status`, `guidance`, `state_inspect`, `state_diff`, `explain`, `plan`, `lint`, `check`, `graph`, and `onboard`.
 An `init` preview is read-only too; only `init --apply` writes.
+
+`onboard` composes three read-only use cases: the status summary, the local skill status for each target, and the workflow status.
+Each probe is best-effort, because onboarding must answer for a project that is not set up yet.
+A missing `memoria.toml` becomes `Setup::Missing`, any other status error becomes `Setup::Broken` with its first error code, and a skill or workflow probe that fails is left out.
 
 `explain` uses the stable snapshot without a readiness gate, so current and waiting documents also produce evidence.
 Its report also says whether an import is older than its provider's export, so the human next step names `render` before review, in the same order as the plan.

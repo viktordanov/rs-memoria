@@ -2,7 +2,7 @@
 
 This guide takes one pending document to a recorded review, and repeats until `memoria check` passes. Use it when `memoria review` lists work, or when a CI check fails because a document is pending.
 
-**Before you start:** the project needs `memoria.toml` and `memoria.lock`. If they are missing, [prepare the project](#prepare-a-project-for-its-first-review) first. If a term here is new to you, read the [concept guide](concepts.md). The [cookbooks](cookbooks/README.md) show this procedure on complete, tested projects.
+**Before you start:** the project needs `memoria.toml` and `memoria.lock`. If they are missing, [prepare the project](#prepare-a-project-for-its-first-review) first. If a term here is new to you, read the [concept guide](concepts.md), or run `memoria onboard` for a short overview and the state of your project. The [cookbooks](cookbooks/README.md) show this procedure on complete, tested projects.
 
 Three parties share the work, and each one owns a different decision. The owner chooses the documentation goals. The reviewer, a person or an agent, judges whether an explanation is correct. Memoria checks exact inputs, dependencies, and that each acknowledgement matches what was reviewed. Project guidance is review context: it grants no permission and never overrides the task, so if guidance conflicts with the task, get an owner decision.
 

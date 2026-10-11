@@ -86,7 +86,12 @@ A malformed value is a usage error for those commands and never breaks a read-on
 The application function returns structured data and diagnostics.
 The presentation code describes those values without recalculating review decisions.
 
-Source evidence: [cli.rs](presentation/cli.rs) and [main.rs](main.rs).
+`parse` builds the grammar with the branded top-level help: a title, a footer that names `memoria onboard`, and the help colors from `presentation/style.rs`.
+Every human result and every human diagnostic passes through a `Painter` before delivery.
+Stdout and stderr each decide on their own, so a redirected stdout stays plain while diagnostics on a terminal keep color.
+When color is off, a painter returns the text unchanged, and JSON never reaches a painter.
+
+Source evidence: [cli.rs](presentation/cli.rs), [style.rs](presentation/style.rs), and [main.rs](main.rs).
 
 <!-- memoria:section id="review-artifacts" files="main.rs presentation/review.rs" -->
 ## Review artifacts
@@ -165,6 +170,8 @@ The executable also owns usage errors and errors during output delivery.
 | [presentation/review.rs](presentation/review.rs) | Change-first human review view and explanation |
 | [presentation/human.rs](presentation/human.rs) | Human diagnostics and structured evidence |
 | [presentation/json.rs](presentation/json.rs) | JSON envelope |
+| [presentation/style.rs](presentation/style.rs) | Terminal color: one painter per stream, and the help styles |
+| [presentation/onboard.rs](presentation/onboard.rs) | The `memoria onboard` hub and its topics |
 
 An agent skill is a set of instruction files for an agent.
 `main.rs` embeds the five files of `skills/memoria/` at build time as `SKILL_PACKAGE`.
@@ -193,6 +200,7 @@ These other command paths resolve before project discovery:
 3. A global `memoria agent` operation builds narrow agent services.
 4. `memoria completions` generates a shell script.
 5. `memoria state diff` compares two explicit lock snapshots.
+6. `memoria onboard` with a topic prints a static guide, and the hub prints its static view outside Git.
 
 An ordinary command runs no agent client program.
 Only a hook installation measures the version of the client that the target selects.

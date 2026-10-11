@@ -18,6 +18,7 @@ A source starts with a header, then a line with three dashes, then the drawing:
 
   title: One short claim that the diagram makes
   desc: What the diagram shows, for a reader who cannot see it
+  blocks: full     (optional) dither blocks fill the whole cell, so rows touch
   ---
   ┌─ DRAWING ─┐
 
@@ -36,8 +37,10 @@ FONT_SIZE = 15
 PAD = 2  # cells of padding on every side
 PIXEL = 2.0  # one dither pixel, in SVG units
 
-LIGHT = {"bg": "#f4f0e6", "ink": "#24211b", "muted": "#8a8170", "accent": "#c2410c"}
-DARK = {"bg": "#111111", "ink": "#e8e3d4", "muted": "#7f7867", "accent": "#f59e0b"}
+# The Memoria palette, as in the CLI and the website: an amber accent on warm
+# neutrals. The light accent is darker so it keeps contrast on paper.
+LIGHT = {"bg": "#f4f0e6", "ink": "#24211b", "muted": "#8a8170", "accent": "#a86a00"}
+DARK = {"bg": "#0a0a0a", "ink": "#e9e4da", "muted": "#707070", "accent": "#ffc000"}
 
 
 def palette_rules(colors):
@@ -134,7 +137,7 @@ def dither_patterns(soft=False):
     return out
 
 
-def render(title, desc, text):
+def render(title, desc, text, full_blocks=False):
     rows = parse(text)
     soft = any(mode == "soft" for row in rows for _, mode in row)
     cols = max((len(r) for r in rows), default=0)
@@ -161,9 +164,10 @@ def render(title, desc, text):
                 fill = f"url(#d{level}-{mode})" if level < 4 else None
                 cls = f' class="{mode}"' if fill is None else ""
                 fill_attr = f' fill="{fill}"' if fill else ""
+                inset = 0 if full_blocks else 1
                 fills.append(
-                    f'<rect x="{fmt(cx(start))}" y="{fmt(cy(r) + 1)}" '
-                    f'width="{fmt((c - start) * CELL_W)}" height="{fmt(CELL_H - 2)}"{cls}{fill_attr}/>'
+                    f'<rect x="{fmt(cx(start))}" y="{fmt(cy(r) + inset)}" '
+                    f'width="{fmt((c - start) * CELL_W)}" height="{fmt(CELL_H - 2 * inset)}"{cls}{fill_attr}/>'
                 )
                 continue
             c += 1
@@ -231,7 +235,7 @@ def render(title, desc, text):
 
 
 def split_source(path, text):
-    """Return (title, desc, drawing) from a diagram source."""
+    """Return (title, desc, drawing, full_blocks) from a diagram source."""
     header, sep, drawing = text.partition("\n---\n")
     if not sep:
         raise SystemExit(f"{path}: the header must end with a line of three dashes")
@@ -243,7 +247,10 @@ def split_source(path, text):
     for key in ("title", "desc"):
         if not fields.get(key):
             raise SystemExit(f"{path}: the header needs a nonempty {key}")
-    return fields["title"], fields["desc"], drawing
+    blocks = fields.get("blocks", "")
+    if blocks not in ("", "full"):
+        raise SystemExit(f"{path}: blocks must be full when it is given")
+    return fields["title"], fields["desc"], drawing, blocks == "full"
 
 
 def main():

@@ -278,7 +278,7 @@ The project block reports three facts, each with the command that completes it:
 | Row | Values |
 | --- | --- |
 | `Memoria` | `not set up`, the document count with `all current` or the number pending, or `needs attention` with the first error code. |
-| `Agent skill` | `not installed`, or each installed local skill with its state, for example `claude · outdated`. |
+| `Agent skill` | `not installed`, or each installed local skill with its state, for example `claude · outdated`. A skill whose status cannot be read shows `unreadable` with the error code. Every action names its target, because a bare agent command detects one only when exactly one of `.claude` and `.agents` exists. |
 | `CI check` | `not installed`, or the managed workflow path with its state. |
 
 Outside a Git repository, the hub omits the project block. Each topic is a short static guide: `review` gives the five review steps, `agent` the skill and the `Stop` hook, and `ci` the GitHub Actions check. Every view stays under about 1,000 tokens.

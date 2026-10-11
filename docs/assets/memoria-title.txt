@@ -1,12 +1,13 @@
 title: Memoria: never ship stale docs again. An edit to src/auth/login.rs makes src/auth/README.md pending, and memoria review lists it.
 desc: The word MEMORIA in block letters that fade from solid to dithered, over the line: Never ship stale docs again. Below, a box of documents lists README.md and AGENTS.md as current and src/auth/README.md as pending. A box of code lists src/main.rs, src/db/pool.rs, and src/auth/login.rs, which is edited; an arrow joins the edited file to the pending README, and both are highlighted. Under them, memoria review prints a plan with one pending document, src/auth/README.md, and the next command. That command, memoria review src/auth/README.md, shows the change in login.rs: SESSION_MINUTES went from 30 to 15, which the README must now say.
+blocks: full
 ---
 
-             «█   █   ████   █   █    ███    ████    ███    ███ »
-             «▓▓ ▓▓   ▓      ▓▓ ▓▓   ▓   ▓   ▓   ▓    ▓    ▓   ▓»
-             «▓ ▓ ▓   ▓▓▓    ▓ ▓ ▓   ▓   ▓   ▓▓▓▓     ▓    ▓▓▓▓▓»
-             «▒   ▒   ▒      ▒   ▒   ▒   ▒   ▒  ▒     ▒    ▒   ▒»
-             «░   ░   ░░░░   ░   ░    ░░░    ░   ░   ░░░   ░   ░»
+                  «█   █ ████ █   █  ███  ████  ███  ███»
+                  «██ ██ █    ██ ██ █   █ █   █  █  █   █»
+                  «▓ ▓ ▓ ▓▓▓  ▓ ▓ ▓ ▓   ▓ ▓▓▓▓   ▓  ▓▓▓▓▓»
+                  «▓   ▓ ▓    ▓   ▓ ▓   ▓ ▓  ▓   ▓  ▓   ▓»
+                  «▒   ▒ ▒▒▒▒ ▒   ▒  ▒▒▒  ▒   ▒ ▒▒▒ ▒   ▒»
 
                         ⟨Never ship stale docs again.⟩
 

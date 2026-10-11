@@ -25,12 +25,15 @@ pub enum Setup {
     Broken { code: String },
 }
 
-/// One agent skill that is installed in the project.
+/// One agent skill that is installed in the project, or whose probe failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Skill {
     pub target: AgentTarget,
-    /// The installer's state, for example `current` or `outdated`.
+    /// The installer's state, for example `current`, `outdated`, or
+    /// `modified`, or `unreadable` when the status probe itself failed.
     pub state: String,
+    /// The first error code of a failed probe.
+    pub problem: Option<String>,
 }
 
 /// The managed GitHub workflow, when Memoria could read its status.
@@ -47,6 +50,9 @@ pub struct ProjectState {
     pub setup: Setup,
     /// Installed local skills only, Claude first.
     pub skills: Vec<Skill>,
+    /// The agent that `memoria agent install` would detect: the target of
+    /// the one agent directory (`.claude` or `.agents`) when exactly one exists.
+    pub detected_agent: Option<AgentTarget>,
     pub workflow: Option<Workflow>,
 }
 
@@ -79,8 +85,17 @@ impl ProjectState {
                     DetailMap::default()
                         .text("target", skill.target.as_str())
                         .text("state", skill.state.clone())
+                        .with(
+                            "problem",
+                            skill.problem.clone().map_or(Detail::Null, Detail::Text),
+                        )
                         .build()
                 })),
+            )
+            .with(
+                "detected_agent",
+                self.detected_agent
+                    .map_or(Detail::Null, |target| Detail::Text(target.as_str().into())),
             )
             .with(
                 "workflow",
@@ -131,15 +146,33 @@ pub fn run(services: &Services<'_>) -> Result<Outcome<ProjectState>, AppError> {
             dry_run: false,
             replace_existing: false,
         };
-        if let Ok(outcome) = agent::run(services, &request)
-            && outcome.data.plan.state != "absent"
-        {
-            skills.push(Skill {
+        match agent::run(services, &request) {
+            Ok(outcome) if outcome.data.plan.state == "absent" => {}
+            Ok(outcome) => skills.push(Skill {
                 target,
                 state: outcome.data.plan.state.clone(),
-            });
+                problem: None,
+            }),
+            // A failed probe is not an absent skill: report it, so the hub
+            // never recommends an install that would fail the same way.
+            Err(error) => skills.push(Skill {
+                target,
+                state: "unreadable".to_string(),
+                problem: error.diagnostics.first().map(|d| d.code.clone()),
+            }),
         }
     }
+    let is_directory = |path: &str| {
+        matches!(
+            services.files.kind(path),
+            Ok(crate::ports::FileKind::Directory)
+        )
+    };
+    let detected_agent = match (is_directory(".claude"), is_directory(".agents")) {
+        (true, false) => Some(AgentTarget::Claude),
+        (false, true) => Some(AgentTarget::Codex),
+        _ => None,
+    };
     let workflow = github_workflow::run(
         services,
         &github_workflow::WorkflowArgs {
@@ -162,6 +195,7 @@ pub fn run(services: &Services<'_>) -> Result<Outcome<ProjectState>, AppError> {
             root: services.files.root_display(),
             setup,
             skills,
+            detected_agent,
             workflow,
         },
         Vec::new(),

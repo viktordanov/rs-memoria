@@ -113,16 +113,27 @@ fn project_rows(project: &ProjectState) -> String {
         ),
     });
     if project.skills.is_empty() {
-        out.push_str(&row(
-            "Agent skill",
-            "not installed",
-            Some("memoria agent install"),
-        ));
+        // A bare install detects its target only when exactly one agent
+        // directory exists, so the action always names one, or points to
+        // the topic that explains the choice.
+        let action = match project.detected_agent {
+            Some(target) => format!("memoria agent install --target {}", target.as_str()),
+            None => "memoria onboard agent".to_string(),
+        };
+        out.push_str(&row("Agent skill", "not installed", Some(&action)));
     } else {
         for skill in &project.skills {
-            let value = format!("{} · {}", skill.target.as_str(), skill.state);
-            let action = (skill.state == "outdated").then_some("memoria agent upgrade");
-            out.push_str(&row("Agent skill", &value, action));
+            let target = skill.target.as_str();
+            let value = match &skill.problem {
+                Some(code) => format!("{target} · {} ({code})", skill.state),
+                None => format!("{target} · {}", skill.state),
+            };
+            let action = match skill.state.as_str() {
+                "current" => None,
+                "outdated" => Some(format!("memoria agent upgrade --target {target}")),
+                _ => Some(format!("memoria agent status --target {target}")),
+            };
+            out.push_str(&row("Agent skill", &value, action.as_deref()));
         }
     }
     out.push_str(&match &project.workflow {
@@ -276,7 +287,9 @@ mod tests {
             skills: vec![Skill {
                 target: AgentTarget::Claude,
                 state: "outdated".into(),
+                problem: None,
             }],
+            detected_agent: Some(AgentTarget::Claude),
             workflow: Some(Workflow {
                 path: ".github/workflows/memoria.yml".into(),
                 state: "current".into(),
@@ -323,7 +336,7 @@ mod tests {
             "{text}"
         );
         assert!(
-            text.contains("claude · outdated → memoria agent upgrade\n"),
+            text.contains("claude · outdated → memoria agent upgrade --target claude\n"),
             "{text}"
         );
         assert!(text.contains("Start here\n"), "{text}");
@@ -426,5 +439,40 @@ mod tests {
             }
         }
         assert!(checked >= 20, "only {checked} commands found");
+    }
+
+    /// Every skill action names its target: a bare agent command fails with
+    /// `target_ambiguous` unless exactly one agent directory exists.
+    #[test]
+    fn skill_actions_always_name_a_target() {
+        let mut state = project(Setup::Configured {
+            documents: 1,
+            needs_review: 0,
+        });
+        state.skills.clear();
+        let text = hub(Some(&state), None);
+        assert!(
+            text.contains("→ memoria agent install --target claude\n"),
+            "{text}"
+        );
+        state.detected_agent = None;
+        let text = hub(Some(&state), None);
+        assert!(
+            text.contains("not installed     → memoria onboard agent\n"),
+            "{text}"
+        );
+        state.skills = vec![Skill {
+            target: AgentTarget::Codex,
+            state: "unreadable".into(),
+            problem: Some("skill_record_invalid".into()),
+        }];
+        let text = hub(Some(&state), None);
+        assert!(
+            text.contains(
+                "codex · unreadable (skill_record_invalid) → memoria agent status --target codex"
+            ),
+            "{text}"
+        );
+        assert!(!text.contains("not installed"), "{text}");
     }
 }

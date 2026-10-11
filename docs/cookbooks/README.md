@@ -62,7 +62,7 @@ The test does that job: a change in output fails the test until the page shows t
 Memoria diagrams look like a monospace terminal drawing with dithered fills.
 You draw each diagram as text, and [`scripts/ascii-diagram.py`](../../scripts/ascii-diagram.py) renders it as an SVG with the Memoria palette in light and dark mode.
 
-1. Write the source as `<name>.txt` beside the page. Start it with a `title:` line (the one claim the diagram makes) and a `desc:` line (what it shows, for a reader who cannot see it). Then add a line with three dashes, then the drawing.
+1. Write the source as `<name>.txt` beside the page. Start it with a `title:` line (the one claim the diagram makes) and a `desc:` line (what it shows, for a reader who cannot see it). An optional `blocks: full` line draws dither blocks at the full cell height, so stacked rows touch, as in the README title art. Then add a line with three dashes, then the drawing.
 2. Draw on the monospace grid, at most 120 columns wide:
 
    | Characters | Meaning | Rendering |
