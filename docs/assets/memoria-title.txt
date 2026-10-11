@@ -1,22 +1,23 @@
-title: Memoria: people and agents write the documentation, and when the code it describes changes, Memoria says which document to review.
-desc: The word MEMORIA in dithered block letters, with the line: keeps written knowledge connected to the code it explains. Below it, a box of documents that people and agents write: README.md and AGENTS.md are current, and src/auth/README.md is marked review. A second box holds the code: src/main.rs, src/db/pool.rs, and src/auth/login.rs, which is edited. One arrow labelled memoria runs from the edited login.rs to src/auth/README.md. A closing line says that memoria review names the document to read again, shows what changed, and records the review.
+title: Memoria: never ship stale docs again. An edit to src/auth/login.rs makes src/auth/README.md pending, and memoria review lists it.
+desc: The word MEMORIA in block letters that fade from solid to dithered, over the line: Never ship stale docs again. Below, a box of documents lists README.md and AGENTS.md as current and src/auth/README.md as pending. A box of code lists src/main.rs, src/db/pool.rs, and src/auth/login.rs, which is edited, with an arrow from it to src/auth/README.md. Under them, the command memoria review prints a plan with one pending document: src/auth/README.md, because src/auth/login.rs changed.
 ---
 
              «█   █   ████   █   █    ███    ████    ███    ███ »
-             «██ ██   █      ██ ██   █   █   █   █    █    █   █»
-             «█ █ █   ███    █ █ █   █   █   ████     █    █████»
-             «█   █   █      █   █   █   █   █  █     █    █   █»
-             «█   █   ████   █   █    ███    █   █   ███   █   █»
+             «▓▓ ▓▓   ▓      ▓▓ ▓▓   ▓   ▓   ▓   ▓    ▓    ▓   ▓»
+             «▓ ▓ ▓   ▓▓▓    ▓ ▓ ▓   ▓   ▓   ▓▓▓▓     ▓    ▓▓▓▓▓»
+             «▒   ▒   ▒      ▒   ▒   ▒   ▒   ▒  ▒     ▒    ▒   ▒»
+             «░   ░   ░░░░   ░   ░    ░░░    ░   ░   ░░░   ░   ░»
 
-  «░▒▓»  ‹keeps written knowledge connected to the code it explains›  «▓▒░»
+                         Never ship stale docs again.
 
 
-  people and agents write it                the code it describes
   ┌──────────────────────────────┐          ┌──────────────────────────────┐
   │ README.md          current   │          │ src/main.rs                  │
-  │ AGENTS.md          current   │«memoria» │ src/db/pool.rs               │
-  │ src/auth/README.md «review»  │ ◀─────── │ src/auth/login.rs ▓ edited   │
+  │ AGENTS.md          current   │          │ src/db/pool.rs               │
+  │ src/auth/README.md «pending» │ ◀─────── │ src/auth/login.rs   edited   │
   └──────────────────────────────┘          └──────────────────────────────┘
 
-   When a source changes,«memoria review»names the document to read again,
-         shows what changed, and records the review when it is done.
+
+  $ memoria review
+ ‹Review plan: 1 pending document (dependency order)›
+ ‹  1. src/auth/README.md  README · input changed: src/auth/login.rs · ready›

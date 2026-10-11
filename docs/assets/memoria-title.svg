@@ -1,9 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="720" height="414" viewBox="0 0 720 414" role="img" aria-labelledby="title desc">
-<title id="title">Memoria: people and agents write the documentation, and when the code it describes changes, Memoria says which document to review.</title>
-<desc id="desc">The word MEMORIA in dithered block letters, with the line: keeps written knowledge connected to the code it explains. Below it, a box of documents that people and agents write: README.md and AGENTS.md are current, and src/auth/README.md is marked review. A second box holds the code: src/main.rs, src/db/pool.rs, and src/auth/login.rs, which is edited. One arrow labelled memoria runs from the edited login.rs to src/auth/README.md. A closing line says that memoria review names the document to read again, shows what changed, and records the review.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="729" height="432" viewBox="0 0 729 432" role="img" aria-labelledby="title desc">
+<title id="title">Memoria: never ship stale docs again. An edit to src/auth/login.rs makes src/auth/README.md pending, and memoria review lists it.</title>
+<desc id="desc">The word MEMORIA in block letters that fade from solid to dithered, over the line: Never ship stale docs again. Below, a box of documents lists README.md and AGENTS.md as current and src/auth/README.md as pending. A box of code lists src/main.rs, src/db/pool.rs, and src/auth/login.rs, which is edited, with an arrow from it to src/auth/README.md. Under them, the command memoria review prints a plan with one pending document: src/auth/README.md, because src/auth/login.rs changed.</desc>
 <style>.bg{fill:#f4f0e6}.ink{fill:#24211b}.muted{fill:#8a8170}.accent{fill:#c2410c}.line{stroke:#24211b}.line-muted{stroke:#8a8170}.line-accent{stroke:#c2410c}@media (prefers-color-scheme: dark){.bg{fill:#13120f}.ink{fill:#e8e3d4}.muted{fill:#7f7867}.accent{fill:#f59e0b}.line{stroke:#e8e3d4}.line-muted{stroke:#7f7867}.line-accent{stroke:#f59e0b}}.line,.line-muted,.line-accent{stroke-width:1.5;fill:none;stroke-linecap:square}text{font-family:ui-monospace,"SFMono-Regular","JetBrains Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;font-size:15px;white-space:pre}</style>
 <defs><pattern id="d1-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/></pattern><pattern id="d2-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/><rect x="2" y="2" width="2" height="2" class="accent"/></pattern><pattern id="d3-accent" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="accent"/><rect x="2" y="0" width="2" height="2" class="accent"/><rect x="2" y="2" width="2" height="2" class="accent"/></pattern><pattern id="d1-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/></pattern><pattern id="d2-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/><rect x="2" y="2" width="2" height="2" class="muted"/></pattern><pattern id="d3-muted" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="muted"/><rect x="2" y="0" width="2" height="2" class="muted"/><rect x="2" y="2" width="2" height="2" class="muted"/></pattern><pattern id="d1-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/></pattern><pattern id="d2-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/><rect x="2" y="2" width="2" height="2" class="ink"/></pattern><pattern id="d3-ink" width="4" height="4" patternUnits="userSpaceOnUse"><rect x="0" y="0" width="2" height="2" class="ink"/><rect x="2" y="0" width="2" height="2" class="ink"/><rect x="2" y="2" width="2" height="2" class="ink"/></pattern></defs>
-<rect class="bg" width="720" height="414" rx="8"/>
+<rect class="bg" width="729" height="432" rx="8"/>
 <rect x="144" y="55" width="9" height="16" class="accent"/>
 <rect x="180" y="55" width="9" height="16" class="accent"/>
 <rect x="216" y="55" width="36" height="16" class="accent"/>
@@ -13,112 +13,87 @@
 <rect x="423" y="55" width="36" height="16" class="accent"/>
 <rect x="495" y="55" width="27" height="16" class="accent"/>
 <rect x="558" y="55" width="27" height="16" class="accent"/>
-<rect x="144" y="73" width="18" height="16" class="accent"/>
-<rect x="171" y="73" width="18" height="16" class="accent"/>
-<rect x="216" y="73" width="9" height="16" class="accent"/>
-<rect x="279" y="73" width="18" height="16" class="accent"/>
-<rect x="306" y="73" width="18" height="16" class="accent"/>
-<rect x="351" y="73" width="9" height="16" class="accent"/>
-<rect x="387" y="73" width="9" height="16" class="accent"/>
-<rect x="423" y="73" width="9" height="16" class="accent"/>
-<rect x="459" y="73" width="9" height="16" class="accent"/>
-<rect x="504" y="73" width="9" height="16" class="accent"/>
-<rect x="549" y="73" width="9" height="16" class="accent"/>
-<rect x="585" y="73" width="9" height="16" class="accent"/>
-<rect x="144" y="91" width="9" height="16" class="accent"/>
-<rect x="162" y="91" width="9" height="16" class="accent"/>
-<rect x="180" y="91" width="9" height="16" class="accent"/>
-<rect x="216" y="91" width="27" height="16" class="accent"/>
-<rect x="279" y="91" width="9" height="16" class="accent"/>
-<rect x="297" y="91" width="9" height="16" class="accent"/>
-<rect x="315" y="91" width="9" height="16" class="accent"/>
-<rect x="351" y="91" width="9" height="16" class="accent"/>
-<rect x="387" y="91" width="9" height="16" class="accent"/>
-<rect x="423" y="91" width="36" height="16" class="accent"/>
-<rect x="504" y="91" width="9" height="16" class="accent"/>
-<rect x="549" y="91" width="45" height="16" class="accent"/>
-<rect x="144" y="109" width="9" height="16" class="accent"/>
-<rect x="180" y="109" width="9" height="16" class="accent"/>
-<rect x="216" y="109" width="9" height="16" class="accent"/>
-<rect x="279" y="109" width="9" height="16" class="accent"/>
-<rect x="315" y="109" width="9" height="16" class="accent"/>
-<rect x="351" y="109" width="9" height="16" class="accent"/>
-<rect x="387" y="109" width="9" height="16" class="accent"/>
-<rect x="423" y="109" width="9" height="16" class="accent"/>
-<rect x="450" y="109" width="9" height="16" class="accent"/>
-<rect x="504" y="109" width="9" height="16" class="accent"/>
-<rect x="549" y="109" width="9" height="16" class="accent"/>
-<rect x="585" y="109" width="9" height="16" class="accent"/>
-<rect x="144" y="127" width="9" height="16" class="accent"/>
-<rect x="180" y="127" width="9" height="16" class="accent"/>
-<rect x="216" y="127" width="36" height="16" class="accent"/>
-<rect x="279" y="127" width="9" height="16" class="accent"/>
-<rect x="315" y="127" width="9" height="16" class="accent"/>
-<rect x="360" y="127" width="27" height="16" class="accent"/>
-<rect x="423" y="127" width="9" height="16" class="accent"/>
-<rect x="459" y="127" width="9" height="16" class="accent"/>
-<rect x="495" y="127" width="27" height="16" class="accent"/>
-<rect x="549" y="127" width="9" height="16" class="accent"/>
-<rect x="585" y="127" width="9" height="16" class="accent"/>
-<rect x="45" y="163" width="9" height="16" fill="url(#d1-accent)"/>
-<rect x="54" y="163" width="9" height="16" fill="url(#d2-accent)"/>
-<rect x="63" y="163" width="9" height="16" fill="url(#d3-accent)"/>
-<rect x="657" y="163" width="9" height="16" fill="url(#d3-accent)"/>
-<rect x="666" y="163" width="9" height="16" fill="url(#d2-accent)"/>
-<rect x="675" y="163" width="9" height="16" fill="url(#d1-accent)"/>
-<rect x="594" y="289" width="9" height="16" fill="url(#d3-ink)"/>
-<path class="line" d="M40.5 243L45 243M40.5 243L40.5 252M49.5 243L54 243M49.5 243L45 243M58.5 243L63 243M58.5 243L54 243M67.5 243L72 243M67.5 243L63 243M76.5 243L81 243M76.5 243L72 243M85.5 243L90 243M85.5 243L81 243M94.5 243L99 243M94.5 243L90 243M103.5 243L108 243M103.5 243L99 243M112.5 243L117 243M112.5 243L108 243M121.5 243L126 243M121.5 243L117 243M130.5 243L135 243M130.5 243L126 243M139.5 243L144 243M139.5 243L135 243M148.5 243L153 243M148.5 243L144 243M157.5 243L162 243M157.5 243L153 243M166.5 243L171 243M166.5 243L162 243M175.5 243L180 243M175.5 243L171 243M184.5 243L189 243M184.5 243L180 243M193.5 243L198 243M193.5 243L189 243M202.5 243L207 243M202.5 243L198 243M211.5 243L216 243M211.5 243L207 243M220.5 243L225 243M220.5 243L216 243M229.5 243L234 243M229.5 243L225 243M238.5 243L243 243M238.5 243L234 243M247.5 243L252 243M247.5 243L243 243M256.5 243L261 243M256.5 243L252 243M265.5 243L270 243M265.5 243L261 243M274.5 243L279 243M274.5 243L270 243M283.5 243L288 243M283.5 243L279 243M292.5 243L297 243M292.5 243L288 243M301.5 243L306 243M301.5 243L297 243M310.5 243L315 243M310.5 243L306 243M319.5 243L315 243M319.5 243L319.5 252M418.5 243L423 243M418.5 243L418.5 252M427.5 243L432 243M427.5 243L423 243M436.5 243L441 243M436.5 243L432 243M445.5 243L450 243M445.5 243L441 243M454.5 243L459 243M454.5 243L450 243M463.5 243L468 243M463.5 243L459 243M472.5 243L477 243M472.5 243L468 243M481.5 243L486 243M481.5 243L477 243M490.5 243L495 243M490.5 243L486 243M499.5 243L504 243M499.5 243L495 243M508.5 243L513 243M508.5 243L504 243M517.5 243L522 243M517.5 243L513 243M526.5 243L531 243M526.5 243L522 243M535.5 243L540 243M535.5 243L531 243M544.5 243L549 243M544.5 243L540 243M553.5 243L558 243M553.5 243L549 243M562.5 243L567 243M562.5 243L558 243M571.5 243L576 243M571.5 243L567 243M580.5 243L585 243M580.5 243L576 243M589.5 243L594 243M589.5 243L585 243M598.5 243L603 243M598.5 243L594 243M607.5 243L612 243M607.5 243L603 243M616.5 243L621 243M616.5 243L612 243M625.5 243L630 243M625.5 243L621 243M634.5 243L639 243M634.5 243L630 243M643.5 243L648 243M643.5 243L639 243M652.5 243L657 243M652.5 243L648 243M661.5 243L666 243M661.5 243L657 243M670.5 243L675 243M670.5 243L666 243M679.5 243L684 243M679.5 243L675 243M688.5 243L693 243M688.5 243L684 243M697.5 243L693 243M697.5 243L697.5 252M40.5 261L40.5 252M40.5 261L40.5 270M319.5 261L319.5 252M319.5 261L319.5 270M418.5 261L418.5 252M418.5 261L418.5 270M697.5 261L697.5 252M697.5 261L697.5 270M40.5 279L40.5 270M40.5 279L40.5 288M319.5 279L319.5 270M319.5 279L319.5 288M418.5 279L418.5 270M418.5 279L418.5 288M697.5 279L697.5 270M697.5 279L697.5 288M40.5 297L40.5 288M40.5 297L40.5 306M319.5 297L319.5 288M319.5 297L319.5 306M346.5 297L351 297M346.5 297L342 297M355.5 297L360 297M355.5 297L351 297M364.5 297L369 297M364.5 297L360 297M373.5 297L378 297M373.5 297L369 297M382.5 297L387 297M382.5 297L378 297M391.5 297L396 297M391.5 297L387 297M400.5 297L405 297M400.5 297L396 297M418.5 297L418.5 288M418.5 297L418.5 306M697.5 297L697.5 288M697.5 297L697.5 306M40.5 315L40.5 306M40.5 315L45 315M49.5 315L54 315M49.5 315L45 315M58.5 315L63 315M58.5 315L54 315M67.5 315L72 315M67.5 315L63 315M76.5 315L81 315M76.5 315L72 315M85.5 315L90 315M85.5 315L81 315M94.5 315L99 315M94.5 315L90 315M103.5 315L108 315M103.5 315L99 315M112.5 315L117 315M112.5 315L108 315M121.5 315L126 315M121.5 315L117 315M130.5 315L135 315M130.5 315L126 315M139.5 315L144 315M139.5 315L135 315M148.5 315L153 315M148.5 315L144 315M157.5 315L162 315M157.5 315L153 315M166.5 315L171 315M166.5 315L162 315M175.5 315L180 315M175.5 315L171 315M184.5 315L189 315M184.5 315L180 315M193.5 315L198 315M193.5 315L189 315M202.5 315L207 315M202.5 315L198 315M211.5 315L216 315M211.5 315L207 315M220.5 315L225 315M220.5 315L216 315M229.5 315L234 315M229.5 315L225 315M238.5 315L243 315M238.5 315L234 315M247.5 315L252 315M247.5 315L243 315M256.5 315L261 315M256.5 315L252 315M265.5 315L270 315M265.5 315L261 315M274.5 315L279 315M274.5 315L270 315M283.5 315L288 315M283.5 315L279 315M292.5 315L297 315M292.5 315L288 315M301.5 315L306 315M301.5 315L297 315M310.5 315L315 315M310.5 315L306 315M319.5 315L319.5 306M319.5 315L315 315M418.5 315L418.5 306M418.5 315L423 315M427.5 315L432 315M427.5 315L423 315M436.5 315L441 315M436.5 315L432 315M445.5 315L450 315M445.5 315L441 315M454.5 315L459 315M454.5 315L450 315M463.5 315L468 315M463.5 315L459 315M472.5 315L477 315M472.5 315L468 315M481.5 315L486 315M481.5 315L477 315M490.5 315L495 315M490.5 315L486 315M499.5 315L504 315M499.5 315L495 315M508.5 315L513 315M508.5 315L504 315M517.5 315L522 315M517.5 315L513 315M526.5 315L531 315M526.5 315L522 315M535.5 315L540 315M535.5 315L531 315M544.5 315L549 315M544.5 315L540 315M553.5 315L558 315M553.5 315L549 315M562.5 315L567 315M562.5 315L558 315M571.5 315L576 315M571.5 315L567 315M580.5 315L585 315M580.5 315L576 315M589.5 315L594 315M589.5 315L585 315M598.5 315L603 315M598.5 315L594 315M607.5 315L612 315M607.5 315L603 315M616.5 315L621 315M616.5 315L612 315M625.5 315L630 315M625.5 315L621 315M634.5 315L639 315M634.5 315L630 315M643.5 315L648 315M643.5 315L639 315M652.5 315L657 315M652.5 315L648 315M661.5 315L666 315M661.5 315L657 315M670.5 315L675 315M670.5 315L666 315M679.5 315L684 315M679.5 315L675 315M688.5 315L693 315M688.5 315L684 315M697.5 315L697.5 306M697.5 315L693 315"/>
-<polygon points="333,297 342,292.5 342,301.5" class="accent"/>
-<text class="muted" x="108 117 126 135 144" y="174.96">keeps</text>
-<text class="muted" x="162 171 180 189 198 207 216" y="174.96">written</text>
-<text class="muted" x="234 243 252 261 270 279 288 297 306" y="174.96">knowledge</text>
-<text class="muted" x="324 333 342 351 360 369 378 387 396" y="174.96">connected</text>
-<text class="muted" x="414 423" y="174.96">to</text>
-<text class="muted" x="441 450 459" y="174.96">the</text>
-<text class="muted" x="477 486 495 504" y="174.96">code</text>
-<text class="muted" x="522 531" y="174.96">it</text>
-<text class="muted" x="549 558 567 576 585 594 603 612" y="174.96">explains</text>
-<text class="ink" x="36 45 54 63 72 81" y="228.96">people</text>
-<text class="ink" x="99 108 117" y="228.96">and</text>
-<text class="ink" x="135 144 153 162 171 180" y="228.96">agents</text>
-<text class="ink" x="198 207 216 225 234" y="228.96">write</text>
-<text class="ink" x="252 261" y="228.96">it</text>
-<text class="ink" x="414 423 432" y="228.96">the</text>
-<text class="ink" x="450 459 468 477" y="228.96">code</text>
-<text class="ink" x="495 504" y="228.96">it</text>
-<text class="ink" x="522 531 540 549 558 567 576 585 594" y="228.96">describes</text>
-<text class="ink" x="54 63 72 81 90 99 108 117 126" y="264.96">README.md</text>
+<rect x="144" y="73" width="18" height="16" fill="url(#d3-accent)"/>
+<rect x="171" y="73" width="18" height="16" fill="url(#d3-accent)"/>
+<rect x="216" y="73" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="279" y="73" width="18" height="16" fill="url(#d3-accent)"/>
+<rect x="306" y="73" width="18" height="16" fill="url(#d3-accent)"/>
+<rect x="351" y="73" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="387" y="73" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="423" y="73" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="459" y="73" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="504" y="73" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="549" y="73" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="585" y="73" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="144" y="91" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="162" y="91" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="180" y="91" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="216" y="91" width="27" height="16" fill="url(#d3-accent)"/>
+<rect x="279" y="91" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="297" y="91" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="315" y="91" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="351" y="91" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="387" y="91" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="423" y="91" width="36" height="16" fill="url(#d3-accent)"/>
+<rect x="504" y="91" width="9" height="16" fill="url(#d3-accent)"/>
+<rect x="549" y="91" width="45" height="16" fill="url(#d3-accent)"/>
+<rect x="144" y="109" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="180" y="109" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="216" y="109" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="279" y="109" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="315" y="109" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="351" y="109" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="387" y="109" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="423" y="109" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="450" y="109" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="504" y="109" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="549" y="109" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="585" y="109" width="9" height="16" fill="url(#d2-accent)"/>
+<rect x="144" y="127" width="9" height="16" fill="url(#d1-accent)"/>
+<rect x="180" y="127" width="9" height="16" fill="url(#d1-accent)"/>
+<rect x="216" y="127" width="36" height="16" fill="url(#d1-accent)"/>
+<rect x="279" y="127" width="9" height="16" fill="url(#d1-accent)"/>
+<rect x="315" y="127" width="9" height="16" fill="url(#d1-accent)"/>
+<rect x="360" y="127" width="27" height="16" fill="url(#d1-accent)"/>
+<rect x="423" y="127" width="9" height="16" fill="url(#d1-accent)"/>
+<rect x="459" y="127" width="9" height="16" fill="url(#d1-accent)"/>
+<rect x="495" y="127" width="27" height="16" fill="url(#d1-accent)"/>
+<rect x="549" y="127" width="9" height="16" fill="url(#d1-accent)"/>
+<rect x="585" y="127" width="9" height="16" fill="url(#d1-accent)"/>
+<path class="line" d="M40.5 225L45 225M40.5 225L40.5 234M49.5 225L54 225M49.5 225L45 225M58.5 225L63 225M58.5 225L54 225M67.5 225L72 225M67.5 225L63 225M76.5 225L81 225M76.5 225L72 225M85.5 225L90 225M85.5 225L81 225M94.5 225L99 225M94.5 225L90 225M103.5 225L108 225M103.5 225L99 225M112.5 225L117 225M112.5 225L108 225M121.5 225L126 225M121.5 225L117 225M130.5 225L135 225M130.5 225L126 225M139.5 225L144 225M139.5 225L135 225M148.5 225L153 225M148.5 225L144 225M157.5 225L162 225M157.5 225L153 225M166.5 225L171 225M166.5 225L162 225M175.5 225L180 225M175.5 225L171 225M184.5 225L189 225M184.5 225L180 225M193.5 225L198 225M193.5 225L189 225M202.5 225L207 225M202.5 225L198 225M211.5 225L216 225M211.5 225L207 225M220.5 225L225 225M220.5 225L216 225M229.5 225L234 225M229.5 225L225 225M238.5 225L243 225M238.5 225L234 225M247.5 225L252 225M247.5 225L243 225M256.5 225L261 225M256.5 225L252 225M265.5 225L270 225M265.5 225L261 225M274.5 225L279 225M274.5 225L270 225M283.5 225L288 225M283.5 225L279 225M292.5 225L297 225M292.5 225L288 225M301.5 225L306 225M301.5 225L297 225M310.5 225L315 225M310.5 225L306 225M319.5 225L315 225M319.5 225L319.5 234M418.5 225L423 225M418.5 225L418.5 234M427.5 225L432 225M427.5 225L423 225M436.5 225L441 225M436.5 225L432 225M445.5 225L450 225M445.5 225L441 225M454.5 225L459 225M454.5 225L450 225M463.5 225L468 225M463.5 225L459 225M472.5 225L477 225M472.5 225L468 225M481.5 225L486 225M481.5 225L477 225M490.5 225L495 225M490.5 225L486 225M499.5 225L504 225M499.5 225L495 225M508.5 225L513 225M508.5 225L504 225M517.5 225L522 225M517.5 225L513 225M526.5 225L531 225M526.5 225L522 225M535.5 225L540 225M535.5 225L531 225M544.5 225L549 225M544.5 225L540 225M553.5 225L558 225M553.5 225L549 225M562.5 225L567 225M562.5 225L558 225M571.5 225L576 225M571.5 225L567 225M580.5 225L585 225M580.5 225L576 225M589.5 225L594 225M589.5 225L585 225M598.5 225L603 225M598.5 225L594 225M607.5 225L612 225M607.5 225L603 225M616.5 225L621 225M616.5 225L612 225M625.5 225L630 225M625.5 225L621 225M634.5 225L639 225M634.5 225L630 225M643.5 225L648 225M643.5 225L639 225M652.5 225L657 225M652.5 225L648 225M661.5 225L666 225M661.5 225L657 225M670.5 225L675 225M670.5 225L666 225M679.5 225L684 225M679.5 225L675 225M688.5 225L693 225M688.5 225L684 225M697.5 225L693 225M697.5 225L697.5 234M40.5 243L40.5 234M40.5 243L40.5 252M319.5 243L319.5 234M319.5 243L319.5 252M418.5 243L418.5 234M418.5 243L418.5 252M697.5 243L697.5 234M697.5 243L697.5 252M40.5 261L40.5 252M40.5 261L40.5 270M319.5 261L319.5 252M319.5 261L319.5 270M418.5 261L418.5 252M418.5 261L418.5 270M697.5 261L697.5 252M697.5 261L697.5 270M40.5 279L40.5 270M40.5 279L40.5 288M319.5 279L319.5 270M319.5 279L319.5 288M346.5 279L351 279M346.5 279L342 279M355.5 279L360 279M355.5 279L351 279M364.5 279L369 279M364.5 279L360 279M373.5 279L378 279M373.5 279L369 279M382.5 279L387 279M382.5 279L378 279M391.5 279L396 279M391.5 279L387 279M400.5 279L405 279M400.5 279L396 279M418.5 279L418.5 270M418.5 279L418.5 288M697.5 279L697.5 270M697.5 279L697.5 288M40.5 297L40.5 288M40.5 297L45 297M49.5 297L54 297M49.5 297L45 297M58.5 297L63 297M58.5 297L54 297M67.5 297L72 297M67.5 297L63 297M76.5 297L81 297M76.5 297L72 297M85.5 297L90 297M85.5 297L81 297M94.5 297L99 297M94.5 297L90 297M103.5 297L108 297M103.5 297L99 297M112.5 297L117 297M112.5 297L108 297M121.5 297L126 297M121.5 297L117 297M130.5 297L135 297M130.5 297L126 297M139.5 297L144 297M139.5 297L135 297M148.5 297L153 297M148.5 297L144 297M157.5 297L162 297M157.5 297L153 297M166.5 297L171 297M166.5 297L162 297M175.5 297L180 297M175.5 297L171 297M184.5 297L189 297M184.5 297L180 297M193.5 297L198 297M193.5 297L189 297M202.5 297L207 297M202.5 297L198 297M211.5 297L216 297M211.5 297L207 297M220.5 297L225 297M220.5 297L216 297M229.5 297L234 297M229.5 297L225 297M238.5 297L243 297M238.5 297L234 297M247.5 297L252 297M247.5 297L243 297M256.5 297L261 297M256.5 297L252 297M265.5 297L270 297M265.5 297L261 297M274.5 297L279 297M274.5 297L270 297M283.5 297L288 297M283.5 297L279 297M292.5 297L297 297M292.5 297L288 297M301.5 297L306 297M301.5 297L297 297M310.5 297L315 297M310.5 297L306 297M319.5 297L319.5 288M319.5 297L315 297M418.5 297L418.5 288M418.5 297L423 297M427.5 297L432 297M427.5 297L423 297M436.5 297L441 297M436.5 297L432 297M445.5 297L450 297M445.5 297L441 297M454.5 297L459 297M454.5 297L450 297M463.5 297L468 297M463.5 297L459 297M472.5 297L477 297M472.5 297L468 297M481.5 297L486 297M481.5 297L477 297M490.5 297L495 297M490.5 297L486 297M499.5 297L504 297M499.5 297L495 297M508.5 297L513 297M508.5 297L504 297M517.5 297L522 297M517.5 297L513 297M526.5 297L531 297M526.5 297L522 297M535.5 297L540 297M535.5 297L531 297M544.5 297L549 297M544.5 297L540 297M553.5 297L558 297M553.5 297L549 297M562.5 297L567 297M562.5 297L558 297M571.5 297L576 297M571.5 297L567 297M580.5 297L585 297M580.5 297L576 297M589.5 297L594 297M589.5 297L585 297M598.5 297L603 297M598.5 297L594 297M607.5 297L612 297M607.5 297L603 297M616.5 297L621 297M616.5 297L612 297M625.5 297L630 297M625.5 297L621 297M634.5 297L639 297M634.5 297L630 297M643.5 297L648 297M643.5 297L639 297M652.5 297L657 297M652.5 297L648 297M661.5 297L666 297M661.5 297L657 297M670.5 297L675 297M670.5 297L666 297M679.5 297L684 297M679.5 297L675 297M688.5 297L693 297M688.5 297L684 297M697.5 297L697.5 288M697.5 297L693 297"/>
+<polygon points="333,279 342,274.5 342,283.5" class="accent"/>
+<text class="ink" x="243 252 261 270 279" y="174.96">Never</text>
+<text class="ink" x="297 306 315 324" y="174.96">ship</text>
+<text class="ink" x="342 351 360 369 378" y="174.96">stale</text>
+<text class="ink" x="396 405 414 423" y="174.96">docs</text>
+<text class="ink" x="441 450 459 468 477 486" y="174.96">again.</text>
+<text class="ink" x="54 63 72 81 90 99 108 117 126" y="246.96">README.md</text>
+<text class="ink" x="225 234 243 252 261 270 279" y="246.96">current</text>
+<text class="ink" x="432 441 450 459 468 477 486 495 504 513 522" y="246.96">src/main.rs</text>
+<text class="ink" x="54 63 72 81 90 99 108 117 126" y="264.96">AGENTS.md</text>
 <text class="ink" x="225 234 243 252 261 270 279" y="264.96">current</text>
-<text class="ink" x="432 441 450 459 468 477 486 495 504 513 522" y="264.96">src/main.rs</text>
-<text class="ink" x="54 63 72 81 90 99 108 117 126" y="282.96">AGENTS.md</text>
-<text class="ink" x="225 234 243 252 261 270 279" y="282.96">current</text>
-<text class="accent" x="333 342 351 360 369 378 387" y="282.96">memoria</text>
-<text class="ink" x="432 441 450 459 468 477 486 495 504 513 522 531 540 549" y="282.96">src/db/pool.rs</text>
-<text class="ink" x="54 63 72 81 90 99 108 117 126 135 144 153 162 171 180 189 198 207" y="300.96">src/auth/README.md</text>
-<text class="accent" x="234 243 252 261 270 279" y="300.96">review</text>
-<text class="ink" x="432 441 450 459 468 477 486 495 504 513 522 531 540 549 558 567 576" y="300.96">src/auth/login.rs</text>
-<text class="ink" x="612 621 630 639 648 657" y="300.96">edited</text>
-<text class="ink" x="45 54 63 72" y="354.96">When</text>
-<text class="ink" x="90" y="354.96">a</text>
-<text class="ink" x="108 117 126 135 144 153" y="354.96">source</text>
-<text class="ink" x="171 180 189 198 207 216 225 234" y="354.96">changes,</text>
-<text class="accent" x="252 261 270 279 288 297 306" y="354.96">memoria</text>
-<text class="accent" x="324 333 342 351 360 369" y="354.96">review</text>
-<text class="ink" x="387 396 405 414 423" y="354.96">names</text>
-<text class="ink" x="441 450 459" y="354.96">the</text>
-<text class="ink" x="477 486 495 504 513 522 531 540" y="354.96">document</text>
-<text class="ink" x="558 567" y="354.96">to</text>
-<text class="ink" x="585 594 603 612" y="354.96">read</text>
-<text class="ink" x="630 639 648 657 666 675" y="354.96">again,</text>
-<text class="ink" x="99 108 117 126 135" y="372.96">shows</text>
-<text class="ink" x="153 162 171 180" y="372.96">what</text>
-<text class="ink" x="198 207 216 225 234 243 252 261" y="372.96">changed,</text>
-<text class="ink" x="279 288 297" y="372.96">and</text>
-<text class="ink" x="315 324 333 342 351 360 369" y="372.96">records</text>
-<text class="ink" x="387 396 405" y="372.96">the</text>
-<text class="ink" x="423 432 441 450 459 468" y="372.96">review</text>
-<text class="ink" x="486 495 504 513" y="372.96">when</text>
-<text class="ink" x="531 540" y="372.96">it</text>
-<text class="ink" x="558 567" y="372.96">is</text>
-<text class="ink" x="585 594 603 612 621" y="372.96">done.</text>
+<text class="ink" x="432 441 450 459 468 477 486 495 504 513 522 531 540 549" y="264.96">src/db/pool.rs</text>
+<text class="ink" x="54 63 72 81 90 99 108 117 126 135 144 153 162 171 180 189 198 207" y="282.96">src/auth/README.md</text>
+<text class="accent" x="234 243 252 261 270 279 288" y="282.96">pending</text>
+<text class="ink" x="432 441 450 459 468 477 486 495 504 513 522 531 540 549 558 567 576" y="282.96">src/auth/login.rs</text>
+<text class="ink" x="612 621 630 639 648 657" y="282.96">edited</text>
+<text class="ink" x="36" y="354.96">$</text>
+<text class="ink" x="54 63 72 81 90 99 108" y="354.96">memoria</text>
+<text class="ink" x="126 135 144 153 162 171" y="354.96">review</text>
+<text class="muted" x="36 45 54 63 72 81" y="372.96">Review</text>
+<text class="muted" x="99 108 117 126 135" y="372.96">plan:</text>
+<text class="muted" x="153" y="372.96">1</text>
+<text class="muted" x="171 180 189 198 207 216 225" y="372.96">pending</text>
+<text class="muted" x="243 252 261 270 279 288 297 306" y="372.96">document</text>
+<text class="muted" x="324 333 342 351 360 369 378 387 396 405 414" y="372.96">(dependency</text>
+<text class="muted" x="432 441 450 459 468 477" y="372.96">order)</text>
+<text class="muted" x="54 63" y="390.96">1.</text>
+<text class="muted" x="81 90 99 108 117 126 135 144 153 162 171 180 189 198 207 216 225 234" y="390.96">src/auth/README.md</text>
+<text class="muted" x="261 270 279 288 297 306" y="390.96">README</text>
+<text class="muted" x="324" y="390.96">·</text>
+<text class="muted" x="342 351 360 369 378" y="390.96">input</text>
+<text class="muted" x="396 405 414 423 432 441 450 459" y="390.96">changed:</text>
+<text class="muted" x="477 486 495 504 513 522 531 540 549 558 567 576 585 594 603 612 621" y="390.96">src/auth/login.rs</text>
+<text class="muted" x="639" y="390.96">·</text>
+<text class="muted" x="657 666 675 684 693" y="390.96">ready</text>
 </svg>
