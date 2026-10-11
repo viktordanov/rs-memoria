@@ -104,7 +104,7 @@ Each row names the command or the setting that you use. The [command reference](
 | Feature | What you get | Run |
 | --- | --- | --- |
 | **Track documents** | | |
-| Folder scopes | Each README covers its folder and below; a link or an import hands a subfolder to its own README. | `memoria status --explain <PATH>` |
+| Folder scopes | Each document covers its folder and below, until a link or an import hands a subfolder to a tracked document there. | `memoria status --explain <PATH>` |
 | Opted-in pages | Any Markdown file with an export, import, or section marker becomes a tracked document. | `memoria status` |
 | Map of the project | Documents, handoffs, imports, and their state, as text or JSON. | `memoria graph` |
 | **Review** | | |
@@ -119,7 +119,7 @@ Each row names the command or the setting that you use. The [command reference](
 | Exports and imports | A provider marks a summary; consumers import it and wait for the provider's review. | `<!-- memoria:export -->`, `<!-- memoria:import -->` |
 | Render | Copies each export into its import blocks. It is the only command that edits a document. | `memoria render` |
 | **Guide reviewers** | | |
-| Project guidance | Writing rules from `memoria.toml` and guidance files, shown with every review. | `memoria guidance <DOCUMENT>` |
+| Project guidance | Writing rules from `memoria.toml` and guidance files. Every review names them, and one command prints them. | `memoria guidance <DOCUMENT>` |
 | Section guides | Rules for one kind of section, reaching only the documents that name them. | `section_guidance_files` |
 | Guidance assessment | The reviewed documents whose guidance changed since their review. | `memoria guidance --changed` |
 | **Automate** | | |

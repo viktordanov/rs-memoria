@@ -186,7 +186,9 @@ An `init` preview is read-only too; only `init --apply` writes.
 
 `onboard` composes three read-only use cases: the status summary, the local skill status for each target, and the workflow status.
 Each probe is best-effort, because onboarding must answer for a project that is not set up yet.
-A missing `memoria.toml` becomes `Setup::Missing`, any other status error becomes `Setup::Broken` with its first error code, and a skill or workflow probe that fails is left out.
+A missing `memoria.toml` becomes `Setup::Missing`, and any other status error becomes `Setup::Broken` with its first error code.
+A skill probe that fails is reported as `unreadable` with its code, never as an absent skill, and a workflow probe that fails is left out.
+`detected_agent` names the target of the one agent directory, `.claude` or `.agents`, when exactly one exists.
 
 `explain` uses the stable snapshot without a readiness gate, so current and waiting documents also produce evidence.
 Its report also says whether an import is older than its provider's export, so the human next step names `render` before review, in the same order as the plan.

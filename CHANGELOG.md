@@ -33,6 +33,8 @@ No state, configuration, token, or saved-artifact format changes from 0.9.1. Rep
 - the next step: `memoria init`, `memoria review`, or nothing to do;
 - a link to the concepts guide for this release.
 
+Every agent skill action names its target, such as `memoria agent upgrade --target claude`, because a bare agent command fails unless exactly one of `.claude` and `.agents` exists. A skill whose status cannot be read shows as `unreadable` with its error code, never as not installed.
+
 `memoria onboard review`, `memoria onboard agent`, and `memoria onboard ci` explain the review steps, the skill and the `Stop` hook, and the GitHub Actions check. Every view stays under about 1,000 tokens, and every command that a view prints is tested against the real grammar. JSON output carries the project state and the exact text.
 
 ### Color on a terminal
@@ -43,6 +45,12 @@ Human output is now colored when it goes to a terminal. Memoria commands use an 
 - `NO_COLOR` (non-empty) or `TERM=dumb` turns color off. The new global option `--color auto|always|never` overrides both. JSON is never colored.
 - `MEMORIA_THEME=light` or `dark` selects the palette. Without it, a light `COLORFGBG` background selects the light palette. `COLORTERM=truecolor` or `24bit` selects 24-bit colors; other terminals get the nearest of 256 colors.
 - A script that reads human output through a pseudo-terminal now sees escape sequences. Add `--color never`, set `NO_COLOR=1`, or read `--format json`.
+
+### Documentation
+
+- The root README has a new [Features at a glance](README.md#features-at-a-glance) table: every feature with the command or setting that uses it, including render, exports and imports, guidance, committed state, and onboarding.
+- Every diagram uses the new palette: the amber accent, warm-white ink, and a near-black dark background. The README title art has a compact wordmark whose rows touch.
+- `scripts/ascii-diagram.py` accepts an optional `blocks: full` header line that draws dither blocks at the full cell height.
 
 ### Development
 
