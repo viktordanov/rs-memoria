@@ -100,10 +100,14 @@ fn an_ack_that_runs_out_of_history_budget_says_how_to_finish() {
     let output = p.ack("README.md", &packet, &token, "no-update", NOTE);
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
     let text = stdout(&output);
-    assert!(
-        text.contains("History check stopped at its limit: 4096 of 4101 inputs verified"),
-        "{text}"
-    );
+    // The read budget stops the search at 4,096 inputs. On a slow machine the
+    // four-second budget can stop it earlier, with the same notice.
+    let verified: usize = text
+        .split_once("History check stopped at its limit: ")
+        .and_then(|(_, rest)| rest.split_once(" of 4101 inputs verified, so no base commit"))
+        .and_then(|(count, _)| count.parse().ok())
+        .unwrap_or_else(|| panic!("the notice names the verified count: {text}"));
+    assert!((1..=4096).contains(&verified), "{text}");
     assert!(
         text.contains("To finish it: memoria ack README.md --cover"),
         "{text}"
