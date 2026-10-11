@@ -33,6 +33,8 @@ It resolves the metadata directory with `--absolute-git-dir` and composes privat
 A linked worktree therefore gets its own metadata directory, and a symlinked one keeps its real location.
 Its commands disable filesystem monitors, external diff programs, pagers, and lazy object retrieval.
 A missing historical blob produces unavailable diff context without a remote fetch.
+When `info/attributes` declares a filter, `--attr-source` cannot switch it off, so `GitCli` compares raw worktree bytes with their index blobs instead of asking `git status`.
+It reads those blobs through one `git cat-file --batch` process, with the same attribute source and replacement behavior as a separate `git cat-file blob` for each object.
 
 `GixRepositoryIgnore` answers a different question.
 It decides which directories the repository's own `.gitignore` rules exclude.
@@ -46,17 +48,39 @@ The opener refuses a symlink, a special file, and a substituted parent directory
 The application uses these facts to enforce selection and repository boundaries.
 The adapters do not determine which document needs review.
 
-Source evidence: [git.rs:16](src/git.rs#L16), [repository_ignore.rs](src/repository_ignore.rs#L31), and [fs.rs:110](src/fs.rs#L110).
+Source evidence: [git.rs:17](src/git.rs#L17), [repository_ignore.rs](src/repository_ignore.rs#L31), and [fs.rs:110](src/fs.rs#L110).
 
 ## Bounded local history
 
-`GitCli::historical_blob` and `recent_commits` use the subprocess supervisor with a shared deadline and bounded output.
-The application supplies candidate and byte budgets.
+`GitCli::historical_blob` reads through one `git cat-file --batch` process that every historical search of a command shares.
+The reader holds a process, never object bytes, so each read still counts against the budgets that the application supplies.
+A response header that names a size above the remaining byte budget ends the read before any content arrives.
+`recent_commits` runs under the subprocess supervisor with the same deadline and bounded output.
 These commands disable object replacement and lazy fetching.
 They make no remote request and write no historical snapshots.
 Missing objects produce unavailable evidence.
 Exhausted limits remain explicit.
 The application compares the returned bytes with the acknowledged fingerprints before use.
+
+One process answers many requests, so the reader must never take part of one response for the next.
+It frames each response by its header and its stated size.
+It discards the process after a deadline, a refused size, a response outside the protocol, or an early exit, because unread bytes can still wait in the pipe.
+After a protocol failure or an early exit, the remaining reads use one process for each object, with the same result.
+An object that is not a blob, such as a tag that a replacement put in place, also gets a per-object read, because `git cat-file blob` peels a tag to its blob and the batch reports the tag itself.
+Stdout passes through a small bounded queue, and only a capped amount of stderr is kept.
+A request is a full object ID or `<commit>:<path>`, one per line, because every supported Git version accepts that form.
+Memoria paths never hold a line break, and a name with one still gets its own process.
+Each reader keeps the process model of the per-object read it replaces, because each model has its own cleanup guarantee:
+
+| Reader | Replaces | Process group | When the reader ends |
+| --- | --- | --- | --- |
+| Historical reads | A supervised `cat-file blob` in its own session | Its own | Git gets up to 50 milliseconds to exit after its last response, then the whole group ends, so no descendant outlives a deadline or the command |
+| Raw comparison | `Command::output` in the caller's group | The caller's | The reader reads its remaining output to the end, waits for stderr to close and for Git to exit, and kills nothing. The native hook's deadline ends the status child's group, and this reader with it |
+| Raw comparison under a supervisor | A supervised call | Its own, adopted by the supervisor | The supervisor's cancellation ends the group |
+
+A reader whose stream broke, on a deadline or a protocol error, is stopped instead of waited for. The raw comparison requests an entry only after the entry's checks that need no object pass, so a deleted or retyped file ends the walk with nothing requested for it. It keeps at most 256 entries and about 4 MiB of expected content requested ahead of its answers, so a walk that stops at its first change leaves little output to read, and dropping a reader in the caller's group reads at most 8 MiB of what is left before it stops the process. A writer thread sends those requests, so the reader never waits on a write while Git waits on its output, whatever the pipe size: on Linux a pipe can hold as little as 8 KiB once a user exceeds the pipe soft limit.
+
+Source evidence: [cat_file.rs](src/cat_file.rs#L1) and [git.rs](src/git.rs#L1).
 
 ## State writes preserve a clear error boundary
 
@@ -264,6 +288,8 @@ The native endpoint answers within one deadline and leaves nothing running.
 `Supervisor` starts each child in its own session, so the child's process group holds every descendant.
 Repository discovery and the status inspection both run through it, under the deadline that remains.
 On expiry, on an output overflow, or on cancellation, it terminates the group and collects the child within a cleanup budget.
+An output overflow is reported as truncated output, not as a timeout, so the hook names the real cause.
+It checks a running child first after 50 microseconds and doubles the wait up to 5 milliseconds, so a child that exits at once is collected without a fixed delay.
 A group stays owned until its pipes are drained and its descendants are gone, so a leader that exits early cannot leave one behind.
 Each drain wait is bounded by the cleanup budget and by the deadline that remains.
 When the endpoint gives up, it cancels: every live group ends, and a later start is refused.

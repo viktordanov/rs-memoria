@@ -1,7 +1,7 @@
 //! Read-only whole-file freshness, independent of review readiness.
 use super::{diff_changes, document_status_detail, parse_document};
 use crate::error::{AppError, Detail, DetailMap, Outcome};
-use crate::packet::{MAX_DECODED_BYTES, MAX_RECORDS, manifest_detail};
+use crate::packet::{MAX_DECODED_BYTES, manifest_detail};
 use crate::ports::Services;
 use crate::snapshot;
 
@@ -49,7 +49,10 @@ impl ExplainReport {
 }
 
 fn limit(decoded: u64, records: u64, rendered: u64) -> Result<(), AppError> {
-    if decoded > MAX_DECODED_BYTES || records > MAX_RECORDS || rendered > MAX_RENDERED_BYTES {
+    if decoded > MAX_DECODED_BYTES
+        || records > crate::packet::max_records()
+        || rendered > MAX_RENDERED_BYTES
+    {
         return Err(AppError::validation(
             "explain_limit_exceeded",
             "The explanation exceeds its evidence or output limit.",
@@ -402,6 +405,7 @@ pub fn change_evidence(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::packet::MAX_RECORDS;
     #[test]
     fn exact_evidence_limits_are_inclusive() {
         assert!(limit(MAX_DECODED_BYTES, MAX_RECORDS, MAX_RENDERED_BYTES).is_ok());

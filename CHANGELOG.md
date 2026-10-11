@@ -4,6 +4,7 @@ This file records user-visible changes in Memoria. The project maintainer owns r
 
 Contents:
 
+- [Unreleased](#unreleased)
 - [0.9.0](#090---2026-10-11)
 - [Migration to 0.9.0](#migration-to-090)
 - [0.8.0](#080---2026-10-04)
@@ -17,6 +18,43 @@ Contents:
 - [0.4.0](#040---2026-09-10)
 - [0.3.0](#030---2026-09-09)
 - [0.2.0](#020).
+
+## Unreleased
+
+### Fewer Git processes
+
+Memoria now reads Git objects through a long-running `git cat-file --batch` reader, instead of one `git cat-file blob` process for each object. The historical searches of one command share one reader, and the raw-byte comparison uses its own. Review tokens do not change. A search that a limit used to cut short can now finish, so an `ack` can record a base commit where it recorded none before.
+
+- The historical reader serves the `review` manifest and its human view, `explain`, and the `ack` coverage check. Each read still counts against the limits of one search: 64 candidate commits, 4,096 object reads (raised from 1,024), 32 MiB, and four seconds.
+- If `.git/info/attributes` declares a `filter=`, every snapshot command compares raw worktree bytes with the index. That comparison now uses one reader too, instead of one process for each tracked file.
+- Memoria now checks a bounded Git process for its exit first after 50 µs, then doubles the wait up to 5 ms. Before, it always waited 5 ms between checks, so each historical read took at least 5 ms.
+- Startup asks Git for the metadata directory once instead of twice.
+- If the reader stops or answers outside the Git protocol, Memoria reads each remaining object with its own process, with the same result.
+
+One measurement on one Linux host with a warm cache compared 0.9.0 with this change on identical fixtures. Process counts come from one run. Times are the mean of 15 runs, or of 3 runs for the 19-second `status` and for `ack`. The read-only commands printed the same bytes as before.
+
+| Command and fixture | Git processes | Time |
+| --- | ---: | ---: |
+| `review <DOCUMENT> --format json`, reviewed bytes in no commit, 2,104 files | 343 → 13 | 2,039 → 97 ms |
+| The same review, human view | 674 → 14 | 3,998 → 116 ms |
+| `status` with an `info/attributes` filter, 20,404 files | 20,418 → 14 | 19.2 s → 0.89 s |
+| `status` with an `info/attributes` filter, this repository | 387 → 14 | 445 → 107 ms |
+| `status` without such a filter, 20,404 files | 12 → 11 | 579 → 577 ms |
+| `ack` of a document with 1,501 inputs | 722 → 20 | 4.1 s → 0.29 s |
+
+That `ack` now verifies all 1,501 inputs at HEAD and records a base commit. Before, the four-second deadline stopped it after about 700 inputs, and it recorded none.
+
+### Finish a partial history check
+
+A document whose scope holds more inputs than one history search can read, for example a README that owns a folder of 5,000 files, cannot get full coverage during `ack`. Before, the default output said nothing about it: only `--verbose` and JSON showed the `historical_coverage` hint.
+
+- When the read, byte, or time budget runs out, `ack` now prints two lines even without `--verbose`: how many inputs it verified, and `To finish it: memoria ack <DOCUMENT> --cover`. If the worktree had uncommitted changes, it says to commit the reviewed bytes first. JSON does not change.
+- New: `memoria ack <DOCUMENT> --cover` checks the stored review against HEAD, in rounds of the ordinary budget, and records HEAD as its base commit. It changes nothing else in the review. If an input differs from HEAD, it writes nothing and fails with `coverage_incomplete` (exit 3), naming up to five inputs.
+- An artifact saved for the document before `--cover` needs a fresh `memoria review`, because the base commit is part of the prior review that a token binds.
+
+### Fixes
+
+- The agent `Stop` hook said that Memoria "did not finish its documentation inspection in time" when the status summary was larger than its 16 KiB output limit, even when the summary arrived in well under a second. It now names the 16 KiB limit. A real timeout keeps its message.
 
 ## 0.9.0 - 2026-10-11
 

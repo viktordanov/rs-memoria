@@ -4,7 +4,7 @@ use std::fmt::Write as _;
 
 use memoria_application::error::Detail;
 use memoria_application::packet::{ContentEncoding, FocusedReviewPacket};
-use memoria_application::usecases::ack::AckReport;
+use memoria_application::usecases::ack::{AckReport, CoverReport};
 use memoria_application::usecases::agent::AgentReport;
 use memoria_application::usecases::check::CheckReport;
 use memoria_application::usecases::graph::GraphReport;
@@ -1016,7 +1016,38 @@ pub fn ack(report: &AckReport) -> String {
     for (id, reason) in &report.still_pending {
         let _ = writeln!(out, "Still pending: #{id} {reason:?}");
     }
+    if let Some(stopped) = &report.coverage_stopped {
+        let _ = writeln!(
+            out,
+            "History check stopped at its limit: {} of {} inputs verified, so no base commit was recorded.",
+            stopped.verified, stopped.total
+        );
+        if stopped.worktree_dirty {
+            let _ = writeln!(
+                out,
+                "To finish it, commit the reviewed bytes, then run: memoria ack {} --cover",
+                report.document
+            );
+        } else {
+            let _ = writeln!(out, "To finish it: memoria ack {} --cover", report.document);
+        }
+    }
     out
+}
+
+pub fn cover(report: &CoverReport) -> String {
+    let short = &report.commit[..report.commit.len().min(12)];
+    if report.already_covered {
+        format!(
+            "{} already has base commit {short}. Nothing changed.\n",
+            report.document
+        )
+    } else {
+        format!(
+            "Recorded base commit {short} for {}: all {} reviewed inputs match it. The review itself is unchanged.\n",
+            report.document, report.total
+        )
+    }
 }
 
 pub fn invalidate(report: &InvalidateReport) -> String {

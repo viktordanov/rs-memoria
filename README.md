@@ -582,7 +582,8 @@ The root README covers the root build files, the license, the source skill and i
 ```sh
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo test --workspace --locked
+cargo nextest run --workspace --locked --no-fail-fast
+cargo test --workspace --locked --doc
 cargo build --release --locked
 ./scripts/check-next-change-set.sh --binary ./target/release/memoria --agent-tests simulated
 ```

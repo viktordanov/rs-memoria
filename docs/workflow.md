@@ -233,6 +233,10 @@ It never clears another document, even one that covers the same sources.
 The command rejects changed inputs or a conflicting revision instead of recording an outdated review.
 The [rejection table](#resolve-a-rejected-acknowledgement) gives the next action for each common error.
 
+A document with a very large scope can print `History check stopped at its limit` after a successful acknowledgement.
+The review is saved, but no base commit was recorded, so a later review of this document can fall back to a full baseline.
+Run the `memoria ack <DOCUMENT> --cover` command that the message prints, after the reviewed bytes are committed. It records the base commit and changes nothing else.
+
 ### 5. Finish the review cycle
 
 The `check` command requires valid structure, current reviews, and current imported text.

@@ -10,8 +10,8 @@ use super::evidence::diff_entry;
 use crate::error::{AppError, Detail, DetailMap, Diagnostic, ExitClass, Outcome};
 use crate::packet::{
     ChangeEntry, ContentEncoding, DEFAULT_RAW_INPUT_LIMIT, DiffEntry, ExportEntry, FileContent,
-    FocusedReviewPacket, ImportContent, MAX_DECODED_BYTES, MAX_RAW_INPUT_LIMIT, MAX_RECORDS,
-    PacketBinding, PacketContent, PacketContext, manifest_detail,
+    FocusedReviewPacket, ImportContent, MAX_DECODED_BYTES, MAX_RAW_INPUT_LIMIT, PacketBinding,
+    PacketContent, PacketContext, manifest_detail,
 };
 use crate::ports::Services;
 use crate::review::ReviewManifest;
@@ -498,9 +498,10 @@ pub fn build_packet(
         binding: binding.clone(),
     };
     let record_count = provisional.to_detail().list_elements();
-    if record_count > MAX_RECORDS {
+    let cap = crate::packet::max_records();
+    if record_count > cap {
         return Err(refuse(format!(
-            "the packet would contain {record_count} records, above the hard cap of {MAX_RECORDS}"
+            "the packet would contain {record_count} records, above the hard cap of {cap}"
         )));
     }
     // Generated diff text is decoded content too; count it exactly as the

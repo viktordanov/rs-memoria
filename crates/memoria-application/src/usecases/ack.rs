@@ -36,6 +36,20 @@ pub struct AckReport {
     pub still_pending: Vec<(u64, String)>,
     /// `argument` when `--token` was given, `artifact` otherwise.
     pub token_source: String,
+    /// Set when the history check ran out of budget before it verified
+    /// every input. The human view prints how to finish it. JSON carries
+    /// the same facts in the `historical_coverage` hint.
+    pub coverage_stopped: Option<CoverageStopped>,
+}
+
+/// A history check that ran out of budget during `ack`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CoverageStopped {
+    pub verified: usize,
+    pub total: usize,
+    /// The acknowledged worktree had uncommitted changes, so the reviewed
+    /// bytes are committed before `--cover` can find them in HEAD.
+    pub worktree_dirty: bool,
 }
 
 impl AckReport {
@@ -582,6 +596,12 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
         .map_err(state_error)?;
     let mut diagnostics = snapshot.non_error_diagnostics();
     diagnostics.push(coverage.diagnostic());
+    let coverage_stopped =
+        (coverage.commit.is_none() && coverage.budget_ended).then_some(CoverageStopped {
+            verified: coverage.verified,
+            total: coverage.total,
+            worktree_dirty: snapshot.git.worktree_dirty,
+        });
     Ok(Outcome::new(
         AckReport {
             document: document.as_str().to_string(),
@@ -591,9 +611,151 @@ pub fn run(services: &Services<'_>, args: &AckArgs) -> Result<Outcome<AckReport>
             cleared: outcome.cleared,
             still_pending: outcome.still_pending,
             token_source: token_source.to_string(),
+            coverage_stopped,
         },
         diagnostics,
     ))
+}
+
+/// The result of `memoria ack <DOCUMENT> --cover`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CoverReport {
+    pub document: String,
+    pub commit: String,
+    pub verified: usize,
+    pub total: usize,
+    /// The record already had a base commit, so nothing was written.
+    pub already_covered: bool,
+}
+
+impl CoverReport {
+    pub fn to_detail(&self) -> Detail {
+        DetailMap::default()
+            .text("document", self.document.clone())
+            .text("base_commit", self.commit.clone())
+            .number("verified_inputs", self.verified as u64)
+            .number("total_inputs", self.total as u64)
+            .bool("already_covered", self.already_covered)
+            .build()
+    }
+}
+
+/// `memoria ack <DOCUMENT> --cover`: finish the history check of the stored
+/// review against HEAD and record HEAD as its base commit.
+///
+/// Only the base commit changes. The revision, reviewer, result, note,
+/// time, and every other field of the record stay as acknowledged. The
+/// check reads each reviewed input once at HEAD, in rounds of the ordinary
+/// history budget, so a document of any size can finish. If any input
+/// differs from HEAD, nothing is written.
+pub fn cover(services: &Services<'_>, document: &str) -> Result<Outcome<CoverReport>, AppError> {
+    let document = parse_document(document)?;
+    let _guard = acquire_lock(services)?;
+    let loaded = services.state.load().map_err(state_error)?;
+    let Some(loaded) = loaded else {
+        return Err(not_reviewed(&document));
+    };
+    let (mut state, expected) = (loaded.state, loaded.bytes);
+    state.validate().map_err(|err| {
+        AppError::new(
+            ExitClass::Io,
+            Diagnostic::error("state_corrupt", err.to_string()).at_path(snapshot::STATE_PATH),
+        )
+    })?;
+    let Some(record) = state.reviews.get(&document) else {
+        return Err(not_reviewed(&document));
+    };
+    let total = record.manifest.files().len() + record.manifest.imports().len() + 1;
+    if let Some(commit) = &record.git.base_commit {
+        return Ok(Outcome::new(
+            CoverReport {
+                document: document.as_str().to_string(),
+                commit: commit.clone(),
+                verified: total,
+                total,
+                already_covered: true,
+            },
+            vec![],
+        ));
+    }
+    let head = services
+        .git
+        .head_commit()
+        .map_err(|err| AppError::io("git_unavailable", err.to_string()))?
+        .ok_or_else(|| {
+            AppError::conflict(
+                "coverage_incomplete",
+                format!("the repository has no commit yet; commit the reviewed bytes, then run `memoria ack {document} --cover`"),
+            )
+        })?;
+    let result = super::history::cover_at(services, &record.manifest, &head);
+    if !result.complete() {
+        let cause = if result.failed {
+            "Local Git evidence could not be read completely".to_string()
+        } else if result.exhausted {
+            "an input exceeds the history budget on its own".to_string()
+        } else {
+            format!(
+                "{} of {} reviewed inputs differ from HEAD or are missing there: {}{}",
+                result.differing_count,
+                result.total,
+                result.differing.join(", "),
+                if result.differing_count > result.differing.len() {
+                    ", ..."
+                } else {
+                    ""
+                }
+            )
+        };
+        return Err(AppError::new(
+            ExitClass::Conflict,
+            Diagnostic::error(
+                "coverage_incomplete",
+                format!(
+                    "no base commit was recorded for {document}: {cause}. Commit the reviewed bytes, then run `memoria ack {document} --cover` again"
+                ),
+            )
+            .at_path(document.as_str())
+            .with_details(
+                DetailMap::default()
+                    .text("commit", head.clone())
+                    .number("verified_inputs", result.verified as u64)
+                    .number("total_inputs", result.total as u64)
+                    .number("differing_inputs", result.differing_count as u64)
+                    .with("differing", Detail::texts(result.differing.clone()))
+                    .bool("budget_exhausted", result.exhausted)
+                    .bool("inspection_failed", result.failed)
+                    .build(),
+            ),
+        ));
+    }
+    if let Some(record) = state.reviews.get_mut(&document) {
+        record.git.base_commit = Some(head.clone());
+    }
+    state
+        .validate()
+        .map_err(|err| AppError::io("state_corrupt", err.to_string()))?;
+    services
+        .state
+        .save(&state, Some(&expected))
+        .map_err(state_error)?;
+    Ok(Outcome::new(
+        CoverReport {
+            document: document.as_str().to_string(),
+            commit: head,
+            verified: result.verified,
+            total: result.total,
+            already_covered: false,
+        },
+        vec![],
+    ))
+}
+
+fn not_reviewed(document: &memoria_domain::DocumentId) -> AppError {
+    AppError::validation(
+        "document_not_reviewed",
+        format!("{document} has no acknowledged review to cover; acknowledge it first"),
+    )
 }
 
 /// Refuse acknowledgement when the effective guidance changed after the

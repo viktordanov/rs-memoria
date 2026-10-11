@@ -1149,7 +1149,7 @@ Only complete coverage supplies a new saved `git.base_commit`.
 Dirty acknowledgements remain valid with a null reference.
 
 History retrieval first examines the saved reference, then at most 64 commits from local HEAD ancestry.
-The shared operation budget permits 1,024 blob reads, 32 MiB of historical bytes, and four seconds, plus bounded process cleanup.
+The shared operation budget permits 4,096 blob reads, 32 MiB of historical bytes, and four seconds, plus bounded process cleanup.
 Git never fetches missing objects for this operation.
 Every historical body must match the acknowledged length and XXH3 fingerprint.
 A later matching commit can supply a hunk without changing the earlier review attribution.
@@ -1158,6 +1158,18 @@ Shallow or missing history cannot establish that matching bytes never existed el
 
 `budget_exhausted` identifies incomplete coverage inspection.
 `inspection_failed` distinguishes an adapter error from an exhausted budget.
+
+A document with more inputs than one budget can read, for example a README that owns a folder of 5,000 files, cannot get full coverage during `ack`.
+When the read, byte, or time budget runs out, the default human output says so in two lines, even without `--verbose`:
+
+```text
+History check stopped at its limit: 4096 of 5001 inputs verified, so no base commit was recorded.
+To finish it: memoria ack src/README.md --cover
+```
+
+If the worktree had uncommitted changes, the second line says to commit the reviewed bytes first.
+More candidate commits than the search inspects do not print these lines, because a dirty acknowledgement in a long history ends that way normally.
+`memoria ack <DOCUMENT> --cover` finishes the check, as the next section describes.
 Unavailable explanation evidence uses `history_limit_exceeded`, `git_read_failed`, `no_base_commit`, `reviewed_bytes_mismatch`, or `blob_unavailable`.
 These reasons describe local evidence, not review validity.
 Committing source before acknowledgement can improve future evidence, but it is optional.
@@ -1220,6 +1232,7 @@ The reason appears in status, the plan, and each affected review artifact.
 ```sh
 memoria ack <DOCUMENT> --packet <file|-> [--token <token>] \
   --reviewer <name> --result updated|no-update --note <text>
+memoria ack <DOCUMENT> --cover
 ```
 
 `--packet` accepts a review manifest or a full export, usually the file that
@@ -1292,6 +1305,20 @@ Only covered invalidations clear for this document.
 Newer invalidations remain pending and cause `still_pending: true` in a successful acknowledgement.
 The state contains the latest review per document, rather than an append-only journal.
 Acknowledging one document never clears another, even one that covers the same sources.
+
+#### Finish the history check with `--cover`
+
+`--cover` checks the stored review of a document against HEAD and records HEAD as its `git.base_commit`. It takes no artifact, reviewer, result, or note, and it refuses them with exit 2.
+
+1. The command takes the write lock and reads the stored review.
+2. It reads every reviewed input at HEAD: the document, its scope files, and its imported export bodies. It reads them in rounds, and each round has the ordinary history budget, so a document of any size can finish.
+3. If every input matches its acknowledged length and XXH3 fingerprint, it saves HEAD as the base commit. The revision, reviewer, result, note, time, and coverage evidence stay as acknowledged.
+4. If any input differs from HEAD or is missing there, it writes nothing and fails with `coverage_incomplete`, exit 3. The message names up to five of those inputs. Commit the reviewed bytes, then run the command again.
+
+A review that already has a base commit is left unchanged, and the command reports `already_covered: true`.
+A document without a stored review causes `document_not_reviewed`, exit 1.
+
+The base commit is part of the prior review that the next review token binds. An artifact saved for the document before `--cover` therefore fails with a conflict and needs a fresh `memoria review`. A document is current right after its acknowledgement, so such an artifact is rare.
 
 Source evidence: [acknowledgement](../crates/memoria-application/src/usecases/ack.rs#L193), [render](../crates/memoria-application/src/usecases/render.rs#L114), and [invalidation](../crates/memoria-application/src/usecases/invalidate.rs#L50).
 

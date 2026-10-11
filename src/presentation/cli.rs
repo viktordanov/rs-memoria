@@ -270,8 +270,8 @@ pub struct AckArgs {
     #[arg(value_name = "DOCUMENT")]
     pub document: String,
     /// Saved artifact from `memoria review <DOCUMENT> --save <DIR>`, or from `--format json` output, or `-` for stdin.
-    #[arg(long, value_name = "FILE|-")]
-    pub packet: String,
+    #[arg(long, value_name = "FILE|-", required_unless_present = "cover")]
+    pub packet: Option<String>,
     /// Optional check: the 21-byte token the artifact must carry. Defaults to the artifact's own token.
     #[arg(long, value_name = "TOKEN")]
     pub token: Option<String>,
@@ -279,12 +279,16 @@ pub struct AckArgs {
     #[arg(long, value_name = "NAME")]
     pub reviewer: Option<String>,
     /// `updated` or `no-update`.
-    #[arg(long, value_name = "RESULT")]
-    pub result: String,
+    #[arg(long, value_name = "RESULT", required_unless_present = "cover")]
+    pub result: Option<String>,
     /// Why this document is correct for this snapshot. After trim: 12–1000 Unicode characters,
     /// at least three words; CR/LF allowed, tabs and other controls forbidden. Generic notes are rejected.
-    #[arg(long, value_name = "TEXT")]
-    pub note: String,
+    #[arg(long, value_name = "TEXT", required_unless_present = "cover")]
+    pub note: Option<String>,
+    /// Finish the history check of the stored review: verify every reviewed input at HEAD and
+    /// record HEAD as its base commit. Changes nothing else in the review.
+    #[arg(long, conflicts_with_all = ["packet", "token", "reviewer", "result", "note"])]
+    pub cover: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

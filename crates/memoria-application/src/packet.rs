@@ -30,6 +30,33 @@ pub const MAX_SERIALIZED_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_DECODED_BYTES: u64 = 32 * 1024 * 1024;
 /// Total array elements across the envelope.
 pub const MAX_RECORDS: u64 = 100_000;
+
+/// The record cap that every check applies: [`MAX_RECORDS`], or a lower
+/// value from `MEMORIA_TEST_MAX_RECORDS` in a debug build.
+///
+/// The override exists so the cap's own tests need about a thousand files
+/// instead of 100,001. A release build ignores it, and a value above the
+/// cap, zero, or text that is not a number leaves the cap unchanged, so it
+/// can only make refusals happen sooner.
+pub fn max_records() -> u64 {
+    #[cfg(debug_assertions)]
+    {
+        static CAP: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+        *CAP.get_or_init(|| lowered_record_cap(std::env::var("MEMORIA_TEST_MAX_RECORDS").ok()))
+    }
+    #[cfg(not(debug_assertions))]
+    MAX_RECORDS
+}
+
+/// The cap that an override text gives: a number from 1 to [`MAX_RECORDS`],
+/// or [`MAX_RECORDS`] for anything else.
+#[cfg_attr(not(debug_assertions), allow(dead_code))]
+fn lowered_record_cap(value: Option<String>) -> u64 {
+    value
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| (1..=MAX_RECORDS).contains(value))
+        .unwrap_or(MAX_RECORDS)
+}
 /// Simultaneous JSON containers.
 pub const MAX_DEPTH: u64 = 32;
 
@@ -46,7 +73,7 @@ pub struct EnvelopeSize {
 impl EnvelopeSize {
     /// Whether the envelope satisfies every hard output limit.
     pub fn within_hard_limits(&self) -> bool {
-        self.records <= MAX_RECORDS
+        self.records <= max_records()
             && self.depth <= MAX_DEPTH
             && self.serialized_bytes <= MAX_SERIALIZED_BYTES
     }
@@ -588,6 +615,33 @@ impl FocusedReviewPacket {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_record_cap_override_can_only_lower_the_cap() {
+        use super::{MAX_RECORDS, lowered_record_cap};
+        assert_eq!(lowered_record_cap(None), MAX_RECORDS);
+        assert_eq!(lowered_record_cap(Some("1000".into())), 1000);
+        assert_eq!(lowered_record_cap(Some("1".into())), 1);
+        assert_eq!(
+            lowered_record_cap(Some(MAX_RECORDS.to_string())),
+            MAX_RECORDS
+        );
+        for refused in [
+            "0",
+            "100001",
+            "18446744073709551615",
+            "-5",
+            "1e3",
+            "",
+            " 1000",
+        ] {
+            assert_eq!(
+                lowered_record_cap(Some(refused.into())),
+                MAX_RECORDS,
+                "{refused:?}"
+            );
+        }
+    }
+
     use super::*;
 
     #[test]

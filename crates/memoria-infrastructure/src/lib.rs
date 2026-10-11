@@ -6,6 +6,7 @@
 pub mod agent_locations;
 pub mod artifact_store;
 pub mod bounded_process;
+pub mod cat_file;
 pub mod client_probe;
 pub mod config;
 pub mod fs;

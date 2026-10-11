@@ -22,7 +22,28 @@ const CLEANUP_BUDGET: Duration = Duration::from_millis(250);
 
 /// Captured stderr for a supervised command, in bytes. Everything above this
 /// is read and discarded, so a flood cannot exhaust memory.
-const STDERR_CAPTURE: usize = 8 * 1024;
+pub(crate) const STDERR_CAPTURE: usize = 8 * 1024;
+
+/// Waits between exit checks of a child that is still running.
+///
+/// The first wait is short, so a child that exits within a millisecond is
+/// collected without a fixed delay. Each later wait doubles up to a ceiling,
+/// so a slow child still costs few wakeups.
+struct Backoff(Duration);
+
+impl Backoff {
+    const FIRST: Duration = Duration::from_micros(50);
+    const CEILING: Duration = Duration::from_millis(5);
+
+    fn new() -> Backoff {
+        Backoff(Backoff::FIRST)
+    }
+
+    fn pause(&mut self) {
+        std::thread::sleep(self.0);
+        self.0 = (self.0 * 2).min(Backoff::CEILING);
+    }
+}
 
 /// One owner for every subprocess started under a single deadline.
 ///
@@ -93,7 +114,7 @@ impl Supervisor {
 
     /// Take ownership of one live child. Returns `false` when the owner has
     /// already cancelled, in which case the caller must terminate it.
-    fn adopt(&self, pid: u32) -> bool {
+    pub(crate) fn adopt(&self, pid: u32) -> bool {
         match self.owned.lock() {
             Ok(mut owned) if !owned.cancelled => {
                 owned.groups.push(pid);
@@ -103,7 +124,7 @@ impl Supervisor {
         }
     }
 
-    fn release(&self, pid: u32) {
+    pub(crate) fn release(&self, pid: u32) {
         if let Ok(mut owned) = self.owned.lock() {
             owned.groups.retain(|live| *live != pid);
         }
@@ -141,12 +162,20 @@ fn kill_group(pid: u32) {
 /// The child was started in its own session, so its process group holds
 /// every descendant it spawned. Signalling the group is what stops a Git
 /// child that still holds the inherited pipes open.
-fn terminate_group(child: &mut Child) {
+pub(crate) fn terminate_group(child: &mut Child) {
     kill_group(child.id());
+    terminate_child(child);
+}
+
+/// Terminate only the child, then reap it within the cleanup budget. For a
+/// child that stays in its parent's process group, so whoever ends that
+/// group also ends the child.
+pub(crate) fn terminate_child(child: &mut Child) {
     let _ = child.kill();
     // Reap within a bound. A process stuck in uninterruptible sleep must not
     // hold the native endpoint past its own deadline.
     let until = Instant::now() + CLEANUP_BUDGET;
+    let mut backoff = Backoff::new();
     loop {
         match child.try_wait() {
             Ok(Some(_)) | Err(_) => break,
@@ -154,10 +183,26 @@ fn terminate_group(child: &mut Child) {
                 if Instant::now() >= until {
                     break;
                 }
-                std::thread::sleep(Duration::from_millis(5));
+                backoff.pause();
             }
         }
     }
+}
+
+/// Start `command` as the leader of a new session, so its whole process
+/// group can be terminated together. Standard input is the caller's choice.
+pub(crate) fn spawn_in_session(command: &mut Command) -> std::io::Result<Child> {
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(unix)]
+    unsafe {
+        use std::os::unix::process::CommandExt as _;
+        // A failed setsid is not fatal: the caller still kills the child.
+        command.pre_exec(|| {
+            let _ = rustix::process::setsid();
+            Ok(())
+        });
+    }
+    command.spawn()
 }
 
 /// Run one command in its own session, bounded in time and output.
@@ -179,22 +224,9 @@ fn run_bounded(
     if supervisor.is_some_and(|owner| owner.cancelled()) {
         return Err(cancelled());
     }
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    command.stdin(Stdio::null());
     // A new session, so the deadline can terminate descendants as a group.
-    #[cfg(unix)]
-    unsafe {
-        use std::os::unix::process::CommandExt as _;
-        // A failed setsid is not fatal: the deadline still applies.
-        command.pre_exec(|| {
-            let _ = rustix::process::setsid();
-            Ok(())
-        });
-    }
-    let mut child = command
-        .spawn()
+    let mut child = spawn_in_session(&mut command)
         .map_err(|err| AdapterError::new("spawn", Some(program.clone()), err.to_string()))?;
     let pid = child.id();
     if let Some(owner) = supervisor
@@ -253,6 +285,7 @@ fn run_bounded(
 
     let deadline = Instant::now() + budget;
     let mut timed_out = false;
+    let mut backoff = Backoff::new();
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Some(status),
@@ -261,11 +294,13 @@ fn run_bounded(
                 let overflow = overflowed.load(Ordering::SeqCst);
                 let stopped = supervisor.is_some_and(|owner| owner.cancelled());
                 if expired || overflow || stopped {
-                    timed_out = true;
+                    // An overflow stops the child but is not a timeout: the
+                    // drain thread reports it as `output_truncated`.
+                    timed_out = expired || stopped;
                     terminate_group(&mut child);
                     break None;
                 }
-                std::thread::sleep(Duration::from_millis(5));
+                backoff.pause();
             }
             Err(err) => {
                 // Ownership is released only after cleanup, on this path too.

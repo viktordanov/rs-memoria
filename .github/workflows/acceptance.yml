@@ -41,10 +41,20 @@ jobs:
       - name: Lint
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
+      - name: Install cargo-nextest
+        # nextest runs every test in its own process, in parallel across the
+        # test binaries. The action installs a prebuilt, checksum-verified
+        # release of the pinned version.
+        uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
+        with:
+          tool: cargo-nextest@0.9.146
+
       - name: Test
-        # The fixture harness clears Git configuration environment variables.
-        # A command wrapper keeps background maintenance out of .git snapshots.
-        # It changes no repository or global Git configuration.
+        # The fixture harness disables background Git maintenance for its own
+        # Git commands. This command wrapper does the same for every other Git
+        # invocation, so maintenance never writes into a .git snapshot. It
+        # changes no repository or global Git configuration.
+        # nextest does not run doc tests, so `cargo test --doc` runs them.
         env:
           MEMORIA_CI_GIT: /usr/bin/git
         run: |
@@ -57,7 +67,8 @@ jobs:
           SH
           chmod 755 "$wrapper_dir/git"
           export PATH="$wrapper_dir:$PATH"
-          cargo test --workspace --locked
+          cargo nextest run --workspace --locked --no-fail-fast
+          cargo test --workspace --locked --doc
 
       - name: Build the release binary
         run: cargo build --release --locked

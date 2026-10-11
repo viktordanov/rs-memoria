@@ -53,7 +53,7 @@ The test does that job: a change in output fails the test until the page shows t
 2. Put the project in `tests/fixtures/<name>/`. Name each README there `README.fixture.md`, so that it does not become a document of this repository.
 3. Create `docs/cookbooks/<name>/README.md` for the page. Draw at least one diagram of the pattern, in the [diagram style](#diagram-style).
 4. Mark each file block with `<!-- cookbook-file: PATH -->` and each output block with `<!-- cookbook-output: KEY -->` on the line before its fence.
-5. Write a test that runs every step through the built executable and compares the blocks. `tests/guidance.rs` holds the first example. `MEMORIA_PRINT_COOKBOOK=1` with `--nocapture` prints fresh output blocks.
+5. Write a test that runs every step through the built executable and compares the blocks. `tests/integration/guidance.rs` holds the first example. `MEMORIA_PRINT_COOKBOOK=1` with `--nocapture` prints fresh output blocks.
 6. End the page with the costs, the limits, and when not to adopt the pattern.
 7. Add a row to the table on this page.
 

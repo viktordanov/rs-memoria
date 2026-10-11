@@ -169,8 +169,8 @@ Historical evidence requires exact length and fingerprint correspondence.
 Dirty acknowledgements remain valid without complete Git coverage.
 
 The product retains automated regression coverage in
-[review_context.rs](../../tests/review_context.rs) and
-[sections.rs](../../tests/sections.rs).
+[review_context.rs](../../tests/integration/review_context.rs) and
+[sections.rs](../../tests/integration/sections.rs).
 Study-only scripts, tables, and raw captures remain outside the product tree in the release archive.
 The release handoff records their archive locations and checksums.
 The preserved v0.3.0 study is historical evidence, not a claim about every repository or every future version.

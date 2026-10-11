@@ -237,10 +237,17 @@ pub fn run_stop(
             ));
         }
     };
-    if output.timed_out || output.output_truncated {
+    if output.timed_out {
         return RunnerResult::Message(bounded(
             "Memoria did not finish its documentation inspection in time. Run `memoria status` when convenient.".into(),
         ));
+    }
+    // A summary larger than the limit finished in time: it is not a timeout.
+    if output.output_truncated {
+        return RunnerResult::Message(bounded(format!(
+            "Memoria's status summary was larger than the {} KiB hook limit. Run `memoria status` to see the documentation state.",
+            STATUS_STDOUT_LIMIT / 1024
+        )));
     }
     let text = String::from_utf8_lossy(&output.stdout).into_owned();
     let Some(summary) = parse_summary(&text) else {
@@ -424,6 +431,35 @@ mod tests {
             panic!("expected an advisory message");
         };
         assert!(text.contains("could not inspect"), "{text}");
+    }
+
+    #[test]
+    fn an_oversized_summary_is_not_reported_as_a_timeout() {
+        let oversized = Fake(Ok(BoundedOutput {
+            exit_code: None,
+            stdout: CURRENT.as_bytes()[..40].to_vec(),
+            timed_out: false,
+            output_truncated: true,
+        }));
+        let RunnerResult::Message(text) = run_stop(&oversized, 1, &event(), Some("/work")) else {
+            panic!("expected an advisory message");
+        };
+        assert!(text.contains("larger than the 16 KiB hook limit"), "{text}");
+        assert!(!text.contains("in time"), "{text}");
+        assert!(text.contains("memoria status"), "{text}");
+        assert!(text.len() <= MAX_MESSAGE_BYTES);
+        // A child that ran out of time keeps the timeout message, even when
+        // it also wrote too much.
+        let both = Fake(Ok(BoundedOutput {
+            exit_code: None,
+            stdout: vec![],
+            timed_out: true,
+            output_truncated: true,
+        }));
+        let RunnerResult::Message(text) = run_stop(&both, 1, &event(), Some("/work")) else {
+            panic!("expected an advisory message");
+        };
+        assert!(text.contains("did not finish"), "{text}");
     }
 
     #[test]

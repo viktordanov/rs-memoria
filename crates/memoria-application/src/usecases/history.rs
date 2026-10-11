@@ -8,7 +8,7 @@ use memoria_domain::{DocumentId, Hash64, InputManifest};
 use std::time::{Duration, Instant};
 
 const CANDIDATES: usize = 64;
-const READS: usize = 1024;
+const READS: usize = 4096;
 const BYTES: u64 = 32 * 1024 * 1024;
 
 pub struct History<'a, 's> {
@@ -168,26 +168,7 @@ impl<'a, 's> History<'a, 's> {
 
     /// A single stored commit must cover all reviewed content, including imports.
     pub fn coverage(&mut self, manifest: &InputManifest, head: Option<&str>) -> Coverage {
-        let mut entries = vec![(
-            manifest.document.as_str().to_string(),
-            None,
-            manifest.document_bytes,
-            manifest.document_hash,
-        )];
-        entries.extend(
-            manifest
-                .files()
-                .iter()
-                .map(|f| (f.path.as_str().to_string(), None, f.bytes, f.hash)),
-        );
-        entries.extend(manifest.imports().iter().map(|i| {
-            (
-                i.document.as_str().to_string(),
-                Some(i.export_id.as_str().to_string()),
-                i.bytes,
-                i.hash,
-            )
-        }));
+        let entries = entries(manifest);
         let mut candidates = Vec::new();
         if let Some(head) = head {
             candidates.push(head.to_string());
@@ -198,6 +179,7 @@ impl<'a, 's> History<'a, 's> {
             total: entries.len(),
             imports: manifest.imports().len(),
             exhausted: false,
+            budget_ended: false,
             failed: false,
         };
         // Read HEAD before enumerating ancestry. The saved reference is concrete, never symbolic HEAD.
@@ -246,7 +228,113 @@ impl<'a, 's> History<'a, 's> {
         }
         best.failed = self.failed;
         best.exhausted = self.exhausted || self.truncated;
+        best.budget_ended = self.exhausted;
         best
+    }
+}
+
+/// One reviewed input: its path, the export it names, and its length and hash.
+type Entry = (String, Option<String>, u64, Hash64);
+
+/// Every reviewed input of `manifest`: the document, its scope files, and
+/// its imported export bodies.
+fn entries(manifest: &InputManifest) -> Vec<Entry> {
+    let mut entries = vec![(
+        manifest.document.as_str().to_string(),
+        None,
+        manifest.document_bytes,
+        manifest.document_hash,
+    )];
+    entries.extend(
+        manifest
+            .files()
+            .iter()
+            .map(|f| (f.path.as_str().to_string(), None, f.bytes, f.hash)),
+    );
+    entries.extend(manifest.imports().iter().map(|i| {
+        (
+            i.document.as_str().to_string(),
+            Some(i.export_id.as_str().to_string()),
+            i.bytes,
+            i.hash,
+        )
+    }));
+    entries
+}
+
+/// How many differing inputs a cover result names.
+const NAMED_DIFFERENCES: usize = 5;
+
+/// Check every reviewed input of `manifest` at `commit`, and only there.
+///
+/// The check runs in rounds. Each round is one ordinary history search with
+/// its own read, byte, and time budget, and the next round starts where the
+/// last one stopped. An input that exhausts a round on its own, such as a
+/// file larger than the byte budget, ends the check as exhausted, so every
+/// input is read at most twice and the work stays proportional to the
+/// manifest.
+pub fn cover_at(services: &Services<'_>, manifest: &InputManifest, commit: &str) -> Cover {
+    let entries = entries(manifest);
+    let mut cover = Cover {
+        verified: 0,
+        total: entries.len(),
+        differing: Vec::new(),
+        differing_count: 0,
+        exhausted: false,
+        failed: false,
+    };
+    let mut history = History::new(services);
+    let mut round_reads = 0;
+    let mut index = 0;
+    while index < entries.len() {
+        let (path, export, length, hash) = &entries[index];
+        let bytes = history.at(commit, path, export.as_deref());
+        if history.exhausted {
+            if round_reads == 0 {
+                // A fresh round could not read this input at all.
+                cover.exhausted = true;
+                break;
+            }
+            cover.failed |= history.failed;
+            history = History::new(services);
+            round_reads = 0;
+            continue;
+        }
+        round_reads += 1;
+        match bytes {
+            Some(bytes)
+                if bytes.len() as u64 == *length && services.hasher.hash(&bytes) == *hash =>
+            {
+                cover.verified += 1;
+            }
+            _ => {
+                cover.differing_count += 1;
+                if cover.differing.len() < NAMED_DIFFERENCES {
+                    cover.differing.push(path.clone());
+                }
+            }
+        }
+        index += 1;
+    }
+    cover.failed |= history.failed;
+    cover
+}
+
+/// The result of [`cover_at`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cover {
+    pub verified: usize,
+    pub total: usize,
+    /// The first differing or missing inputs, at most five.
+    pub differing: Vec<String>,
+    pub differing_count: usize,
+    pub exhausted: bool,
+    pub failed: bool,
+}
+
+impl Cover {
+    pub fn complete(&self) -> bool {
+        self.verified == self.total && !self.exhausted
     }
 }
 
@@ -265,7 +353,11 @@ pub struct Coverage {
     pub verified: usize,
     pub total: usize,
     pub imports: usize,
+    /// The search ended early: a budget ran out, or more candidates existed.
     pub exhausted: bool,
+    /// A read, byte, or time budget ran out. More candidate commits than the
+    /// search inspects do not count here.
+    pub budget_ended: bool,
     pub failed: bool,
 }
 

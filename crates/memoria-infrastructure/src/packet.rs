@@ -9,7 +9,7 @@ use memoria_application::error::{Detail, Diagnostic};
 use memoria_application::guidance::EffectiveGuidance;
 use memoria_application::packet::{
     ChangeEntry, ContentEncoding, DiffEntry, ENVELOPE_SCHEMA_VERSION, EnvelopeSize, ExportEntry,
-    FileContent, FocusedReviewPacket, ImportContent, MAX_DECODED_BYTES, MAX_DEPTH, MAX_RECORDS,
+    FileContent, FocusedReviewPacket, ImportContent, MAX_DECODED_BYTES, MAX_DEPTH,
     MAX_SERIALIZED_BYTES, PACKET_VERSION, PacketBinding, PacketContent, PacketContext,
     ReviewArtifact,
 };
@@ -403,10 +403,11 @@ impl ReviewPacketCodec for JsonPacketCodec<'_> {
         set_record_count(&mut envelope, records);
         let digest = packet_digest(self.hasher, &envelope);
         insert_digest(&mut envelope, "packet_digest", digest);
-        if records > MAX_RECORDS {
+        let cap = memoria_application::packet::max_records();
+        if records > cap {
             return Err(invalid(
                 "packet_too_large",
-                format!("the packet has {records} records, above the cap of {MAX_RECORDS}"),
+                format!("the packet has {records} records, above the cap of {cap}"),
             ));
         }
         let depth = json::max_depth(&envelope) as u64;
@@ -439,10 +440,11 @@ impl ReviewPacketCodec for JsonPacketCodec<'_> {
         let digest = manifest_digest(self.hasher, &envelope);
         insert_digest(&mut envelope, "artifact_digest", digest);
         let records = json::count_records(&envelope);
-        if records > MAX_RECORDS {
+        let cap = memoria_application::packet::max_records();
+        if records > cap {
             return Err(invalid(
                 "packet_too_large",
-                format!("the manifest has {records} records, above the cap of {MAX_RECORDS}"),
+                format!("the manifest has {records} records, above the cap of {cap}"),
             ));
         }
         let depth = json::max_depth(&envelope) as u64;

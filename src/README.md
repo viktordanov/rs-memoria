@@ -71,6 +71,7 @@ A document path is a `README.md` or another Markdown file; the application decid
 `run` creates `Services` from the concrete adapters and dispatches the command.
 Completions, saved export views, and explicit state comparisons dispatch before project discovery.
 The CLI resolves the optional reviewer environment default only for acknowledgement.
+`ack --cover` dispatches to the coverage completion instead, so it takes no artifact, reviewer, result, or note. Without `--cover`, the parser requires `--packet`, `--result`, and `--note`.
 An explicit reviewer label takes precedence, and success output confirms that label.
 The write lock comes from the Git port, at the worktree-private path, so the committed state file is never the process lock.
 Only the write commands (`ack`, `invalidate`, `render`, and `init`) read `MEMORIA_LOCK_WAIT_MS`, the time that the lock adapter waits for another writer.

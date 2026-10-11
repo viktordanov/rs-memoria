@@ -165,6 +165,7 @@ Acknowledgement stores a commit only when the document, all its scope files, and
 Partial coverage produces a diagnostic and a null reference.
 Dirty acknowledgement remains valid.
 Later evidence recovery never changes the previous review attribution.
+When the history budget ends before every input is verified, the acknowledgement report says so, and `ack --cover` can finish later: `history::cover_at` reads every reviewed input at HEAD in rounds of the ordinary budget, and the use case saves HEAD as the base commit only when all of them match. It changes no other field of the record.
 The [CLI reference](../../docs/cli.md#historical-coverage) defines the budgets and unavailable-evidence reasons.
 
 ## Mutation boundaries differ
@@ -229,6 +230,8 @@ Source evidence: [render.rs](src/usecases/render.rs), [invalidate.rs](src/usecas
 | [guidance.rs](src/guidance.rs) | Effective guidance and its digest |
 | [usecases](src/usecases/mod.rs) | Command coordination and outcomes |
 | [error.rs](src/error.rs) | Diagnostics and application exit classes |
+
+`packet::max_records` is the record cap that every check applies. A debug build accepts a lower cap from `MEMORIA_TEST_MAX_RECORDS`, so a test of the cap needs about a thousand files instead of 100,001. A release build ignores it, and it can never raise the cap.
 
 The ports separate two questions that the release keeps apart.
 `GitRepository` decides which files are eligible, under the host settings.

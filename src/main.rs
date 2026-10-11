@@ -503,11 +503,21 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
             let (data, human) = (outcome.data.to_detail(), text::render(&outcome.data));
             Ok(output(outcome, data, human))
         }
+        Command::Ack(args) if args.cover => {
+            let outcome = usecases::ack::cover(&services, &args.document)?;
+            let (data, human) = (outcome.data.to_detail(), text::cover(&outcome.data));
+            Ok(output(outcome, data, human))
+        }
         Command::Ack(args) => {
-            let packet = if args.packet == "-" {
+            // Clap requires these three unless `--cover` is given.
+            let (Some(packet), Some(result), Some(note)) = (&args.packet, &args.result, &args.note)
+            else {
+                unreachable!("clap requires --packet, --result, and --note without --cover");
+            };
+            let packet = if packet == "-" {
                 PacketSource::Stdin
             } else {
-                PacketSource::File(args.packet.clone())
+                PacketSource::File(packet.clone())
             };
             let request = usecases::ack::AckArgs {
                 document: args.document.clone(),
@@ -517,8 +527,8 @@ fn run(cli: &Cli) -> Result<CommandOutput, AppError> {
                     args.reviewer.as_deref(),
                     std::env::var_os("MEMORIA_REVIEWER"),
                 )?,
-                result: args.result.clone(),
-                note: args.note.clone(),
+                result: result.clone(),
+                note: note.clone(),
             };
             let outcome = usecases::ack::run(&services, &request)?;
             let (data, human) = (outcome.data.to_detail(), text::ack(&outcome.data));

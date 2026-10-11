@@ -165,7 +165,8 @@ It accepts at most 64 KiB of event JSON. It resolves the event working directory
 | Pending, never-reviewed, waiting, or open invalidation work | One `systemMessage` with counts and `memoria review`. |
 | Guidance changed without due reviews | One `systemMessage` with `memoria guidance --changed`. |
 | Invalid configuration or corrupt state | One `systemMessage` that names the diagnostic code. |
-| Deadline or output limit | One `systemMessage` that gives `memoria status` as the manual action. |
+| Deadline | One `systemMessage` that says the inspection did not finish in time and gives `memoria status` as the manual action. |
+| Status summary larger than 16 KiB | One `systemMessage` that names the 16 KiB limit and gives `memoria status` as the manual action. |
 
 The message is at most 512 UTF-8 bytes. It holds no source, guidance, transcript, or secret configuration text.
 
