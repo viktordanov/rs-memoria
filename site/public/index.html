@@ -134,6 +134,11 @@ section::before { content: ""; position: absolute; left: 50%; top: 0; width: min
 @keyframes flash { 0% { background: color-mix(in srgb, var(--accent) 22%, transparent); } 100% { background: transparent; } }
 .term { height: 372px; }
 .mk { color: var(--ink); }
+.nw { white-space: nowrap; }
+.cl { display: block; padding-left: 4ch; text-indent: -4ch; overflow-wrap: normal; }
+.share .ln { padding-left: 4ch; text-indent: -4ch; overflow-wrap: normal; }
+.ar-row code { display: block; padding-left: 4.5ch; text-indent: -4.5ch; }
+.ar-row code .vl { text-indent: 0; }
 .ghost { visibility: hidden; }
 .eline .cursor { margin-left: 0; margin-right: -2px; }
 .vl { color: var(--muted); display: inline-block; width: 3ch; text-align: right; margin-right: 1.5ch; user-select: none; }
@@ -192,7 +197,10 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
 .docs footer a { color: var(--muted); }
 
 /* ---------- phone-only pieces ---------- */
-.ttabs, .back .narrow, .more { display: none; }
+.ttabs, .back .narrow, .more, .arch { display: none; }
+.top a.cta-onb, .ctas a.cta-onb { color: var(--accent); }
+.top a.cta-onb:hover, .ctas a.cta-onb:hover { color: var(--ink); }
+.ctas a.cta-onb::before { color: var(--accent); }
 
 /* ---------- side map ---------- */
 .map { position: fixed; left: max(12px, calc((100vw - 980px) / 4 - 150px)); top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 14px; padding-left: 22px; font-size: 12px; line-height: 18px; opacity: 0; pointer-events: none; transition: opacity .28s; z-index: 2; }
@@ -281,6 +289,13 @@ footer { color: var(--muted); font-size: 12px; }
 
 /* tablets and narrow windows: the phone treatments that a two-column layout still needs */
 @media (max-width: 1024px) {
+  .steps button[aria-pressed="true"] { color: var(--accent); }
+  .cycle .box, .cycle .box.lit { border: 0; border-bottom: 1px solid var(--rule); background: none; color: var(--ink); padding-inline: 2px; }
+  .cycle .box.flash { animation: none; }
+  .cycle .box.lit::before { color: var(--accent); }
+  .ar-row.on > code { background: none; }
+  .ttabs { margin-bottom: 4px !important; }
+  #how .rules { gap: 16px; margin-top: 6px; }
   .steps .sl { display: none; }
   .steps button { text-align: center; padding-inline: 0; }
   .ttabs { display: flex; gap: 6px; margin-bottom: -6px; }
@@ -328,6 +343,9 @@ footer { color: var(--muted); font-size: 12px; }
   .cmd { gap: 12px; padding: 10px 10px 10px 12px; font-size: 12.5px; }
   .cmd code { white-space: normal; overflow-wrap: anywhere; }
   .install small { font-size: 12px; }
+  .wide-only { display: none; }
+  .arch { display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 14px; }
+  .top nav { gap: 18px; }
   .ctas { font-size: 13px; }
 
   /* the review flow: documents only, a compact terminal */
@@ -359,7 +377,7 @@ footer { color: var(--muted); font-size: 12px; }
   .loop-label { margin-bottom: -8px; }
   .cycle { flex-direction: column; align-items: stretch; gap: 4px; counter-reset: step; }
   .cycle .ar { display: none; }
-  .cycle .box { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; text-align: left; padding: 5px 10px; font-size: 12.5px; counter-increment: step; }
+  .cycle .box, .cycle .box.lit { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; text-align: left; padding: 6px 2px; font-size: 12.5px; counter-increment: step; }
   #cycle > p { font-size: 13px; }
   #cycle { gap: 16px; }
   .cycle .back { margin-top: 2px; font-size: 12px; }
@@ -429,7 +447,7 @@ footer { color: var(--muted); font-size: 12px; }
       <span>memoria <span class="m">v<span class="ver">0.9.2</span></span></span>
       <nav>
         <a class="opt" href="#flow">how it works</a>
-        <a class="opt cta-onb" href="#onboard">onboard your agent</a>
+        <a class="cta-onb" href="#onboard">onboard your agent</a>
         <a href="https://github.com/viktordanov/rs-memoria">github</a>
       </nav>
     </div>
@@ -444,7 +462,11 @@ footer { color: var(--muted); font-size: 12px; }
       </div>
       <div class="install">
         <div class="cmd"><code id="install-cmd"><span class="m">$</span> brew install viktordanov/tap/memoria</code><button class="btn" id="copy-install" type="button">copy</button></div>
-        <small>macOS 13 or later · Arch Linux: <code>yay -S memoria-bin</code> · <a href="https://github.com/viktordanov/rs-memoria#install-options">other options</a></small>
+        <small>macOS 13 or later<span class="wide-only"> · Arch Linux: <code>yay -S memoria-bin</code> · <a href="https://github.com/viktordanov/rs-memoria#install-options">other options</a></span></small>
+        <div class="arch">
+          <div class="cmd"><code id="arch-cmd"><span class="m">$</span> yay -S memoria-bin</code><button class="btn" id="copy-arch" type="button">copy</button></div>
+          <small>Arch Linux, x86_64 · <a href="https://github.com/viktordanov/rs-memoria#install-options">other options</a></small>
+        </div>
       </div>
       <div class="ctas"><a href="#flow">watch a review</a><a class="cta-onb" href="#onboard">onboard your agent</a></div>
     </div>
@@ -572,19 +594,14 @@ footer { color: var(--muted); font-size: 12px; }
       <p class="sub">Write your documentation rules once in <code>memoria.toml</code>. Every review lists them, and <code>memoria guidance</code> prints them for any doc.</p>
     </header>
     <div class="guide">
-      <div class="frame"><span class="ft">memoria.toml · project guidance</span><pre><span class="c-mut">[documentation]</span>
-guidance = [
-  <span class="c-acc">"Explain the operational workflow before implementation details."</span>,
-]
-guidance_files = [<span class="c-acc">"docs/writing-guidance.md"</span>]</pre></div>
+      <div class="frame"><span class="ft">memoria.toml · project guidance</span><pre><span class="cl"><span class="c-mut">[documentation]</span></span><span class="cl">guidance = [</span><span class="cl">  <span class="c-acc">"Explain the operational workflow before implementation details."</span>,</span><span class="cl">]</span><span class="cl">guidance_files = <span class="nw">[<span class="c-acc">"docs/writing-guidance.md"</span>]</span></span></pre></div>
       <div class="frame"><span class="ft">AGENTS.md · section guide</span><pre class="wrap">&lt;!-- memoria:section id="boundaries"
      guidance="docs/templates/agent-rules.md" --&gt;
 ## Boundaries
 …
 &lt;!-- /memoria:section --&gt;</pre></div>
     </div>
-    <div class="frame cmdrow"><span class="ft">terminal</span><pre><span class="p">$ memoria guidance src/README.md</span>   <span class="c-mut"># the rules for one document</span>
-<span class="p">$ memoria guidance --changed</span>       <span class="c-mut"># reviewed documents that saw older wording</span></pre></div>
+    <div class="frame cmdrow"><span class="ft">terminal</span><pre><span class="cl"><span class="p">$ memoria guidance src/README.md</span>   <span class="c-mut"># the rules for one document</span></span><span class="cl"><span class="p">$ memoria guidance --changed</span>       <span class="c-mut"># reviewed documents that saw older wording</span></span></pre></div>
     <ul class="rules">
       <li><span><strong>Advice, not a trigger.</strong> <span class="m">Rules never decide which files a doc covers, and never flag a doc on their own.</span></span></li>
       <li><span><strong>Changing a rule flags nothing.</strong> <span class="m">The review plan notes the change, <code>memoria check</code> still passes, and you decide which docs deserve a fresh look.</span></span></li>
@@ -1093,6 +1110,7 @@ Go deeper
       try { navigator.clipboard.writeText(text()).then(function () { btn.textContent = 'copied'; setTimeout(function () { btn.textContent = 'copy'; }, 1400); }, fallback); } catch (e) { fallback(); }
     });
   }
+  copy(document.getElementById('copy-arch'), document.getElementById('arch-cmd'), function () { return 'yay -S memoria-bin'; });
   copy(document.getElementById('copy-install'), document.getElementById('install-cmd'), function () { return 'brew install viktordanov/tap/memoria'; });
   var st = document.getElementById('say-text');
   copy(document.getElementById('copy-say'), st, function () { return st.textContent; });
