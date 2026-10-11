@@ -362,7 +362,6 @@ footer { color: var(--muted); font-size: 12px; }
   <a href="#uses">when to use memoria</a>
   <a href="#never">design principles</a>
   <a href="#onboard">onboard your agent</a>
-  <a href="#docs">start with one readme</a>
 </nav>
 
 <main class="sheet">
@@ -788,12 +787,15 @@ Go deeper
   var hero = document.querySelector('.hero');
   function onScroll() {
     var y = scrollY, vh = innerHeight, mid = y + vh * 0.4;
-    map.classList.toggle('show', y > hero.offsetHeight * 0.6);
+    // shown from below the hero until the closing section takes over the screen
+    var docsTop = document.getElementById('docs').getBoundingClientRect().top;
+    map.classList.toggle('show', y > hero.offsetHeight * 0.6 && docsTop > vh * 0.55);
     var cur = 0;
     targets.forEach(function (t, k) { if (t.getBoundingClientRect().top + y <= mid) cur = k; });
     links.forEach(function (l, k) { l.classList.toggle('cur', k === cur); l.classList.toggle('past', k < cur); });
-    var first = targets[0].getBoundingClientRect().top + y, end = document.documentElement.scrollHeight - vh;
-    var p = Math.max(0, Math.min(1, (y + vh * 0.4 - first) / Math.max(1, end + vh * 0.4 - first)));
+    // full when the map hides, at the closing section
+    var start = targets[0].getBoundingClientRect().top + y - vh * 0.4, end = docsTop + y - vh * 0.55;
+    var p = Math.max(0, Math.min(1, (y - start) / Math.max(1, end - start)));
     fill.style.height = (p * 100) + '%';
   }
   addEventListener('scroll', onScroll, { passive: true }); addEventListener('resize', onScroll); onScroll();
