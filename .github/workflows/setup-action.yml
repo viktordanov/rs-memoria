@@ -1,8 +1,8 @@
 name: Setup Action
 
-# A change to documentation only cannot change the Action or the archive it
-# installs, so it does not run this workflow. The paths match the
-# documentation rule of the `changes` job in acceptance.yml.
+# A change to documentation or to the landing page in site/ cannot change the
+# Action or the archive it installs, so it does not run this workflow. The
+# paths match the rule of the `changes` job in acceptance.yml.
 on:
   push:
     branches: ["main"]
@@ -13,6 +13,7 @@ on:
       - "!memoria.lock"
       - "!memoria.toml"
       - "!**README.memoria.toml"
+      - "!site/**"
       - "skills/**"
       - "tests/fixtures/**"
   pull_request:
@@ -23,6 +24,7 @@ on:
       - "!memoria.lock"
       - "!memoria.toml"
       - "!**README.memoria.toml"
+      - "!site/**"
       - "skills/**"
       - "tests/fixtures/**"
   workflow_dispatch:

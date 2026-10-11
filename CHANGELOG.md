@@ -4,6 +4,7 @@ This file records user-visible changes in Memoria. The project maintainer owns r
 
 Contents:
 
+- [Unreleased](#unreleased)
 - [0.9.2](#092---2026-10-11)
 - [0.9.1](#091---2026-10-11)
 - [0.9.0](#090---2026-10-11)
@@ -19,6 +20,12 @@ Contents:
 - [0.4.0](#040---2026-09-10)
 - [0.3.0](#030---2026-09-09)
 - [0.2.0](#020).
+
+## Unreleased
+
+### Development
+
+- A push or pull request that changes only the landing page in `site/` runs no Acceptance or Setup Action job. `site/` changes alongside documentation still run the documentation job, and alongside code the full build.
 
 ## 0.9.2 - 2026-10-11
 

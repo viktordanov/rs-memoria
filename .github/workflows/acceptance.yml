@@ -19,17 +19,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # A push or pull request that changes only documentation runs the short
-  # `docs` job instead of the full build. Documentation here is Markdown
-  # outside skills/ (the skill is compiled into the binary) and outside
-  # tests/fixtures/ (every suite reads fixtures), anything under docs/, and
-  # the Memoria review state and configuration. Any other path, an unknown
-  # base commit, and a manual run all select the full build.
+  # The `changes` job picks one mode for a push or pull request:
+  #   none  only site/ changed: the landing page, which Memoria ignores and no
+  #         test reads, so nothing runs.
+  #   docs  only documentation changed, perhaps with site/: the short `docs`
+  #         job runs. Documentation is Markdown outside skills/ (the skill is
+  #         compiled into the binary) and outside tests/fixtures/ (every suite
+  #         reads fixtures), anything under docs/, and the Memoria review state
+  #         and configuration.
+  #   full  anything else, an unknown base commit, or a manual run.
   changes:
     name: Classify the change
     runs-on: ubuntu-24.04
     outputs:
-      docs_only: ${{ steps.classify.outputs.docs_only }}
+      mode: ${{ steps.classify.outputs.mode }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -51,27 +54,30 @@ jobs:
             push) base="$PUSH_BEFORE" ;;
             pull_request) base="$(git merge-base "$PR_BASE" "$head" 2>/dev/null || true)" ;;
           esac
-          docs_only=false
+          mode=full
           if [ -n "$base" ] && ! printf '%s' "$base" | grep -qE '^0+$' \
             && git cat-file -e "${base}^{commit}" 2>/dev/null; then
             files="$(git diff --name-only "$base" "$head")"
             printf 'Changed paths since %s:\n%s\n' "$base" "$files"
-            code="$(printf '%s\n' "$files" | grep -E '^(skills|tests/fixtures)/' || true)"
-            other="$(printf '%s\n' "$files" | grep -vE '^(skills|tests/fixtures)/' \
+            rest="$(printf '%s\n' "$files" | grep -vE '^site/' || true)"
+            code="$(printf '%s\n' "$rest" | grep -E '^(skills|tests/fixtures)/' || true)"
+            other="$(printf '%s\n' "$rest" | grep -vE '^(skills|tests/fixtures)/' \
               | grep -vE '^(docs/.+|memoria\.(lock|toml)|(.+/)?README\.memoria\.toml|(.+/)?[^/]+\.md)$' || true)"
-            if [ -n "$files" ] && [ -z "$code" ] && [ -z "$other" ]; then
-              docs_only=true
+            if [ -n "$files" ] && [ -z "$rest" ]; then
+              mode=none
+            elif [ -n "$files" ] && [ -z "$code" ] && [ -z "$other" ]; then
+              mode=docs
             fi
           else
             echo "No comparable base commit: run the full build."
           fi
-          echo "docs_only=${docs_only}"
-          echo "docs_only=${docs_only}" >> "$GITHUB_OUTPUT"
+          echo "mode=${mode}"
+          echo "mode=${mode}" >> "$GITHUB_OUTPUT"
 
   docs:
     name: Documentation checks
     needs: changes
-    if: needs.changes.outputs.docs_only == 'true'
+    if: needs.changes.outputs.mode == 'docs'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -115,7 +121,7 @@ jobs:
   checks:
     name: Rust checks and CLI acceptance on Linux
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
+    if: needs.changes.outputs.mode == 'full'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -183,7 +189,7 @@ jobs:
   darwin-cross-build:
     name: Cross-compile macOS binaries on Linux
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
+    if: needs.changes.outputs.mode == 'full'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -252,7 +258,7 @@ jobs:
   linux-release-acceptance:
     name: Reproducible ${{ matrix.target }} build and native run
     needs: changes
-    if: needs.changes.outputs.docs_only != 'true'
+    if: needs.changes.outputs.mode == 'full'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
