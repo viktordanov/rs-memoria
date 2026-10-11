@@ -46,7 +46,8 @@ p { margin: 0; max-width: 70ch; }
 .a { color: var(--accent); }
 code { font: inherit; color: var(--ink); }
 .pitch code, section p code, .sub code, .rules code, .uses code, .says code, .caption code, .note code { padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--ink) 9%, transparent); white-space: nowrap; }
-.pa { fill: var(--accent); } .pm { fill: var(--muted); } .pi { fill: var(--ink); }
+.pa { fill: var(--accent); } .pm { fill: var(--muted); }
+.mw { color: var(--accent); } .pi { fill: var(--ink); }
 svg.defs { position: absolute; width: 0; height: 0; }
 pre { margin: 0; font: inherit; white-space: pre; overflow-x: auto; }
 
@@ -86,13 +87,13 @@ h1::before { content: ""; position: absolute; left: -70%; top: -320%; width: 260
 .unused-scroll { position: absolute; left: clamp(20px, 5vw, 64px); bottom: 22px; font-size: 12px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
 
 /* ---------- section headers, like the art ---------- */
-.hd { display: flex; align-items: center; justify-content: center; gap: 22px; font-size: 21px; letter-spacing: .05em; text-transform: uppercase; font-weight: 600; color: var(--ink); text-align: center; margin: 0; text-wrap: pretty; }
-.hd svg { width: 56px; height: 22px; flex-shrink: 0; }
+.hd { margin: 0; font-size: 26px; line-height: 1.2; font-weight: 600; letter-spacing: -.01em; color: var(--ink); text-wrap: pretty; padding-bottom: 14px; border-bottom: 1px solid var(--rule); }
+.sh .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
 section { display: flex; flex-direction: column; gap: 44px; position: relative; }
-section > p { align-self: center; }
+section > p { align-self: flex-start; }
 section::before { content: ""; position: absolute; left: 50%; top: 0; width: min(1600px, 170%); height: min(150%, 1200px); transform: translate(-50%, -18%); background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 3.25%, transparent), transparent); pointer-events: none; z-index: -1; }
-.sh { display: flex; flex-direction: column; align-items: center; gap: 16px; margin-bottom: 8px; }
-.sub { color: var(--muted); text-align: center; max-width: 62ch; text-wrap: pretty; margin: 0; line-height: 1.5; }
+.sh { display: flex; flex-direction: column; align-items: stretch; gap: 12px; margin-bottom: 8px; text-align: left; }
+.sub { color: var(--muted); text-align: left; max-width: 62ch; text-wrap: pretty; margin: 0; line-height: 1.5; }
 .tag { white-space: nowrap; margin-bottom: 12px; }
 .tag .cursor { width: .55em; height: .9em; margin-left: 6px; vertical-align: -.08em; }
 
@@ -155,7 +156,7 @@ section::before { content: ""; position: absolute; left: 50%; top: 0; width: min
 .trees .frame { padding-inline: 16px; font-size: 14px; }
 .trees pre { color: var(--muted); }
 .trees .says { color: var(--muted); font-size: 13px; margin-bottom: 12px; min-height: 2.6em; }
-.rules { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; max-width: 74ch; align-self: center; }
+.rules { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; max-width: 74ch; align-self: flex-start; }
 .rules li { display: grid; grid-template-columns: 3ch 1fr; }
 .rules li::before { content: "─"; color: var(--muted); }
 
@@ -301,8 +302,7 @@ footer { color: var(--muted); font-size: 12px; }
   .cycle { flex-direction: column; }
   .cycle .ar { transform: rotate(90deg); padding: 0; }
   .top nav .opt { display: none; }
-  .hd { gap: 12px; font-size: 16px; }
-  .hd svg { width: 34px; height: 16px; }
+  .hd { font-size: 21px; }
   .scroll { display: none; }
 }
 </style>
@@ -368,7 +368,8 @@ footer { color: var(--muted); font-size: 12px; }
 <main class="sheet">
   <section id="flow" aria-labelledby="h-demo">
     <header class="sh">
-      <h2 class="hd" id="h-demo"><svg aria-hidden="true"><use href="#dl"/></svg>The review flow<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <span class="k">How it works</span>
+      <h2 class="hd" id="h-demo">The review flow</h2>
       <p class="sub">Watch one change go through. A commit edits <code>login.rs</code>, and Memoria marks the README that describes it as <b class="a">pending</b>: it needs a look. Then it shows the diff and records the fix.</p>
     </header>
     <div class="player">
@@ -401,7 +402,8 @@ footer { color: var(--muted); font-size: 12px; }
 
   <section id="how" aria-labelledby="h-how">
     <header class="sh">
-      <h2 class="hd" id="h-how"><svg aria-hidden="true"><use href="#dl"/></svg>Folder scopes<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <span class="k">How it works</span>
+      <h2 class="hd" id="h-how">Folder scopes</h2>
       <p class="sub">A README covers its own folder and everything below it. One edit to <code>auth/login.rs</code>, and three ways the root README can treat <code>auth/</code>:</p>
     </header>
     <div class="trees">
@@ -427,7 +429,8 @@ footer { color: var(--muted); font-size: 12px; }
 
   <section id="cycle" aria-labelledby="h-cycle">
     <header class="sh">
-      <h2 class="hd" id="h-cycle"><svg aria-hidden="true"><use href="#dl"/></svg>Document markers<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <span class="k">How it works</span>
+      <h2 class="hd" id="h-cycle">Document markers</h2>
       <p class="sub">Folders do most of the work. Plain HTML comments add the rest: which part of a doc describes which code, and which summary other docs reuse. Nothing else in your Markdown changes.</p>
     </header>
     <div class="frame annot"><span class="ft">src/auth/README.md</span><div class="ar-row on"><code><span class="vl">1</span># Auth</code><span class="note"><b>tracked</b> · covers src/auth/ and below</span></div><div class="ar-row"><code><span class="vl">2</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">3</span><span class="mk">&lt;!-- memoria:export id="summary" --&gt;</span></code><span class="note"><b>export</b> · a summary other docs reuse</span></div><div class="ar-row"><code><span class="vl">4</span>Auth signs users in with a password or a passkey.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">5</span><span class="mk">&lt;!-- /memoria:export --&gt;</span></code><span class="note"></span></div><div class="ar-row"><code><span class="vl">6</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">7</span><span class="mk">&lt;!-- memoria:section id="sessions" files="src/auth/**" --&gt;</span></code><span class="note"><b>section</b> · maps src/auth/**</span></div><div class="ar-row"><code><span class="vl">8</span>## Sessions</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">9</span>A session lasts 15 minutes, then the user signs in again.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">10</span><span class="mk">&lt;!-- /memoria:section --&gt;</span></code><span class="note"></span></div></div>
@@ -445,7 +448,8 @@ footer { color: var(--muted); font-size: 12px; }
 
 <section id="render" aria-labelledby="h-render">
     <header class="sh">
-      <h2 class="hd" id="h-render"><svg aria-hidden="true"><use href="#dl"/></svg>Exports and imports<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <span class="k">Features</span>
+      <h2 class="hd" id="h-render">Exports and imports</h2>
       <p class="sub">Mark a summary in one doc and reuse it in others. <code>memoria render</code> copies it into place, so five READMEs never drift apart.</p>
     </header>
     <div class="share">
@@ -460,7 +464,8 @@ footer { color: var(--muted); font-size: 12px; }
 
   <section id="guidance" aria-labelledby="h-guidance">
     <header class="sh">
-      <h2 class="hd" id="h-guidance"><svg aria-hidden="true"><use href="#dl"/></svg>Project guidance<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <span class="k">Features</span>
+      <h2 class="hd" id="h-guidance">Project guidance</h2>
       <p class="sub">Write your documentation rules once in <code>memoria.toml</code>. Every review lists them, and <code>memoria guidance</code> prints them for any doc.</p>
     </header>
     <div class="guide">
@@ -486,7 +491,8 @@ guidance_files = [<span class="c-acc">"docs/writing-guidance.md"</span>]</pre></
 
   <section id="uses" aria-labelledby="h-uses">
     <header class="sh">
-      <h2 class="hd" id="h-uses"><svg aria-hidden="true"><use href="#dl"/></svg>When to use Memoria<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <span class="k">Use cases</span>
+      <h2 class="hd" id="h-uses">When to use Memoria</h2>
       <p class="sub">Four jobs it does well, from one stale file to a blocked merge.</p>
     </header>
     <div class="uses">
@@ -499,7 +505,8 @@ guidance_files = [<span class="c-acc">"docs/writing-guidance.md"</span>]</pre></
 
   <section id="never" aria-labelledby="h-never">
     <header class="sh">
-      <h2 class="hd" id="h-never"><svg aria-hidden="true"><use href="#dl"/></svg>Design principles<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <span class="k">About</span>
+      <h2 class="hd" id="h-never">Design principles</h2>
       <p class="sub">Memoria proves that someone checked. It never writes your docs or grades them.</p>
     </header>
     <div class="never">
@@ -511,7 +518,8 @@ guidance_files = [<span class="c-acc">"docs/writing-guidance.md"</span>]</pre></
 
   <section id="onboard" aria-labelledby="h-onb">
     <header class="sh">
-      <h2 class="hd" id="h-onb"><svg aria-hidden="true"><use href="#dl"/></svg>Onboard your agent<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <span class="k">Get started</span>
+      <h2 class="hd" id="h-onb">Onboard your agent</h2>
       <p class="sub">One command gets an agent started. <code>memoria onboard</code> explains Memoria, reads where your project stands, and names the next step. Nothing to install.</p>
     </header>
     <div class="say">
@@ -582,6 +590,20 @@ Go deeper
 <script>
 (function () {
   var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* in the onboarding section, `memoria <subcommand>` shows its first word in amber, as the CLI does */
+  var MW = /(^|[\s`$(>])memoria(?= (?:check|review|ack|init|onboard|status|render|guidance|agent|integrations|invalidate|lint|graph|explain|state|packet)\b)/g;
+  function mw(html) { return html.replace(MW, '$1<span class="mw">memoria</span>'); }
+  (function () {
+    var w = document.createTreeWalker(document.getElementById('onboard'), NodeFilter.SHOW_TEXT, { acceptNode: function (n) {
+      return n.parentNode.closest('script, style, svg, .mw') || !/memoria /.test(n.nodeValue) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT; } });
+    var nodes = []; while (w.nextNode()) nodes.push(w.currentNode);
+    nodes.forEach(function (n) {
+      var esc = n.nodeValue.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'), out = mw(esc);
+      if (out === esc) return;
+      var t = document.createElement('template'); t.innerHTML = out; n.parentNode.replaceChild(t.content, n);
+    });
+  })();
 
   /* ---------- wordmark: 5x5 glyphs, rows fade solid -> dither ---------- */
   var G = {
