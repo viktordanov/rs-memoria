@@ -2,7 +2,7 @@ version = 3
 
 # The integration tests use the sample repositories in tests/fixtures.
 # These repositories are outside the documentation inputs for this project.
-ignore = ["tests/fixtures/**"]
+ignore = ["tests/fixtures/**", "site/**"]
 include = []
 
 [documentation]

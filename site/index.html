@@ -1,0 +1,1018 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Memoria is CI for your docs. When the code changes, it tells you which documents need another look and shows you what changed.">
+<title>Memoria</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: a full-bleed hero on the left over a faint dither field, then one terminal sheet on warm paper drawn like the README art: ink frames, orange for what changed. */
+:root {
+  --paper: #f4f0e6;
+  --ink: #24211b;
+  --muted: #8a8170;
+  --accent: #a67c00;
+  --attention: #9a6a12;
+  --added: #2f7d35;
+  --removed: #c0392b;
+  --good: #1f8a2a;
+  --rule: #d9d1bf;
+  --glow: transparent;
+  --dot: .34;
+  --dither: #cdc4af;
+  --dither-low: #ddd5c3;
+ 
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --paper: #0a0a0a; --ink: #e9e4da; --muted: #707070; --accent: #ffc000; --added: #5dbb63; --removed: #f9645d; --good: #69e871; --attention: #e3a72f; --rule: #232323; --glow: rgba(255,192,0,.3); --dot: .26; --dither: #1a1a1a; --dither-low: #131313; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --paper: #0a0a0a; --ink: #e9e4da; --muted: #707070; --accent: #ffc000; --added: #5dbb63; --removed: #f9645d; --good: #69e871; --attention: #e3a72f; --rule: #232323; --glow: rgba(255,192,0,.3); --dot: .26; --dither: #1a1a1a; --dither-low: #131313; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html, body { overscroll-behavior: none; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+section, .docs { scroll-margin-top: 96px; }
+body { background: var(--paper); color: var(--ink); font: 15px/1.45 var(--mono); margin: 0; overflow-x: clip; }
+.sheet { max-width: 980px; margin-inline: auto; padding-inline: 20px; padding-block: 120px 160px; display: flex; flex-direction: column; gap: 176px; }
+a { color: var(--ink); text-decoration: none; transition: color .15s; }
+a:hover { color: var(--accent); }
+:focus-visible { outline: 1.5px dashed var(--accent); outline-offset: 3px; }
+p { margin: 0; max-width: 70ch; }
+.m { color: var(--muted); }
+.ad { color: var(--added); } .rm { color: var(--removed); } .ok { color: var(--good); }
+.a { color: var(--accent); }
+code { font: inherit; color: var(--ink); }
+.pa { fill: var(--accent); } .pi { fill: var(--ink); }
+svg.defs { position: absolute; width: 0; height: 0; }
+pre { margin: 0; font: inherit; white-space: pre; overflow-x: auto; }
+
+/* ---------- hero: full bleed, content on the left ---------- */
+.hero { position: relative; overflow: hidden; min-height: min(94vh, 920px); display: flex; flex-direction: column; }
+.hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.hero-in { position: relative; width: 100%; max-width: 1240px; margin-inline: auto; padding-inline: clamp(20px, 5vw, 64px); display: flex; flex-direction: column; flex: 1; }
+.top { display: flex; justify-content: space-between; gap: 16px; padding-block: 22px; font-size: 13px; }
+.top nav { display: flex; gap: 40px; }
+.top a { text-decoration: none; color: var(--muted); }
+.top a:hover { color: var(--accent); }
+.lead { position: relative; z-index: 0; flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 28px; max-width: 640px; padding-block: 48px 72px; }
+.word { display: block; width: min(var(--ww, 520px), 100%); height: auto; filter: drop-shadow(0 0 14px var(--glow)); }
+.word .s { fill: var(--accent); }
+.variants { display: flex; gap: 4px; align-items: center; font-size: 11px; color: var(--muted); margin-top: 10px; }
+.variants button { font: 11px var(--mono); color: var(--muted); background: none; border: 1px solid var(--rule); padding: 1px 7px; cursor: pointer; }
+.variants button[aria-pressed="true"] { color: var(--paper); background: var(--ink); border-color: var(--ink); }
+h1 { margin: 0 0 18px; position: relative; }
+h1::before { content: ""; position: absolute; left: -70%; top: -320%; width: 260%; height: 800%; background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 1.6%, transparent), transparent); pointer-events: none; z-index: -1; }
+.tag { font-size: clamp(24px, 3.4vw, 36px); line-height: 1.2; font-weight: 500; letter-spacing: -.01em; text-wrap: balance; }
+.tag .a { font-weight: 600; }
+.pitch { display: flex; flex-direction: column; gap: 16px; font-size: 16px; line-height: 1.5; }
+.pitch strong { font-weight: 600; }
+.install { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 56px; max-width: 100%; }
+.install .cmd { max-width: 100%; }
+.cmd { display: flex; align-items: center; gap: 40px; border: 1.5px solid var(--ink); background: var(--paper); padding: 14px 14px 14px 20px; min-width: 0; }
+.cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; }
+.btn { font: 500 13px var(--mono); color: var(--ink); background: var(--paper); border: 1.5px solid var(--ink); padding: 4px 10px; cursor: pointer; flex-shrink: 0; }
+.btn:hover { color: var(--paper); background: var(--ink); }
+.cmd .btn { font-weight: 400; font-size: 12px; color: var(--muted); border: 0; background: none; padding: 2px 4px; letter-spacing: .03em; }
+.cmd .btn:hover { color: var(--accent); background: none; }
+.cmd .btn.hot { color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); padding: 3px 10px; }
+.cmd .btn.hot:hover { color: var(--paper); background: var(--accent); }
+.install small { color: var(--muted); font-size: 13px; }
+.ctas { display: flex; flex-wrap: wrap; gap: 10px 32px; font-size: 14px; }
+.ctas a::before { content: "↓ "; color: var(--accent); }
+.unused-scroll { position: absolute; left: clamp(20px, 5vw, 64px); bottom: 22px; font-size: 12px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+
+/* ---------- section headers, like the art ---------- */
+.hd { display: flex; align-items: center; justify-content: center; gap: 22px; font-size: 21px; letter-spacing: .05em; text-transform: uppercase; font-weight: 600; color: var(--ink); text-align: center; margin: 0; text-wrap: balance; }
+.hd svg { width: 56px; height: 22px; flex-shrink: 0; }
+section { display: flex; flex-direction: column; gap: 44px; position: relative; }
+section > p { align-self: center; }
+section::before { content: ""; position: absolute; left: 50%; top: 0; width: min(1600px, 170%); height: min(150%, 1200px); transform: translate(-50%, -18%); background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 3.25%, transparent), transparent); pointer-events: none; z-index: -1; }
+.sh { display: flex; flex-direction: column; align-items: center; gap: 16px; margin-bottom: 8px; }
+.sub { color: var(--muted); text-align: center; max-width: 62ch; text-wrap: balance; margin: 0; line-height: 1.5; }
+.tag { white-space: nowrap; margin-bottom: 12px; }
+.tag .cursor { width: .55em; height: .9em; margin-left: 6px; vertical-align: -.08em; }
+
+.frame { border: 1.5px solid var(--ink); padding: 26px 22px 20px; position: relative; min-width: 0; }
+.frame > .ft { position: absolute; top: -0.85em; left: 18px; background: var(--paper); padding-inline: 8px; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+.ed { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; }
+
+/* ---------- the animated flow ---------- */
+.player { display: flex; flex-direction: column; gap: 26px; }
+.steps { display: grid; grid-template-columns: repeat(6, 1fr) auto; gap: 6px; }
+.steps button { font: 13px var(--mono); color: var(--muted); background: none; border: 0; border-top: 1.5px solid var(--rule); padding: 10px 4px 0; cursor: pointer; text-align: left; position: relative; }
+.steps button:hover { color: var(--ink); }
+.steps button[aria-pressed="true"] { color: var(--ink); }
+.steps button .bar { position: absolute; left: 0; top: -1.5px; height: 1.5px; width: 0; background: var(--accent); }
+.steps button.done .bar { width: 100%; }
+.steps button[aria-pressed="true"] .bar { width: 100%; }
+.steps button.run .bar { animation: fill var(--dur, 4.6s) linear both; }
+@keyframes fill { from { width: 0; } to { width: 100%; } }
+.steps .pp { border-top-color: transparent; color: var(--muted); padding-inline: 0; width: 3ch; text-align: center; }
+.caption { font-size: 17px; line-height: 1.5; height: 4.5em; max-width: 64ch; margin: 0 0 14px; }
+.caption b { font-weight: 500; color: var(--accent); }
+.demo { display: grid; grid-template-columns: 1fr 72px 1fr; align-items: center; }
+.link { height: 1.5px; background: var(--muted); position: relative; transition: background .4s; }
+.link::before { content: ""; position: absolute; left: -2px; top: -5px; border: 6px solid transparent; border-right: 9px solid var(--muted); border-left: 0; transition: border-color .4s; }
+.link i { position: absolute; top: -3px; right: 0; width: 7px; height: 7px; background: var(--accent); opacity: 0; }
+.on .link { background: var(--accent); }
+.on .link::before { border-right-color: var(--accent); }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; margin-inline: -8px; padding-inline: 8px; color: var(--muted); transition: color .4s, background .4s, box-shadow .4s; }
+.ln.hot { background: color-mix(in srgb, var(--accent) 11%, transparent); }
+.row.a { color: var(--accent); background: color-mix(in srgb, var(--accent) 11%, transparent); }
+.ln { display: block; margin-inline: -6px; padding-inline: 6px; transition: background .4s, box-shadow .4s; }
+.ln.hot { color: var(--accent); }
+.row > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .st { white-space: nowrap; }
+.row .st { min-width: 7ch; }
+.flash { animation: flash 1.1s ease-out; }
+@keyframes flash { 0% { background: color-mix(in srgb, var(--accent) 22%, transparent); } 100% { background: transparent; } }
+.term { height: 372px; }
+.mk { color: var(--attention); }
+.ghost { visibility: hidden; }
+.eline .cursor { margin-left: 0; margin-right: -2px; }
+.vl { color: var(--muted); display: inline-block; width: 3ch; text-align: right; margin-right: 1.5ch; user-select: none; }
+.vbar { color: var(--muted); }
+.vstatus { position: absolute; left: 22px; right: 22px; bottom: 14px; color: var(--muted); white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+.vstatus .err { color: var(--removed); }
+.eline { display: inline-block; width: calc(100% + 12px); margin-inline: -6px; padding-inline: 6px; background: color-mix(in srgb, var(--accent) 11%, transparent); color: var(--accent); }
+.ins { background: color-mix(in srgb, var(--accent) 11%, transparent); }
+.term pre { height: 100%; }
+.term pre .p { color: var(--ink); }
+.cursor { display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -.12em; background: var(--accent); animation: blink 1.2s ease-in-out infinite; }
+@keyframes blink { 0%, 40% { opacity: 1; } 60%, 100% { opacity: 0; } }
+.typing .cursor { animation: none; } }
+@media (prefers-reduced-motion: no-preference) {
+  .go .link i { animation: travel .8s ease-in both .1s; }
+  @keyframes travel { 0% { right: 0; opacity: 1; } 100% { right: calc(100% - 8px); opacity: 1; } }
+}
+
+/* ---------- trees ---------- */
+.trees { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px 18px; }
+.trees .frame { padding-inline: 16px; font-size: 14px; }
+.trees pre { color: var(--muted); }
+.trees .says { color: var(--muted); font-size: 13px; margin-bottom: 12px; min-height: 2.6em; }
+.rules { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; max-width: 74ch; align-self: center; }
+.rules li { display: grid; grid-template-columns: 3ch 1fr; }
+.rules li::before { content: "─"; color: var(--accent); }
+
+/* ---------- onboarding ---------- */
+.onb { display: grid; grid-template-columns: 1.25fr 1fr; gap: 34px 18px; align-items: start; }
+.tasks { display: flex; flex-direction: column; }
+.task { display: grid; grid-template-columns: 4ch 1fr; gap: 0 4px; padding-block: 14px; border-bottom: 1px dashed var(--muted); }
+.task:first-child { border-top: 1.5px solid var(--ink); }
+.task .n { color: var(--accent); }
+.task strong { font-weight: 500; }
+.task .m { font-size: 13px; }
+.task pre { grid-column: 2; font-size: 13px; margin-top: 6px; }
+.prompt { display: flex; flex-direction: column; gap: 14px; }
+.prompt pre { white-space: pre-wrap; font-size: 13px; line-height: 1.6; }
+.prompt .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.note { font-size: 13px; color: var(--muted); }
+
+/* ---------- docs: the closing section ---------- */
+.docs { position: relative; overflow: visible; padding-inline: 20px; padding-block: 40px 0; min-height: 640px; }
+.docs::before { top: auto; bottom: 0; height: calc(100% + 320px); transform: translateX(-50%); }
+.docs canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.docs-in { position: relative; max-width: 1120px; margin-inline: auto; display: flex; flex-direction: column; align-items: center; gap: 22px; text-align: center; padding-bottom: 72px; }
+.docs .big { font-size: clamp(30px, 4.6vw, 48px); font-weight: 500; letter-spacing: -.015em; margin: 0; }
+.guides { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px 96px; width: 100%; margin-top: 44px; text-align: left; }
+.guides > div { display: grid; grid-template-columns: 1fr; gap: 3px; align-content: start; }
+.guides .gh { text-transform: uppercase; letter-spacing: .06em; font-size: 12px; color: var(--accent); padding-bottom: 10px; margin-bottom: 8px; border-bottom: 1.5px solid var(--ink); }
+.guides a { font-weight: 500; margin-top: 14px; }
+.guides a:hover { color: var(--accent); }
+.guides .m { font-size: 13px; }
+.docs footer { margin-top: 280px; color: var(--muted); font-size: 12px; }
+.docs footer a { color: var(--muted); }
+
+/* ---------- side map ---------- */
+.map { position: fixed; left: max(12px, calc((100vw - 980px) / 4 - 150px)); top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 14px; padding-left: 22px; font-size: 12px; line-height: 18px; opacity: 0; pointer-events: none; transition: opacity .35s; z-index: 2; }
+.map.show { opacity: 1; pointer-events: auto; }
+.map .track { position: absolute; left: 3px; top: 9px; bottom: 9px; width: 2px; background: var(--rule); }
+.map .track i { display: block; width: 100%; height: 0; background: var(--accent); box-shadow: 0 0 8px var(--glow); }
+.map a { color: var(--muted); position: relative; transition: color .2s; white-space: nowrap; }
+.map a::before { content: ""; position: absolute; left: -22px; top: 5px; width: 8px; height: 8px; background: var(--paper); border: 1.5px solid var(--rule); box-sizing: border-box; transition: background .2s, border-color .2s; }
+.map a:hover { color: var(--ink); }
+.map a.past::before { background: var(--accent); border-color: var(--accent); }
+.map a.cur { color: var(--ink); }
+.map a.cur::before { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 8px var(--glow), 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+@media (max-width: 1319px) { .map { display: none; } }
+
+/* ---------- feature clusters ---------- */
+.share { display: grid; grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1fr); align-items: stretch; }
+.share .via { align-self: center; }
+.share .frame, .guide .frame, .plug .frame { font-size: 13px; }
+.via { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 12px; }
+.via .link { width: 72%; transform: scaleX(-1); background: var(--accent); }
+.via .link::before { border-right-color: var(--accent); }
+.guide { display: grid; grid-template-columns: 1.15fr 1fr; gap: 34px 18px; }
+.share pre, .guide pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.plug pre { white-space: pre; overflow-x: auto; }
+.cmdrow { font-size: 13px; }
+.plug { display: grid; grid-template-columns: 1fr; gap: 34px; }
+.plug .frame { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px 40px; align-items: center; padding-block: 24px 22px; }
+.plug .frame p { font-size: 14px; }
+.plug pre { font-size: 13.5px; line-height: 1.6; }
+.hl { color: var(--accent); background: color-mix(in srgb, var(--accent) 11%, transparent); padding-inline: 4px; }
+
+/* ---------- annotated README ---------- */
+.annot { font-size: 13px; display: flex; flex-direction: column; padding-inline: 18px; }
+.ar-row { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr); gap: 28px; align-items: baseline; min-height: 1.6em; }
+.ar-row .note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ar-row code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ar-row .note { color: var(--muted); font-size: 13px; }
+.ar-row .note b { color: var(--accent); font-weight: 500; }
+.ar-row.on > code { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.loop-label { text-align: center; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .05em; margin-bottom: -16px; }
+
+/* ---------- onboard ---------- */
+.new { display: inline-block; margin-left: 6px; padding: 0 7px; font-size: 12px; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); white-space: nowrap; }
+.say { display: flex; flex-direction: column; align-items: center; gap: 12px; font-size: 16px; }
+.saybox { max-width: 100%; border-color: var(--accent); box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 14%, transparent); }
+@media (prefers-reduced-motion: no-preference) {
+  .saybox { animation: breathe 3.6s ease-in-out infinite; }
+  @keyframes breathe {
+    0%, 100% { box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 6%, transparent); }
+    50% { box-shadow: 0 0 28px 2px color-mix(in srgb, var(--accent) 26%, transparent); }
+  }
+}
+.top a.cta-onb, .ctas a.cta-onb { color: var(--accent); }
+.top a.cta-onb:hover, .ctas a.cta-onb:hover { color: var(--ink); }
+.tl.off { visibility: hidden; }
+.say .m { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
+.say code { color: var(--ink); }
+.onb-term { font-size: 13.5px; line-height: 1.55; }
+.onb-term pre { overflow-x: auto; }
+.onb-term .p { color: var(--ink); }
+.c-acc { color: var(--accent); } .c-mut { color: var(--muted); } .c-att { color: var(--attention); }
+.deeper { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px 18px; }
+.deeper .frame { display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
+.deeper .cmdl { color: var(--accent); }
+
+/* ---------- rest ---------- */
+.cycle { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px 0; }
+.cycle .box { border: 1.5px solid var(--ink); padding: 8px 12px; text-align: center; font-size: 14px; transition: color .4s, border-color .4s; }
+.cycle .box.lit { color: var(--accent); border-color: var(--accent); }
+.cycle .box small { display: block; color: var(--muted); font-size: 12px; }
+.cycle .ar { color: var(--muted); padding-inline: 6px; }
+.cycle .back { flex-basis: 100%; color: var(--muted); font-size: 13px; text-align: center; }
+.uses { display: flex; flex-direction: column; border-top: 1.5px solid var(--ink); }
+.uses div { display: grid; grid-template-columns: 1fr 1.2fr; gap: 48px; padding-block: 24px; border-bottom: 1px dashed var(--rule); line-height: 1.5; }
+.uses div > span:first-child::before { content: "› "; color: var(--accent); }
+.uses .m { font-size: 14px; }
+.uses div > span:first-child { font-weight: 500; }
+.never { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px 18px; }
+.never .frame { font-size: 14px; }
+.never .ft { color: var(--accent); }
+.unused-end { display: flex; flex-direction: column; align-items: center; gap: 18px; border-top: 1.5px solid var(--ink); padding-top: 44px; text-align: center; }
+.end .big { font-size: clamp(18px, 3vw, 24px); font-weight: 500; }
+.links { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 24px; font-size: 14px; }
+footer { color: var(--muted); font-size: 12px; }
+
+@media (max-width: 760px) {
+  body { font-size: 14px; }
+  .sheet { gap: 104px; padding-block: 72px 56px; }
+  .hero { min-height: 0; }
+  .lead { padding-block: 24px 64px; }
+  .steps { grid-template-columns: repeat(3, 1fr); }
+  .demo { grid-template-columns: 1fr; gap: 0; }
+  .demo .link { width: 1.5px; height: 34px; justify-self: center; }
+  .demo .link::before { left: -5px; top: -2px; border: 6px solid transparent; border-bottom: 9px solid var(--muted); border-top: 0; }
+  .on .link::before { border-bottom-color: var(--accent); border-right-color: transparent; }
+  .demo .link i { display: none; }
+  .demo .frame:first-child { order: 3; }
+  .demo .link { order: 2; }
+  .trees, .never, .onb, .guides, .deeper, .guide, .plug, .plug .frame, .ar-row { grid-template-columns: 1fr; }
+  .ar-row { gap: 2px; }
+  .ar-row .note:empty { display: none; }
+  .share { grid-template-columns: 1fr; gap: 10px; }
+  .via .link { display: none; }
+  .caption { height: 6em; font-size: 15px; }
+  .tag { white-space: normal; min-height: 2.4em; }
+  .term { height: 236px; }
+  .uses div { grid-template-columns: 1fr; gap: 4px; }
+  .cycle { flex-direction: column; }
+  .cycle .ar { transform: rotate(90deg); padding: 0; }
+  .top nav .opt { display: none; }
+  .hd { gap: 12px; font-size: 16px; }
+  .hd svg { width: 34px; height: 16px; }
+  .scroll { display: none; }
+}
+</style>
+</head>
+<body>
+<svg class="defs" aria-hidden="true">
+  <defs>
+    <pattern id="d1" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="2" height="2" class="pa"/></pattern>
+    <pattern id="d2" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="2" height="2" class="pa"/><rect x="2" y="2" width="2" height="2" class="pa"/></pattern>
+    <pattern id="d3" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="2" height="2" class="pa"/><rect x="2" width="2" height="2" class="pa"/><rect x="2" y="2" width="2" height="2" class="pa"/></pattern>
+    <pattern id="i3" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="2" height="2" class="pi"/><rect x="2" width="2" height="2" class="pi"/><rect x="2" y="2" width="2" height="2" class="pi"/></pattern>
+    <symbol id="dl" viewBox="0 0 45 18"><rect width="9" height="18" fill="url(#d1)"/><rect x="9" width="9" height="18" fill="url(#d2)"/><rect x="18" width="9" height="18" fill="url(#d3)"/><rect x="27" width="18" height="18" class="pa"/></symbol>
+    <symbol id="dr" viewBox="0 0 45 18"><rect width="18" height="18" class="pa"/><rect x="18" width="9" height="18" fill="url(#d3)"/><rect x="27" width="9" height="18" fill="url(#d2)"/><rect x="36" width="9" height="18" fill="url(#d1)"/></symbol>
+    <symbol id="edited" viewBox="0 0 14 14"><rect width="14" height="14" fill="url(#i3)"/></symbol>
+  </defs>
+</svg>
+
+<header class="hero">
+  <canvas id="field" aria-hidden="true"></canvas>
+  <div class="hero-in">
+    <div class="top">
+      <span>memoria <span class="m">v<span class="ver">0.9.2</span></span></span>
+      <nav>
+        <a class="opt" href="#how">how it works</a>
+        <a class="opt cta-onb" href="#onboard">onboard your agent</a>
+        <a href="https://github.com/viktordanov/rs-memoria">github</a>
+      </nav>
+    </div>
+    <div class="lead">
+      <h1>
+        <svg class="word" id="word" role="img" aria-label="Memoria"></svg>
+      </h1>
+      <div class="tag" id="tag">Never ship <span class="a">stale</span> <span id="rot">docs again.</span><span class="cursor"></span></div>
+      <div class="pitch">
+        <p><strong>Memoria is CI for your docs.</strong> When the code changes, it tells you which documents need another look and shows you what changed. <code class="a">memoria check</code> fails the build until someone has reviewed them.</p>
+        <p class="m">You and your agents still write and judge every word. Memoria records each review against the exact code the reviewer saw.</p>
+      </div>
+      <div class="install">
+        <div class="cmd"><code id="install-cmd"><span class="m">$</span> brew install viktordanov/tap/memoria</code><button class="btn" id="copy-install" type="button">copy</button></div>
+        <small>macOS 13 or later · Arch Linux: <code>yay -S memoria-bin</code> · <a href="https://github.com/viktordanov/rs-memoria#install-options">other options</a></small>
+      </div>
+      <div class="ctas"><a href="#flow">see one review</a><a class="cta-onb" href="#onboard">onboard your agent</a></div>
+    </div>
+  </div>
+  </header>
+
+<nav class="map" id="map" aria-label="On this page">
+  <div class="track"><i id="mapfill"></i></div>
+  <a href="#flow">see a review</a>
+  <a href="#how">what gets flagged</a>
+  <a href="#cycle">how it tracks</a>
+  <a href="#render">reuse text</a>
+  <a href="#guidance">writing guidance</a>
+  <a href="#automate">agents and CI</a>
+  <a href="#uses">when to use it</a>
+  <a href="#never">what it won't do</a>
+  <a href="#onboard">onboard your agent</a>
+  <a href="#docs">read the docs</a>
+</nav>
+
+<main class="sheet">
+  <section id="flow" aria-labelledby="h-demo">
+    <header class="sh">
+      <h2 class="hd" id="h-demo"><svg aria-hidden="true"><use href="#dl"/></svg>One commit, one stale README<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <p class="sub">Edit one file, and Memoria finds the one document that now needs a look, shows what changed, and records the fix.</p>
+    </header>
+    <div class="player">
+      <div class="steps" role="group" aria-label="Steps of one review">
+        <button type="button" data-s="0"><span class="bar"></span>0 · all current</button>
+        <button type="button" data-s="1"><span class="bar"></span>1 · edit</button>
+        <button type="button" data-s="2"><span class="bar"></span>2 · plan</button>
+        <button type="button" data-s="3" aria-pressed="true"><span class="bar"></span>3 · review</button>
+        <button type="button" data-s="4"><span class="bar"></span>4 · fix</button>
+        <button type="button" data-s="5"><span class="bar"></span>5 · ack</button>
+        <button type="button" class="pp" id="pp" aria-label="Pause">❚❚</button>
+      </div>
+      <p class="caption" id="caption" aria-live="polite"></p>
+      <div class="demo" id="demo">
+        <div class="frame"><span class="ft">documents</span>
+          <div class="row"><span>README.md</span><span class="st">current</span></div>
+          <div class="row"><span>AGENTS.md</span><span class="st">current</span></div>
+          <div class="row" data-r="auth"><span>src/auth/README.md</span><span class="st">current</span></div>
+        </div>
+        <div class="link" aria-hidden="true"><i></i></div>
+        <div class="frame"><span class="ft">code</span>
+          <div class="row"><span>src/main.rs</span><span class="st"></span></div>
+          <div class="row"><span>src/db/pool.rs</span><span class="st"></span></div>
+          <div class="row" data-r="login"><span>src/auth/login.rs</span><span class="st"></span></div>
+        </div>
+      </div>
+      <div class="frame term"><span class="ft">terminal</span><pre id="term"></pre></div>
+    </div>
+  </section>
+
+  <section id="how" aria-labelledby="h-how">
+    <header class="sh">
+      <h2 class="hd" id="h-how"><svg aria-hidden="true"><use href="#dl"/></svg>Which documents an edit makes pending<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <p class="sub">Each README covers its own folder and everything below it. Edit <code>auth/login.rs</code>, and what goes pending depends on what the root README says about <code>auth/</code>.</p>
+    </header>
+    <div class="trees">
+      <div class="frame"><span class="ft">1 · says nothing</span>
+        <div class="says">The root still covers auth/, so both are reviewed.</div>
+<pre><span class="ln">./</span><span class="ln hot">├─ README.md     <span class="sw" data-o="2" data-idle="current"><span class="a">pending</span></span></span><span class="ln">├─ app.rs</span><span class="ln">└─ auth/</span><span class="ln hot">   ├─ README.md  <span class="sw" data-o="1" data-idle="current"><span class="a">pending</span></span></span><span class="ln hot">   └─ login.rs   <span class="sw" data-o="0" data-idle="">edited</span></span></pre>
+      </div>
+      <div class="frame"><span class="ft">2 · links auth/</span>
+        <div class="says">The link hands auth/ to its own README.</div>
+<pre><span class="ln">./</span><span class="ln">├─ README.md     current</span><span class="ln">├─ app.rs</span><span class="ln">└─ auth/</span><span class="ln hot">   ├─ README.md  <span class="sw" data-o="1" data-idle="current"><span class="a">pending</span></span></span><span class="ln hot">   └─ login.rs   <span class="sw" data-o="0" data-idle="">edited</span></span></pre>
+      </div>
+      <div class="frame"><span class="ft">3 · imports a summary</span>
+        <div class="says">The root waits for the summary it imports.</div>
+<pre><span class="ln">./</span><span class="ln">├─ README.md     <span class="sw" data-o="4" data-idle="current   ">waits  <span class="a">◂─┐</span></span></span><span class="ln">├─ app.rs                 <span class="sw" data-o="3" data-idle=" "><span class="a">│</span></span></span><span class="ln">└─ auth/                  <span class="sw" data-o="2" data-idle=" "><span class="a">│</span></span></span><span class="ln hot">   ├─ README.md  <span class="sw" data-o="1" data-idle="current   "><span class="a">pending ─┘</span></span></span><span class="ln hot">   └─ login.rs   <span class="sw" data-o="0" data-idle="">edited</span></span></pre>
+      </div>
+    </div>
+    <ul class="rules">
+      <li><span><strong>Every README.md is tracked.</strong> <span class="m">Other Markdown files join with a marker: an export, an import, or a section. A link alone never tracks a file.</span></span></li>
+      <li><span><strong>A link is a handoff.</strong> <span class="m">Remove it later, and the root becomes pending again.</span></span></li>
+      <li><span><strong>Imports carry freshness.</strong> <span class="m">They are the only edges between documents, and they set the review order.</span></span></li>
+    </ul>
+  </section>
+
+  <section id="cycle" aria-labelledby="h-cycle">
+    <header class="sh">
+      <h2 class="hd" id="h-cycle"><svg aria-hidden="true"><use href="#dl"/></svg>How Memoria tracks a document<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <p class="sub">Folders decide what a document covers. Markers, plain HTML comments, add the rest. Memoria never needs anything else in your Markdown.</p>
+    </header>
+    <div class="frame annot"><span class="ft">src/auth/README.md</span><div class="ar-row on"><code><span class="vl">1</span># Auth</code><span class="note"><b>tracked</b> · covers src/auth/ and below</span></div><div class="ar-row"><code><span class="vl">2</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">3</span><span class="mk">&lt;!-- memoria:export id="summary" --&gt;</span></code><span class="note"><b>export</b> · a summary others import</span></div><div class="ar-row"><code><span class="vl">4</span>Auth signs users in with a password or a passkey.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">5</span><span class="mk">&lt;!-- /memoria:export --&gt;</span></code><span class="note"></span></div><div class="ar-row"><code><span class="vl">6</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">7</span><span class="mk">&lt;!-- memoria:section id="sessions" files="src/auth/**" --&gt;</span></code><span class="note"><b>section</b> · changes in src/auth/** start here</span></div><div class="ar-row"><code><span class="vl">8</span>## Sessions</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">9</span>A session lasts 15 minutes, then the user signs in again.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">10</span><span class="mk">&lt;!-- /memoria:section --&gt;</span></code><span class="note"></span></div></div>
+    <div class="label loop-label">every change then runs the same loop</div>
+    <div class="cycle" id="cyc">
+      <div class="box">login.rs changes<small>git commit</small></div><span class="ar">─▸</span>
+      <div class="box">README pending<small>memoria status</small></div><span class="ar">─▸</span>
+      <div class="box">read the diff<small>memoria review</small></div><span class="ar">─▸</span>
+      <div class="box">fix the README<small>you or your agent</small></div><span class="ar">─▸</span>
+      <div class="box">README current<small>memoria ack</small></div>
+      <div class="back">◂──── the next change starts it again ─────</div>
+    </div>
+    <p>The ack is bound to one saved snapshot. If anything changed after the review was saved, Memoria rejects the ack instead of approving inputs nobody read. A passing <code>memoria check</code> means every document matches its last review. It does not claim the prose is correct.</p>
+  </section>
+
+<section id="render" aria-labelledby="h-render">
+    <header class="sh">
+      <h2 class="hd" id="h-render"><svg aria-hidden="true"><use href="#dl"/></svg>Say it once, reuse it everywhere<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <p class="sub">Stop pasting the same paragraph into five files. Export it from one document, import it where it belongs, and <code>memoria render</code> keeps every copy identical.</p>
+    </header>
+    <div class="share">
+      <div class="frame"><span class="ft">auth/README.md · provider</span>
+<pre><span class="ln c-mut">&lt;!-- memoria:export id="summary" --&gt;</span><span class="ln hot" id="exp-line">Auth signs users in with a password or a passkey.</span><span class="ln c-mut">&lt;!-- /memoria:export --&gt;</span></pre></div>
+      <div class="via"><span class="c-acc">memoria render</span><span class="link" aria-hidden="true"></span></div>
+      <div class="frame"><span class="ft">README.md · consumer</span>
+<pre><span class="ln c-mut">&lt;!-- memoria:import src="auth/README.md#summary" --&gt;</span><span class="ln hot" id="imp-line" data-text="Auth signs users in with a password or a passkey.">Auth signs users in with a password or a passkey.</span><span class="ln c-mut">&lt;!-- /memoria:import --&gt;</span></pre></div>
+    </div>
+    <ul class="rules">
+      <li><span><strong>The provider is reviewed first.</strong> <span class="m">The consumer waits, so it never reviews text from an unfinished dependency.</span></span></li>
+      <li><span><strong>Only inside import blocks.</strong> <span class="m">Render refreshes the managed copies and touches nothing else.</span></span></li>
+      <li><span><strong>One edit, every copy.</strong> <span class="m">Change the summary in one place, and each document that imports it is reviewed in order.</span></span></li>
+    </ul>
+  </section>
+
+  <section id="guidance" aria-labelledby="h-guidance">
+    <header class="sh">
+      <h2 class="hd" id="h-guidance"><svg aria-hidden="true"><use href="#dl"/></svg>Tell reviewers what good looks like<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <p class="sub">Write your documentation rules once. Every review names them, and <code>memoria guidance</code> prints them for any document.</p>
+    </header>
+    <div class="guide">
+      <div class="frame"><span class="ft">memoria.toml · project guidance</span><pre><span class="c-mut">[documentation]</span>
+guidance = [
+  <span class="c-acc">"Explain the operational workflow before implementation details."</span>,
+]
+guidance_files = [<span class="c-acc">"docs/writing-guidance.md"</span>]</pre></div>
+      <div class="frame"><span class="ft">AGENTS.md · section guide</span><pre class="wrap">&lt;!-- memoria:section id="boundaries"
+     guidance="docs/templates/agent-rules.md" --&gt;
+## Boundaries
+…
+&lt;!-- /memoria:section --&gt;</pre></div>
+    </div>
+    <div class="frame cmdrow"><span class="ft">terminal</span><pre><span class="p">$ memoria guidance src/README.md</span>   <span class="c-mut"># the rules for one document</span>
+<span class="p">$ memoria guidance --changed</span>       <span class="c-mut"># reviewed documents that saw older wording</span></pre></div>
+    <ul class="rules">
+      <li><span><strong>Advisory, never a trigger.</strong> <span class="m">Guidance never selects files and never makes a document pending on its own.</span></span></li>
+      <li><span><strong>A changed rule is reported, not enforced.</strong> <span class="m">The review plan shows one assessment item, and <code>memoria check</code> still passes. You decide what needs fresh eyes.</span></span></li>
+      <li><span><strong>Section guides reach only what names them.</strong> <span class="m">Project guidance still wins a conflict.</span></span></li>
+    </ul>
+  </section>
+
+  <section id="automate" aria-labelledby="h-automate">
+    <header class="sh">
+      <h2 class="hd" id="h-automate"><svg aria-hidden="true"><use href="#dl"/></svg>Plug into your agent and your CI<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <p class="sub">Three optional integrations. Each one is local and reversible, and none of them reviews a document for you.</p>
+    </header>
+    <div class="plug">
+      <div class="frame"><span class="ft">agent skill</span>
+<pre><span class="c-acc">memoria agent install --target claude</span>
+<span class="c-mut">.claude/</span>
+<span class="c-mut">└─</span> skills/
+   <span class="c-mut">└─</span> <span class="hl">memoria/</span></pre>
+        <p class="m">The full review procedure, as a skill for Claude Code or Codex.</p></div>
+      <div class="frame"><span class="ft">stop hook</span>
+<pre><span class="c-acc">memoria agent hook install --target claude</span>
+<span class="c-mut">agent stops</span>
+<span class="c-mut">└─</span> <span class="hl">1 document needs review</span>
+   <span class="c-mut">→ memoria review</span></pre>
+        <p class="m">Reports pending work when the agent stops. It never continues the turn.</p></div>
+      <div class="frame"><span class="ft">github check</span>
+<pre><span class="c-acc">memoria integrations github install</span>
+<span class="c-mut">.github/workflows/</span>
+<span class="c-mut">└─</span> <span class="hl">memoria.yml</span>
+   <span class="c-mut">runs memoria check</span></pre>
+        <p class="m">Fails the build while a review is pending, with a verified Memoria on the runner.</p></div>
+    </div>
+  </section>
+
+  <section id="uses" aria-labelledby="h-uses">
+    <header class="sh">
+      <h2 class="hd" id="h-uses"><svg aria-hidden="true"><use href="#dl"/></svg>What you can use it for<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <p class="sub">Six reasons people reach for it, from one stale file to a gated merge.</p>
+    </header>
+    <div class="uses">
+      <div><span>Find every explanation a feature change touches</span><span class="m">Each document whose scope holds a changed file goes pending, in review order.</span></div>
+      <div><span>Block a merge until the docs are reviewed</span><span class="m"><code>memoria check</code> fails in CI while a review is pending.</span></div>
+      <div><span>Hand an agent one bounded review</span><span class="m">One artifact holds what changed, what to read, and which guidance applies.</span></div>
+      <div><span>Keep AGENTS.md and CLAUDE.md current</span><span class="m">Each file is tracked, and shared writing rules join the review of each section that names them.</span></div>
+      <div><span>Repeat one summary in several docs</span><span class="m"><code>memoria render</code> copies an export into each import, and the provider is reviewed first.</span></div>
+      <div><span>Re-review after a decision, not a diff</span><span class="m"><code>memoria invalidate</code> records a review request with your reason.</span></div>
+    </div>
+  </section>
+
+  <section id="never" aria-labelledby="h-never">
+    <header class="sh">
+      <h2 class="hd" id="h-never"><svg aria-hidden="true"><use href="#dl"/></svg>What Memoria never does<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <p class="sub">It proves that a review happened. It never writes the prose or grades it.</p>
+    </header>
+    <div class="never">
+      <div class="frame"><span class="ft">writes prose</span><p>Only <code>memoria render</code> changes document text, and only inside import blocks you declare.</p></div>
+      <div class="frame"><span class="ft">judges prose</span><p>Whether an explanation is good or true is for a person or an agent to decide.</p></div>
+      <div class="frame"><span class="ft">picks your topics</span><p>What each document covers is your choice. Memoria works with the one you make.</p></div>
+    </div>
+  </section>
+
+  <section id="onboard" aria-labelledby="h-onb">
+    <header class="sh">
+      <h2 class="hd" id="h-onb"><svg aria-hidden="true"><use href="#dl"/></svg>Onboard your agent<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <p class="sub">Tell your agent to run <code>memoria onboard</code>. It explains Memoria, reads where your project stands, and names the next command. Nothing to install.</p>
+    </header>
+    <div class="say">
+      <span class="m">tell your agent</span>
+      <div class="cmd saybox"><code id="say-text">Run `memoria onboard` (the Memoria CLI) and follow the next step it gives.</code><button class="btn hot" id="copy-say" type="button">copy</button></div>
+    </div>
+    <div class="frame onb-term" id="onb-term"><span class="ft">terminal</span><pre><span class="p">$ memoria onboard</span>
+<span class="c-acc">Memoria 0.9.2</span> — CI for your docs
+
+When code changes, Memoria marks the documents that explain it as pending and
+shows exactly what changed. <span class="c-acc">`memoria check`</span> fails your build until someone has
+reviewed them. You and your agents write every word; Memoria never edits prose.
+
+How it works
+<span class="c-mut">  1.</span> Code changes, and every document that covers the changed file becomes <span class="c-att">pending</span>.
+<span class="c-mut">  2.</span> <span class="c-acc">`memoria review`</span> shows what changed and what the review must read.
+<span class="c-mut">  3.</span> You or an agent update the document. <span class="c-acc">`memoria ack`</span> records the review.
+<span class="c-mut">  4.</span> <span class="c-acc">`memoria check`</span> in CI passes only when no document is <span class="c-att">pending</span>.
+
+This project  ~/code/shop
+<span class="c-mut">  Memoria     </span>  4 documents · 1 <span class="c-att">pending</span>
+<span class="c-mut">  Agent skill </span>  not installed     <span class="c-mut">→</span> <span class="c-acc">memoria agent install --target claude</span>
+<span class="c-mut">  CI check    </span>  not installed     <span class="c-mut">→</span> <span class="c-acc">memoria integrations github install</span>
+
+Next: <span class="c-acc">memoria review</span>
+  1 document needs a review. <span class="c-acc">`memoria onboard review`</span> walks through it.
+
+Go deeper
+  <span class="c-acc">memoria onboard review</span>     <span class="c-mut">review a pending document, step by step</span>
+  <span class="c-acc">memoria onboard agent</span>      <span class="c-mut">let an agent keep your docs current</span>
+  <span class="c-acc">memoria onboard ci</span>         <span class="c-mut">block merges while docs are pending</span></pre></div>
+    <div class="deeper">
+      <div class="frame"><span class="ft">review</span><pre class="cmdl">memoria onboard review</pre><p class="m">The five review steps, from the plan to the ack.</p></div>
+      <div class="frame"><span class="ft">agent</span><pre class="cmdl">memoria onboard agent</pre><p class="m">The review skill for Claude or Codex, and an optional Stop hook.</p></div>
+      <div class="frame"><span class="ft">ci</span><pre class="cmdl">memoria onboard ci</pre><p class="m">A GitHub Actions check that blocks merges while docs are pending.</p></div>
+    </div>
+  </section>
+</main>
+
+<section id="docs" class="docs" aria-labelledby="h-docs">
+    <canvas id="field2" aria-hidden="true"></canvas>
+    <div class="docs-in">
+      <h2 class="big" id="h-docs">Start with one README.</h2>
+      <p class="sub">Write the root README yourself. Memoria tracks it from the first <code>memoria init --apply</code>, and every README you add after it. It never invents one: the root explanation is the part only you can write.</p>
+      <div class="guides">
+        <div><div class="gh">learn</div>
+          <a href="https://github.com/viktordanov/rs-memoria/blob/main/docs/concepts.md">Concepts</a><span class="m">scopes, handoffs, imports</span>
+          <a href="https://github.com/viktordanov/rs-memoria/blob/main/docs/workflow.md">Review workflow</a><span class="m">one review, start to ack</span>
+          <a href="https://github.com/viktordanov/rs-memoria/blob/main/docs/cookbooks/README.md">Cookbooks</a><span class="m">small, tested projects</span>
+        </div>
+        <div><div class="gh">set up</div>
+          <a href="https://github.com/viktordanov/rs-memoria/blob/main/docs/agents.md">Agent integrations</a><span class="m">skill and Stop hook</span>
+          <a href="https://github.com/viktordanov/rs-memoria/blob/main/docs/github-actions.md">GitHub Actions</a><span class="m">gate merges in CI</span>
+          <a href="https://github.com/viktordanov/rs-memoria/blob/main/docs/cookbooks/agent-instructions/README.md">Agent instructions</a><span class="m">AGENTS.md and CLAUDE.md</span>
+        </div>
+        <div><div class="gh">look up</div>
+          <a href="https://github.com/viktordanov/rs-memoria/blob/main/docs/cli.md">Command reference</a><span class="m">every command and failure</span>
+          <a href="https://github.com/viktordanov/rs-memoria/blob/main/docs/state.md">Committed state</a><span class="m">what memoria.lock holds</span>
+          <a href="https://github.com/viktordanov/rs-memoria/blob/main/CHANGELOG.md">Changelog</a><span class="m">release notes</span>
+        </div>
+      </div>
+      <footer>memoria <span class="ver">0.9.2</span> · <a href="https://github.com/viktordanov/rs-memoria">github.com/viktordanov/rs-memoria</a></footer>
+    </div>
+  </section>
+
+
+<script>
+(function () {
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- wordmark: 5x5 glyphs, rows fade solid -> dither ---------- */
+  var G = {
+    M: ['#...#', '##.##', '#.#.#', '#...#', '#...#'],
+    E: ['####', '#...', '###.', '#...', '####'],
+    O: ['.###.', '#...#', '#...#', '#...#', '.###.'],
+    R: ['####.', '#...#', '####.', '#..#.', '#...#'],
+    I: ['###', '.#.', '.#.', '.#.', '###'],
+    A: ['.###.', '#...#', '#####', '#...#', '#...#']
+  };
+  var FILL = ['class="s"', 'class="s"', 'fill="url(#d3)"', 'fill="url(#d3)"', 'fill="url(#d2)"'];
+  // A: original spacing · B: rows touch · C: rows touch, letters tight · D: tight and taller
+  var V = [{ cw: 9, ch: 18, rh: 16, gap: 3, w: 560 }, { cw: 9, ch: 16, rh: 16, gap: 2, w: 520 },
+           { cw: 9, ch: 16, rh: 16, gap: 1, w: 480 }, { cw: 9, ch: 22, rh: 22, gap: 1, w: 470 }];
+  var word = document.getElementById('word');
+  function drawWord(k) {
+    var v = V[k], x = 0, out = '';
+    'MEMORIA'.split('').forEach(function (c, n) {
+      var g = G[c];
+      for (var r = 0; r < 5; r++) {
+        var row = g[r], c0 = -1;
+        for (var i = 0; i <= row.length; i++) {
+          if (row[i] === '#' && c0 < 0) c0 = i;
+          if (row[i] !== '#' && c0 >= 0) {
+            out += '<rect x="' + (x + c0) * v.cw + '" y="' + r * v.ch + '" width="' + (i - c0) * v.cw + '" height="' + v.rh + '" ' + FILL[r] + '/>';
+            c0 = -1;
+          }
+        }
+      }
+      x += g[0].length + (n < 6 ? v.gap : 0);
+    });
+    word.setAttribute('viewBox', '0 0 ' + x * v.cw + ' ' + (4 * v.ch + v.rh));
+    word.style.setProperty('--ww', v.w + 'px');
+    word.innerHTML = out;
+  }
+  drawWord(2);
+
+  /* ---------- background: a large, slow dither field ----------
+     Each dot fades in and out with its distance past the Bayer threshold, so the field drifts
+     instead of popping. Dots are batched into four opacity levels: four fills per frame. */
+  var BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(function (b) { return (b + 0.5) / 16; });
+  var col = {};
+  function readColors() {
+    var cs = getComputedStyle(document.documentElement);
+    col = { hi: cs.getPropertyValue('--dither').trim(), lo: cs.getPropertyValue('--dither-low').trim() };
+  }
+  function sstep(a, b, x) { x = Math.max(0, Math.min(1, (x - a) / (b - a))); return x * x * (3 - 2 * x); }
+  var TICK = 50, SOFT = 0.14;
+  // wide bands roll slowly from top to bottom
+  function roll(u, v, t) { return 0.08 * Math.sin(v * 5.5 - t * 0.12 + u * 1.7) + 0.045 * Math.sin(v * 12 - t * 0.19 - u * 3.1); }
+  function Back(cv, edge) {
+    var g = cv.getContext('2d'), CELL = 6, SQ = 2.5, W, H, gc, gr, side, live = false, t = 0, bottom = edge === 'bottom';
+    this.size = function () {
+      var rc = cv.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
+      W = rc.width; H = rc.height; cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      side = !bottom && W >= 760;
+      gc = Math.ceil(W / CELL); gr = Math.ceil(H / CELL);
+    };
+    function edges(u) { return sstep(0, 0.3, u) * (1 - sstep(0.7, 1, u)); }
+    function base(u, v) {
+      if (side) return Math.pow(sstep(0.16, 1, u), 1.3) * 0.68 * (1 - sstep(0.62, 1, v)) * sstep(0.03, 0.16, v);
+      if (!bottom) return sstep(0.5, 1, v) * 0.5 * (1 - sstep(0.9, 1, v));
+      return Math.pow(sstep(0.42, 1, v), 1.6) * 0.575 * edges(u);
+    }
+    this.tick = function () { t += TICK / 1000; };
+    this.draw = function () {
+      g.clearRect(0, 0, W, H);
+      var lv = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+      var c0 = side ? Math.floor(gc * 0.16) : 0;
+      for (var r = 0; r < gr; r++) {
+        var v = r / gr, ri = (r & 3) << 2;
+        for (var c = c0; c < gc; c++) {
+          var u = c / gc, b = base(u, v);
+          if (b <= 0.01) continue;
+          var a = (b + roll(u, v, t) * Math.min(1, b * 3) - BAYER[ri + (c & 3)]) / SOFT;
+          if (a > 0) lv[a >= 1 ? 3 : (a * 4) | 0].rect(c * CELL, r * CELL, SQ, SQ);
+        }
+      }
+      g.fillStyle = bottom ? col.lo : col.hi;
+      for (var i = 0; i < 4; i++) { g.globalAlpha = (i + 1) / 4; g.fill(lv[i]); }
+      g.globalAlpha = 1;
+    };
+    this.watch = function () {
+      if ('IntersectionObserver' in window) new IntersectionObserver(function (es) { live = es[0].isIntersecting; }).observe(cv);
+      else live = true;
+    };
+    this.live = function () { return live; };
+  }
+  var backs = [new Back(document.getElementById('field'), 'right'), new Back(document.getElementById('field2'), 'bottom')];
+  function redraw() { readColors(); backs.forEach(function (f) { f.size(); f.draw(); }); }
+  var last = 0;
+  function loop(now) {
+    if (!document.hidden && now - last > TICK) {
+      last = now;
+      backs.forEach(function (f) { if (f.live()) { f.tick(); f.draw(); } });
+    }
+    requestAnimationFrame(loop);
+  }
+  var rt; addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(redraw, 120); });
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw);
+  new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  redraw();
+  if (!reduce) { backs.forEach(function (f) { f.watch(); }); requestAnimationFrame(loop); }
+
+  /* ---------- light-ups: files turn orange and stay, as in the review above ---------- */
+  // play when the element comes into view; reset once it has left, so it replays next time
+  function onView(el, play, reset) {
+    if (reduce || !('IntersectionObserver' in window)) return;
+    var on = false;
+    new IntersectionObserver(function (es) {
+      var e = es[0];
+      if (e.isIntersecting && e.intersectionRatio >= 0.45 && !on) { on = true; play(); }
+      else if (!e.isIntersecting && on) { on = false; reset(); }
+    }, { threshold: [0, 0.45] }).observe(el);
+  }
+  function flash(el) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+  function Timers() { var ids = []; this.later = function (f, ms) { ids.push(setTimeout(f, ms)); }; this.clear = function () { ids.forEach(clearTimeout); ids = []; }; }
+
+  var trees = document.querySelectorAll('.trees .frame'), tt = new Timers();
+  trees.forEach(function (fr) { fr.querySelectorAll('.sw').forEach(function (sp) { sp.dataset.lit = sp.innerHTML; }); });
+  function treesIdle() {
+    tt.clear();
+    trees.forEach(function (fr) {
+      fr.querySelectorAll('.sw').forEach(function (sp) { sp.textContent = sp.dataset.idle; });
+      fr.querySelectorAll('.ln.hot').forEach(function (l) { l.style.transition = 'none'; l.classList.remove('hot'); void l.offsetWidth; l.style.transition = ''; });
+    });
+  }
+  if (!reduce) treesIdle();
+  onView(document.querySelector('.trees'), function () {
+    trees.forEach(function (fr, k) {
+      var seq = [].slice.call(fr.querySelectorAll('.sw')).sort(function (a, b) { return a.dataset.o - b.dataset.o; });
+      seq.forEach(function (sp, j) {
+        tt.later(function () { sp.innerHTML = sp.dataset.lit; flash(sp); if (/pending|edited/.test(sp.textContent)) sp.closest('.ln').classList.add('hot'); }, 500 + k * 900 + j * 520);
+      });
+    });
+  }, treesIdle);
+
+  var imp = document.getElementById('imp-line'), rtm = new Timers();
+  function reveal(k) { var t = imp.dataset.text; imp.innerHTML = '<span>' + t.slice(0, k) + '</span><span class="ghost">' + t.slice(k) + '</span>'; }
+  function renderIdle() { rtm.clear(); reveal(0); imp.classList.remove('hot'); }
+  if (!reduce) renderIdle();
+  onView(document.querySelector('.share'), function () {
+    var txt = imp.dataset.text, k = 0;
+    flash(document.getElementById('exp-line'));
+    rtm.later(function type() {
+      reveal(k += 2);
+      if (k < txt.length) return rtm.later(type, 28);
+      imp.textContent = txt; imp.classList.add('hot'); flash(imp);
+    }, 700);
+  }, renderIdle);
+
+  // onboard: the hub's output scrolls in line by line; its space is always kept
+  var ot = document.querySelector('#onb-term pre'), otm = new Timers();
+  ot.innerHTML = ot.innerHTML.split('\n').map(function (l) { return '<span class="tl">' + l + '</span>'; }).join('\n');
+  var tls = ot.querySelectorAll('.tl');
+  function onbIdle() { otm.clear(); tls.forEach(function (l, k) { l.classList.toggle('off', k > 0); }); }
+  if (!reduce) onbIdle();
+  onView(document.getElementById('onb-term'), function () {
+    tls.forEach(function (l, k) { if (k) otm.later(function () { l.classList.remove('off'); }, 500 + k * 75); });
+  }, onbIdle);
+
+  var boxes = document.querySelectorAll('#cyc .box'), bi = -1, ct = new Timers();
+  onView(document.getElementById('cyc'), function () {
+    bi = -1;
+    (function stepBox() {
+      bi = (bi + 1) % boxes.length;
+      boxes.forEach(function (b, k) { b.classList.toggle('lit', k === bi); });
+      flash(boxes[bi]);
+      ct.later(stepBox, bi === boxes.length - 1 ? 3000 : 1900);
+    })();
+  }, function () { ct.clear(); boxes.forEach(function (b) { b.classList.remove('lit'); }); });
+
+  /* ---------- tagline: delete and retype the tail; nothing to its right can shift ---------- */
+  var tag = document.getElementById('tag'), rot = document.getElementById('rot');
+  var TAILS = ['docs again.', 'READMEs again.', 'AGENTS.md again.'], ti = 0;
+  if (!reduce) (function next() {
+    setTimeout(function () {
+      var from = TAILS[ti], to = TAILS[(ti = (ti + 1) % TAILS.length)], n = from.length;
+      tag.classList.add('typing');
+      (function del() {
+        rot.textContent = from.slice(0, n);
+        if (n-- > 0) return setTimeout(del, 38);
+        var k = 0;
+        setTimeout(function type() {
+          rot.textContent = to.slice(0, k);
+          if (k++ < to.length) return setTimeout(type, 90 + Math.random() * 50);
+          tag.classList.remove('typing'); next();
+        }, 280);
+      })();
+    }, 3400);
+  })();
+
+  /* ---------- side map ---------- */
+  var map = document.getElementById('map'), fill = document.getElementById('mapfill');
+  var links = [].slice.call(map.querySelectorAll('a')), targets = links.map(function (l) { return document.querySelector(l.getAttribute('href')); });
+  var hero = document.querySelector('.hero');
+  function onScroll() {
+    var y = scrollY, vh = innerHeight, mid = y + vh * 0.4;
+    map.classList.toggle('show', y > hero.offsetHeight * 0.6);
+    var cur = 0;
+    targets.forEach(function (t, k) { if (t.getBoundingClientRect().top + y <= mid) cur = k; });
+    links.forEach(function (l, k) { l.classList.toggle('cur', k === cur); l.classList.toggle('past', k < cur); });
+    var first = targets[0].getBoundingClientRect().top + y, end = document.documentElement.scrollHeight - vh;
+    var p = Math.max(0, Math.min(1, (y + vh * 0.4 - first) / Math.max(1, end + vh * 0.4 - first)));
+    fill.style.height = (p * 100) + '%';
+  }
+  addEventListener('scroll', onScroll, { passive: true }); addEventListener('resize', onScroll); onScroll();
+
+  /* ---------- the flow ---------- */
+  var E = '';
+  var S = [
+    { auth: 'current', login: '', on: false,
+      cap: 'Every document matches the code its last reviewer saw.',
+      cmd: 'memoria check', out: ['<span class="m"># passes: no review is pending</span>'] },
+    { auth: 'pending', login: 'edited', on: true,
+      cap: 'A commit edits <b>src/auth/login.rs</b>. The README in that folder covers it, so it goes <b>pending</b>. The other documents stay current.',
+      cmd: 'git diff src/auth/login.rs', out: ['<span class="rm">-pub const SESSION_MINUTES: u32 = 30;</span>', '<span class="ad">+pub const SESSION_MINUTES: u32 = 15;</span>'] },
+    { auth: 'pending', login: 'edited', on: true,
+      cap: 'The plan lists what is pending, in dependency order, and the next command to run.',
+      cmd: 'memoria review', out: ['<span class="m">Review plan: 1 pending document (dependency order)</span>', '<span class="m">  1. src/auth/README.md  README · input changed: src/auth/login.rs · ready</span>', '<span><span class="m">Next:</span> memoria review src/auth/README.md</span>'] },
+    { auth: 'pending', login: 'edited', on: true,
+      cap: 'The review shows exactly what changed, where to start reading, and the writing guidance that applies. The README still says 30 minutes.',
+      cmd: 'memoria review src/auth/README.md', out: [
+        '<span>Review src/auth/README.md <span class="m">— README, pending since revision 1</span></span>',
+        '<span class="m">Scope: 1 source in src/auth/ and below</span>',
+        '<span class="m">What changed since that review:</span>',
+        '<span class="m">  changed  src/auth/login.rs · scope source · section "sessions" describes it</span>',
+        '<span class="rm">      -pub const SESSION_MINUTES: u32 = 30;</span>',
+        '<span class="ad">      +pub const SESSION_MINUTES: u32 = 15;</span>',
+        '<span class="m">How to read:</span>',
+        '<span class="m">  Suggested section sessions "Sessions" lines 7-10: src/auth/login.rs</span>',
+        '<span class="m">  Read: src/auth/README.md (whole_document), src/auth/login.rs (changed_source)</span>',
+        '<span>  <span class="c-acc">Guidance: memoria guidance src/auth/README.md</span></span>'] },
+    { auth: 'pending', login: 'edited', on: true, editor: true,
+      cap: 'You or your agent fix the README, starting at the <b>sessions</b> section the review suggested. The markers are plain HTML comments.' },
+    { auth: 'current', login: '', on: false,
+      cap: 'The ack records the review against the exact bytes that were read. The document is <b>current</b> again.',
+      cmd: 'memoria ack src/auth/README.md --packet "$dir"/memoria-manifest-*.json \\\n    --reviewer docs-agent --result updated --note "Sessions last 15 minutes."', out: ['<span><span class="ok">Recorded</span> src/auth/README.md revision 2 (updated) by docs-agent</span>'] }
+  ];
+  var DUR = [4800, 7000, 7000, 10400, 13600, 7600];
+  var demo = document.getElementById('demo'), term = document.getElementById('term'), cap = document.getElementById('caption');
+  var auth = demo.querySelector('[data-r="auth"]'), login = demo.querySelector('[data-r="login"]');
+  var btns = document.querySelectorAll('.steps button[data-s]'), pp = document.getElementById('pp');
+  var cur = 3, playing = !reduce, timers = [];
+  function clear() { timers.forEach(clearTimeout); timers = []; }
+  function later(f, ms) { timers.push(setTimeout(f, ms)); }
+
+  function setRow(row, text, hot, html) {
+    var st = row.querySelector('.st'), was = st.textContent;
+    if (html !== undefined) st.innerHTML = html; else st.textContent = text;
+    row.classList.toggle('a', hot);
+    if (st.textContent !== was && !reduce) { row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash'); }
+  }
+
+  // a vim-like view of src/auth/README.md; `val` is the number on line 9, `mode` the status line
+  var DOC = [
+    '# Auth',
+    '',
+    '<!-- memoria:export id="summary" -->',
+    'Auth signs users in with a password or a passkey.',
+    '<!-- /memoria:export -->',
+    '',
+    '<!-- memoria:section id="sessions" files="src/auth/**" -->',
+    '## Sessions',
+    '@@',
+    '<!-- /memoria:section -->'
+  ];
+  function editor(val, mode, caret) {
+    var rows = DOC.map(function (l, k) {
+      var body;
+      if (l === '@@') return '<span class="eline"><span class="vl">' + (k + 1) + '</span>A session lasts ' + val + (caret ? '<span class="cursor"></span>' : '') + ' minutes, then the user signs in again.</span>';
+      if (l.indexOf('<!--') === 0) body = '<span class="c-mut">' + l.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>';
+      else body = l;
+      return '<span class="vl">' + (k + 1) + '</span>' + body;
+    });
+    return '<span class="vbar">src/auth/README.md</span>\n' + rows.join('\n') + '<span class="vstatus">' + mode + '</span>';
+  }
+  var fixRuns = 0;
+  function playEditor() {
+    // open the file from the shell first, so it does not just appear
+    var open = 'nvim src/auth/README.md', n = 0;
+    term.innerHTML = '<span class="p">$ </span><span class="cursor"></span>';
+    (function type() {
+      n = Math.min(open.length, n + 1);
+      term.innerHTML = '<span class="p">$ ' + open.slice(0, n) + '</span><span class="cursor"></span>';
+      if (n < open.length) return later(type, 55);
+      later(edit, 450);
+    })();
+    function edit() {
+      // one run in five, the oldest vim joke: :q refuses, then :wq
+      var egg = Math.random() < 0.2;
+      var steps = [['30', '', false, 0], ['30', '-- INSERT --', true, 2000], ['3', '-- INSERT --', true, 420], ['', '-- INSERT --', true, 420], ['1', '-- INSERT --', true, 520], ['15', '-- INSERT --', true, 520], ['15', '', false, 900]];
+      if (egg) steps.push(['15', ':q', false, 700], ['15', '<span class="err">E37: No write since last change (add ! to override)</span>', false, 600], ['15', ':wq', false, 1700]);
+      else steps.push(['15', ':wq', false, 700]);
+      steps.push(['15', '"src/auth/README.md" 10L written', false, 700]);
+      var t = 0;
+      steps.forEach(function (st) { t += st[3]; later(function () { term.innerHTML = editor(st[0], st[1], st[2]); }, t); });
+    }
+  }
+
+
+  function show(i, animate) {
+    clear(); cur = i;
+    var s = S[i];
+    btns.forEach(function (b, k) {
+      b.setAttribute('aria-pressed', String(k === i));
+      b.classList.toggle('done', k < i);
+      b.classList.remove('run');
+    });
+    cap.innerHTML = s.cap;
+    if (s.editor) {
+      setRow(auth, s.auth, true); setRow(login, '', true, E + s.login); demo.classList.add('on');
+      if (animate) playEditor(); else term.innerHTML = editor('15', '"src/auth/README.md" 10L written', false);
+      if (playing && animate) { var eb = btns[i]; eb.style.setProperty('--dur', DUR[i] + 'ms'); void eb.offsetWidth; eb.classList.add('run'); later(function () { show((i + 1) % S.length, true); }, DUR[i]); }
+      return;
+    }
+    var full = '<span class="p">$ ' + s.cmd + '</span>\n' + s.out.join('\n');
+    if (!animate) {
+      setRow(auth, s.auth, s.auth === 'pending');
+      setRow(login, '', !!s.login, s.login ? E + s.login : '');
+      demo.classList.toggle('on', s.on);
+      term.innerHTML = full;
+      return;
+    }
+    // type the command, then reveal output, then update the frames
+    var typed = 0, cmd = s.cmd;
+    term.innerHTML = '<span class="p">$ </span><span class="cursor"></span>';
+    (function type() {
+      typed = Math.min(cmd.length, typed + 2);
+      term.innerHTML = '<span class="p">$ ' + cmd.slice(0, typed).replace(/</g, '&lt;') + '</span><span class="cursor"></span>';
+      if (typed < cmd.length) later(type, 34);
+      else later(function () {
+        var shown = 0;
+        (function reveal() {
+          shown++;
+          term.innerHTML = '<span class="p">$ ' + cmd + '</span>\n' + s.out.slice(0, shown).join('\n');
+          if (shown < s.out.length) later(reveal, 220);
+        })();
+        demo.classList.remove('go'); void demo.offsetWidth;
+        if (s.on && !demo.classList.contains('on')) demo.classList.add('go');
+        later(function () {
+          setRow(login, '', !!s.login, s.login ? E + s.login : '');
+          later(function () {
+            demo.classList.toggle('on', s.on);
+            setRow(auth, s.auth, s.auth === 'pending');
+          }, s.on ? 750 : 0);
+        }, 80);
+      }, 260);
+    })();
+    if (playing) {
+      var b = btns[i]; b.style.setProperty('--dur', DUR[i] + 'ms'); void b.offsetWidth; b.classList.add('run');
+      later(function () { show((i + 1) % S.length, true); }, DUR[i]);
+    }
+  }
+
+  function setPlaying(p) {
+    playing = p;
+    pp.textContent = p ? '❚❚' : '▶';
+    pp.setAttribute('aria-label', p ? 'Pause' : 'Play');
+  }
+  var started = false;
+  btns.forEach(function (b, k) { b.addEventListener('click', function () { started = true; show(k, !reduce); }); });
+  pp.addEventListener('click', function () { setPlaying(!playing); show(playing ? (cur + 1) % S.length : cur, !reduce); });
+
+  // at rest: step 0, everything current and grey (step 3 when motion is reduced, since it never plays).
+  // On first view it continues from there, so nothing jumps.
+  show(playing ? 0 : 3, false);
+  setPlaying(playing);
+  if (playing && 'IntersectionObserver' in window) {
+    new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (e.isIntersecting && !started && playing) {
+          started = true;
+          var b0 = btns[0]; b0.style.setProperty('--dur', DUR[0] + 'ms'); void b0.offsetWidth; b0.classList.add('run');
+          later(function () { show(1, true); }, DUR[0]);
+        }
+      });
+    }, { threshold: 0.35 }).observe(document.getElementById('flow'));
+  }
+
+  /* ---------- copy buttons ---------- */
+  function copy(btn, el, text) {
+    btn.addEventListener('click', function () {
+      var fallback = function () {
+        var r = document.createRange(); r.selectNodeContents(el);
+        var sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); btn.textContent = 'selected';
+      };
+      try { navigator.clipboard.writeText(text()).then(function () { btn.textContent = 'copied'; setTimeout(function () { btn.textContent = 'copy'; }, 1400); }, fallback); } catch (e) { fallback(); }
+    });
+  }
+  copy(document.getElementById('copy-install'), document.getElementById('install-cmd'), function () { return 'brew install viktordanov/tap/memoria'; });
+  var st = document.getElementById('say-text');
+  copy(document.getElementById('copy-say'), st, function () { return st.textContent; });
+})();
+</script>
+
+<script>
+/* The version shown above is a fallback. The latest release tag replaces it when GitHub answers. */
+fetch('https://api.github.com/repos/viktordanov/rs-memoria/releases/latest')
+  .then(function (r) { return r.ok ? r.json() : null; })
+  .then(function (j) {
+    var v = j && j.tag_name && j.tag_name.replace(/^v/, '');
+    if (v) document.querySelectorAll('.ver').forEach(function (el) { el.textContent = v; });
+  })
+  .catch(function () {});
+</script>
+</body>
+</html>
