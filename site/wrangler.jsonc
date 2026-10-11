@@ -1,0 +1,8 @@
+{
+  // The landing page: a Worker that only serves the files in public/.
+  "name": "memoria-site",
+  "compatibility_date": "2026-10-11",
+  "assets": {
+    "directory": "./public"
+  }
+}
