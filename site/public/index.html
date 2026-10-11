@@ -231,7 +231,8 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
 .via { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 12px; }
 .via .link { width: 72%; transform: scaleX(-1); background: var(--muted); }
 .via .link::before { border-right-color: var(--muted); }
-.guide { display: grid; grid-template-columns: 1.15fr 1fr; gap: 34px 18px; }
+.guide { display: grid; grid-template-columns: 1fr 1fr; gap: 34px 18px; }
+.guide .frame { font-size: 11.5px; }
 .share pre, .guide pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .cmdrow { font-size: 13px; }
 .plug { display: grid; grid-template-columns: 1fr; gap: 34px; }
@@ -578,7 +579,7 @@ footer { color: var(--muted); font-size: 12px; }
       <h2 class="hd" id="h-cycle">Document markers</h2>
       <p class="sub">Folders do most of the work. Plain HTML comments add the rest: which part of a doc describes which code, and which summary other docs reuse. Nothing else in your Markdown changes.</p>
     </header>
-    <div class="frame annot"><span class="ft">src/auth/README.md</span><div class="ar-row on"><code><span class="vl">1</span># Auth</code><span class="note"><b>tracked</b> · covers src/auth/ and below</span></div><div class="ar-row blank"><code><span class="vl">2</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">3</span><span class="mk">&lt;!-- memoria:export id="summary" --&gt;</span></code><span class="note"><b>export</b> · a summary other docs reuse</span></div><div class="ar-row"><code><span class="vl">4</span>Auth signs users in with a passkey.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">5</span><span class="mk">&lt;!-- /memoria:export --&gt;</span></code><span class="note"></span></div><div class="ar-row blank"><code><span class="vl">6</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">7</span><span class="mk">&lt;!-- memoria:section id="sessions" files="src/auth/**" --&gt;</span></code><span class="note"><b>section</b> · maps src/auth/**</span></div><div class="ar-row"><code><span class="vl">8</span>## Sessions</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">9</span>A session lasts 15 minutes.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">10</span><span class="mk">&lt;!-- /memoria:section --&gt;</span></code><span class="note"></span></div></div>
+    <div class="frame annot"><span class="ft">src/auth/README.md</span><div class="ar-row on"><code><span class="vl">1</span># Auth</code><span class="note"><b>tracked</b> · covers src/auth/ and below</span></div><div class="ar-row blank"><code><span class="vl">2</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">3</span><span class="mk"><span class="t-p">&lt;!--</span> <span class="t-k">memoria:export</span> <span class="t-p">id=</span><span class="t-s">"summary"</span> <span class="t-p">--&gt;</span></span></code><span class="note"><b>export</b> · a summary other docs reuse</span></div><div class="ar-row"><code><span class="vl">4</span>Auth signs users in with a passkey.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">5</span><span class="mk"><span class="t-p">&lt;!--</span> /<span class="t-k">memoria:export</span> <span class="t-p">--&gt;</span></span></code><span class="note"></span></div><div class="ar-row blank"><code><span class="vl">6</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">7</span><span class="mk"><span class="t-p">&lt;!--</span> <span class="t-k">memoria:section</span> <span class="t-p">id=</span><span class="t-s">"sessions"</span> <span class="t-p">files=</span><span class="t-s">"src/auth/**"</span> <span class="t-p">--&gt;</span></span></code><span class="note"><b>section</b> · maps src/auth/**</span></div><div class="ar-row"><code><span class="vl">8</span>## Sessions</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">9</span>A session lasts 15 minutes.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">10</span><span class="mk"><span class="t-p">&lt;!--</span> /<span class="t-k">memoria:section</span> <span class="t-p">--&gt;</span></span></code><span class="note"></span></div></div>
     <div class="label loop-label">every change runs the same loop</div>
     <div class="cycle" id="cyc">
       <div class="box">login.rs changes<small>git commit</small></div><span class="ar">─▸</span>
@@ -599,14 +600,14 @@ footer { color: var(--muted); font-size: 12px; }
     </header>
     <div class="share">
       <div class="frame"><span class="ft">auth/README.md · the source</span>
-<pre><span class="ln c-mut">&lt;!-- memoria:export id="summary" --&gt;</span><span class="ln hot" id="exp-line">Auth signs users in with a passkey.</span><span class="ln c-mut">&lt;!-- /memoria:export --&gt;</span></pre>
+<pre><span class="ln"><span class="t-p">&lt;!--</span> <span class="t-k">memoria:export</span> <span class="t-p">id=</span><span class="t-s">"summary"</span> <span class="t-p">--&gt;</span></span><span class="ln hot" id="exp-line">Auth signs users in with a passkey.</span><span class="ln"><span class="t-p">&lt;!--</span> /<span class="t-k">memoria:export</span> <span class="t-p">--&gt;</span></span></pre>
         <p class="m srcnote">You edit the summary here, and only here.</p></div>
       <div class="via"><span class="c-acc">memoria render</span><span class="link" aria-hidden="true"></span><span class="m vianote">copies it into each import</span></div>
       <div class="copies">
         <div class="frame"><span class="ft">README.md · a copy</span>
-<pre><span class="ln c-mut">&lt;!-- memoria:import src="auth/README.md#summary" --&gt;</span><span class="ln copy imp-line" data-text="Auth signs users in with a passkey.">Auth signs users in with a passkey.</span><span class="ln c-mut">&lt;!-- /memoria:import --&gt;</span></pre></div>
+<pre><span class="ln"><span class="t-p">&lt;!--</span> <span class="t-k">memoria:import</span> <span class="t-p">src=</span><span class="t-s">"auth/README.md#summary"</span> <span class="t-p">--&gt;</span></span><span class="ln copy imp-line" data-text="Auth signs users in with a passkey.">Auth signs users in with a passkey.</span><span class="ln"><span class="t-p">&lt;!--</span> /<span class="t-k">memoria:import</span> <span class="t-p">--&gt;</span></span></pre></div>
         <div class="frame"><span class="ft">AGENTS.md · a copy</span>
-<pre><span class="ln c-mut">&lt;!-- memoria:import src="auth/README.md#summary" --&gt;</span><span class="ln copy imp-line" data-text="Auth signs users in with a passkey.">Auth signs users in with a passkey.</span><span class="ln c-mut">&lt;!-- /memoria:import --&gt;</span></pre></div>
+<pre><span class="ln"><span class="t-p">&lt;!--</span> <span class="t-k">memoria:import</span> <span class="t-p">src=</span><span class="t-s">"auth/README.md#summary"</span> <span class="t-p">--&gt;</span></span><span class="ln copy imp-line" data-text="Auth signs users in with a passkey.">Auth signs users in with a passkey.</span><span class="ln"><span class="t-p">&lt;!--</span> /<span class="t-k">memoria:import</span> <span class="t-p">--&gt;</span></span></pre></div>
       </div>
     </div>
     <p>The source is reviewed first, so nobody checks a half-finished copy. Render only rewrites the marked copy and leaves the rest of the file alone. Change the summary once, and every doc that reuses it is queued for review in the right order.</p>
@@ -620,11 +621,7 @@ footer { color: var(--muted); font-size: 12px; }
     </header>
     <div class="guide">
       <div class="frame"><span class="ft">memoria.toml · project guidance</span><pre><span class="cl"><span class="t-h">[documentation]</span></span><span class="cl"><span class="t-k">guidance</span><span class="t-p"> = [</span></span><span class="cl">  <span class="t-s">"Explain the workflow first."</span><span class="t-p">,</span></span><span class="cl">  <span class="t-s">"Then the implementation."</span><span class="t-p">,</span></span><span class="cl"><span class="t-p">]</span></span><span class="cl"><span class="t-k">guidance_files</span><span class="t-p"> = [</span><span class="t-s">"docs/writing-guide.md"</span><span class="t-p">]</span></span></pre></div>
-      <div class="frame"><span class="ft">AGENTS.md · section guide</span><pre class="wrap">&lt;!-- memoria:section id="boundaries"
-     guidance="docs/templates/agent-rules.md" --&gt;
-## Boundaries
-…
-&lt;!-- /memoria:section --&gt;</pre></div>
+      <div class="frame"><span class="ft">AGENTS.md · section guide</span><pre><span class="cl"><span class="t-p">&lt;!--</span> <span class="t-k">memoria:section</span> <span class="t-p">id=</span><span class="t-s">"rules"</span> <span class="t-p">guidance=</span><span class="t-s">"docs/rules.md"</span> <span class="t-p">--&gt;</span></span><span class="cl">## Boundaries</span><span class="cl">…</span><span class="cl"><span class="t-p">&lt;!--</span> /<span class="t-k">memoria:section</span> <span class="t-p">--&gt;</span></span></pre></div>
     </div>
     <div class="frame cmdrow"><span class="ft">terminal</span><pre><span class="cl"><span class="c-mut"># the rules for one document</span></span><span class="cl"><span class="p">$ memoria guidance src/README.md</span></span><span class="cl"> </span><span class="cl"><span class="c-mut"># reviewed docs that saw older wording</span></span><span class="cl"><span class="p">$ memoria guidance --changed</span></span></pre></div>
     <ul class="rules">
