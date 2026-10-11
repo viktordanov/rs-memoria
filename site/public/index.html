@@ -91,8 +91,9 @@ h1::before { content: ""; position: absolute; left: -70%; top: -320%; width: 260
 section { display: flex; flex-direction: column; gap: 44px; position: relative; }
 section > p { align-self: flex-start; }
 section::before { content: ""; position: absolute; left: 50%; top: 0; width: min(1600px, 170%); height: min(150%, 1200px); transform: translate(-50%, -18%); background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 3.25%, transparent), transparent); pointer-events: none; z-index: -1; }
-.sh { display: flex; flex-direction: column; align-items: stretch; gap: 0; margin-bottom: 4px; text-align: left; }
-.sub { color: var(--muted); text-align: left; max-width: none; text-wrap: pretty; margin: 12px 0 0; line-height: 1.5; }
+.sh { display: flex; flex-direction: column; align-items: stretch; gap: 0; margin-bottom: 28px; text-align: left; }
+.sub { color: var(--muted); text-align: left; max-width: 82%; text-wrap: pretty; margin: 12px 0 0; line-height: 1.5; }
+.docs .sub { text-align: center; max-width: 62ch; margin: 0; }
 .tag { white-space: nowrap; margin-bottom: 12px; }
 .tag .cursor { width: .55em; height: .9em; margin-left: 6px; vertical-align: -.08em; }
 
@@ -101,8 +102,8 @@ section::before { content: ""; position: absolute; left: 50%; top: 0; width: min
 .ed { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; }
 
 /* ---------- the animated flow ---------- */
-.player { display: flex; flex-direction: column; gap: 26px; }
-.steps { display: grid; grid-template-columns: repeat(6, 1fr) auto; gap: 6px; }
+.player { display: flex; flex-direction: column; gap: 0; }
+.steps { display: grid; grid-template-columns: repeat(6, 1fr) auto; gap: 6px; margin-bottom: 40px; }
 .steps button { font: 13px var(--mono); color: var(--muted); background: none; border: 0; border-top: 1.5px solid var(--rule); padding: 10px 4px 0; cursor: pointer; text-align: left; position: relative; }
 .steps button:hover { color: var(--ink); }
 .steps button[aria-pressed="true"] { color: var(--ink); }
@@ -112,9 +113,9 @@ section::before { content: ""; position: absolute; left: 50%; top: 0; width: min
 .steps button.run .bar { animation: fill var(--dur, 4.6s) linear both; }
 @keyframes fill { from { width: 0; } to { width: 100%; } }
 .steps .pp { border-top-color: transparent; color: var(--muted); padding-inline: 0; width: 3ch; text-align: center; }
-.caption { font-size: 17px; line-height: 1.5; height: 4.5em; max-width: 64ch; margin: 0 0 14px; }
+.caption { font-size: 17px; line-height: 1.5; height: 3em; max-width: 82%; text-wrap: pretty; margin: 0 0 22px; }
 .caption b { font-weight: 600; color: var(--ink); }
-.demo { display: grid; grid-template-columns: 1fr 72px 1fr; align-items: center; }
+.demo { display: grid; grid-template-columns: 1fr 72px 1fr; align-items: center; margin-bottom: 34px; }
 .link { height: 1.5px; background: var(--muted); position: relative; transition: background .4s; }
 .link::before { content: ""; position: absolute; left: -2px; top: -5px; border: 6px solid transparent; border-right: 9px solid var(--muted); border-left: 0; transition: border-color .4s; }
 .link i { position: absolute; top: -3px; right: 0; width: 7px; height: 7px; background: var(--accent); opacity: 0; }
