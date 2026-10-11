@@ -600,6 +600,8 @@ cargo build --release --locked
 
 Acceptance also builds the two Linux release archives — x64 and ARM64 — twice each inside a builder image pinned by digest in `scripts/linux-builders.json`, compares the resulting bytes, and runs the produced executable natively on its own architecture. `.github/workflows/setup-action.yml` exercises the setup Action itself on `ubuntu-24.04`, `ubuntu-latest`, and `ubuntu-24.04-arm` against a locally built archive, and records the image each job actually ran on.
 
+A push or pull request that changes only documentation skips that full build. Documentation means Markdown outside `skills/` and `tests/fixtures/`, anything in `docs/`, and `memoria.toml` and `memoria.lock`. Acceptance then runs a short documentation job instead: the test suites that compare documentation with real runs (`cookbook_*`, `guidance`, and `sections`), then `memoria lint` and `memoria check`. The Setup Action workflow does not run. A change to any other path, including the skill, runs everything.
+
 Both hosted workflows passed for the 0.5.0 release: [Setup Action](https://github.com/viktordanov/rs-memoria/actions/runs/34605152262) and [Acceptance](https://github.com/viktordanov/rs-memoria/actions/runs/34605152306). The runs verified native execution and repeat-build byte equality on x64 and ARM64, plus Ubuntu 24.04 for the `ubuntu-latest` image. The [0.5.0 release](https://github.com/viktordanov/rs-memoria/releases/tag/v0.5.0) includes the published archives and checksum sidecars. Native macOS runtime remains unverified.
 
 ```sh

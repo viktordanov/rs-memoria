@@ -1,9 +1,30 @@
 name: Setup Action
 
+# A change to documentation only cannot change the Action or the archive it
+# installs, so it does not run this workflow. The paths match the
+# documentation rule of the `changes` job in acceptance.yml.
 on:
   push:
     branches: ["main"]
+    paths:
+      - "**"
+      - "!**.md"
+      - "!docs/**"
+      - "!memoria.lock"
+      - "!memoria.toml"
+      - "!**README.memoria.toml"
+      - "skills/**"
+      - "tests/fixtures/**"
   pull_request:
+    paths:
+      - "**"
+      - "!**.md"
+      - "!docs/**"
+      - "!memoria.lock"
+      - "!memoria.toml"
+      - "!**README.memoria.toml"
+      - "skills/**"
+      - "tests/fixtures/**"
   workflow_dispatch:
 
 permissions:

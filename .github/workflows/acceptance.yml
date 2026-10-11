@@ -19,8 +19,103 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A push or pull request that changes only documentation runs the short
+  # `docs` job instead of the full build. Documentation here is Markdown
+  # outside skills/ (the skill is compiled into the binary) and outside
+  # tests/fixtures/ (every suite reads fixtures), anything under docs/, and
+  # the Memoria review state and configuration. Any other path, an unknown
+  # base commit, and a manual run all select the full build.
+  changes:
+    name: Classify the change
+    runs-on: ubuntu-24.04
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Classify the changed paths
+        id: classify
+        env:
+          EVENT: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          head="$(git rev-parse HEAD)"
+          base=""
+          case "$EVENT" in
+            push) base="$PUSH_BEFORE" ;;
+            pull_request) base="$(git merge-base "$PR_BASE" "$head" 2>/dev/null || true)" ;;
+          esac
+          docs_only=false
+          if [ -n "$base" ] && ! printf '%s' "$base" | grep -qE '^0+$' \
+            && git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            files="$(git diff --name-only "$base" "$head")"
+            printf 'Changed paths since %s:\n%s\n' "$base" "$files"
+            code="$(printf '%s\n' "$files" | grep -E '^(skills|tests/fixtures)/' || true)"
+            other="$(printf '%s\n' "$files" | grep -vE '^(skills|tests/fixtures)/' \
+              | grep -vE '^(docs/.+|memoria\.(lock|toml)|(.+/)?README\.memoria\.toml|(.+/)?[^/]+\.md)$' || true)"
+            if [ -n "$files" ] && [ -z "$code" ] && [ -z "$other" ]; then
+              docs_only=true
+            fi
+          else
+            echo "No comparable base commit: run the full build."
+          fi
+          echo "docs_only=${docs_only}"
+          echo "docs_only=${docs_only}" >> "$GITHUB_OUTPUT"
+
+  docs:
+    name: Documentation checks
+    needs: changes
+    if: needs.changes.outputs.docs_only == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+          persist-credentials: false
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
+        with:
+          tool: cargo-nextest@0.9.146
+
+      # These suites compare documentation with real runs: every cookbook
+      # page and the root README's "CLI at a glance" (cookbook_*), the agent
+      # instructions cookbook (guidance), and the manifest example in
+      # docs/cli.md (sections). The Git wrapper is the one the full test step
+      # uses.
+      - name: Test the documentation against real runs
+        env:
+          MEMORIA_CI_GIT: /usr/bin/git
+        run: |
+          set -euo pipefail
+          wrapper_dir="$RUNNER_TEMP/memoria-ci-git"
+          mkdir -p "$wrapper_dir"
+          cat > "$wrapper_dir/git" <<'SH'
+          #!/bin/sh
+          exec "$MEMORIA_CI_GIT" -c maintenance.auto=false -c gc.auto=0 "$@"
+          SH
+          chmod 755 "$wrapper_dir/git"
+          export PATH="$wrapper_dir:$PATH"
+          cargo nextest run --locked --test integration --no-fail-fast \
+            -E 'test(/^cookbook_/) | test(/^guidance::/) | test(/^sections::/)'
+
+      - name: Self-hosted documentation check
+        run: |
+          set -euo pipefail
+          cargo build --locked --bin memoria
+          ./target/debug/memoria lint --format json
+          ./target/debug/memoria check --format json
+
   checks:
     name: Rust checks and CLI acceptance on Linux
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -87,6 +182,8 @@ jobs:
 
   darwin-cross-build:
     name: Cross-compile macOS binaries on Linux
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -154,6 +251,8 @@ jobs:
 
   linux-release-acceptance:
     name: Reproducible ${{ matrix.target }} build and native run
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false

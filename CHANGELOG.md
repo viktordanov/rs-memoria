@@ -4,6 +4,7 @@ This file records user-visible changes in Memoria. The project maintainer owns r
 
 Contents:
 
+- [Unreleased](#unreleased)
 - [0.9.1](#091---2026-10-11)
 - [0.9.0](#090---2026-10-11)
 - [Migration to 0.9.0](#migration-to-090)
@@ -18,6 +19,12 @@ Contents:
 - [0.4.0](#040---2026-09-10)
 - [0.3.0](#030---2026-09-09)
 - [0.2.0](#020).
+
+## Unreleased
+
+### Development
+
+- A push or pull request that changes only documentation runs a short Acceptance documentation job instead of the full build: the suites that compare documentation with real runs, then `memoria lint` and `memoria check`. The Setup Action workflow does not run for it. Documentation means Markdown outside `skills/` and `tests/fixtures/`, anything in `docs/`, and `memoria.toml` and `memoria.lock`.
 
 ## 0.9.1 - 2026-10-11
 
