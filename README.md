@@ -8,7 +8,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/viktordanov/rs-memoria" alt="License"></a>
 </p>
 
-<p align="center"><img src="docs/assets/memoria-title.svg" width="820" alt="MEMORIA: never ship stale docs again. An edit to src/auth/login.rs makes src/auth/README.md pending while README.md and AGENTS.md stay current, and memoria review lists src/auth/README.md as the one pending document."></p>
+<p align="center"><img src="docs/assets/memoria-title.svg" width="820" alt="MEMORIA: never ship stale docs again. An edit to src/auth/login.rs makes src/auth/README.md pending while README.md and AGENTS.md stay current. memoria review lists that one document and the next command, and memoria review src/auth/README.md shows the change: SESSION_MINUTES went from 30 to 15, which the README must now say."></p>
 
 **Memoria keeps a project's documentation current as its code changes. When a file changes, it tells you which explanations to review, what to read, and in which order, then records each review against the exact bytes that the reviewer saw.**
 

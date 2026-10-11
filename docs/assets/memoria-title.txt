@@ -1,5 +1,5 @@
 title: Memoria: never ship stale docs again. An edit to src/auth/login.rs makes src/auth/README.md pending, and memoria review lists it.
-desc: The word MEMORIA in block letters that fade from solid to dithered, over the line: Never ship stale docs again. Below, a box of documents lists README.md and AGENTS.md as current and src/auth/README.md as pending. A box of code lists src/main.rs, src/db/pool.rs, and src/auth/login.rs, which is edited, with an arrow from it to src/auth/README.md. Under them, the command memoria review prints a plan with one pending document: src/auth/README.md, because src/auth/login.rs changed.
+desc: The word MEMORIA in block letters that fade from solid to dithered, over the line: Never ship stale docs again. Below, a box of documents lists README.md and AGENTS.md as current and src/auth/README.md as pending. A box of code lists src/main.rs, src/db/pool.rs, and src/auth/login.rs, which is edited; an arrow joins the edited file to the pending README, and both are highlighted. Under them, memoria review prints a plan with one pending document, src/auth/README.md, and the next command. That command, memoria review src/auth/README.md, shows the change in login.rs: SESSION_MINUTES went from 30 to 15, which the README must now say.
 ---
 
              «█   █   ████   █   █    ███    ████    ███    ███ »
@@ -8,16 +8,22 @@ desc: The word MEMORIA in block letters that fade from solid to dithered, over t
              «▒   ▒   ▒      ▒   ▒   ▒   ▒   ▒  ▒     ▒    ▒   ▒»
              «░   ░   ░░░░   ░   ░    ░░░    ░   ░   ░░░   ░   ░»
 
-                         Never ship stale docs again.
+                        ⟨Never ship stale docs again.⟩
 
 
   ┌──────────────────────────────┐          ┌──────────────────────────────┐
-  │ README.md          current   │          │ src/main.rs                  │
-  │ AGENTS.md          current   │          │ src/db/pool.rs               │
-  │ src/auth/README.md «pending» │ ◀─────── │ src/auth/login.rs   edited   │
+  │ README.md           current  │          │ src/main.rs                  │
+  │ AGENTS.md           current  │          │ src/db/pool.rs               │
+  │«src/auth/README.md  pending» │ ◀─────── │«src/auth/login.rs   edited»  │
   └──────────────────────────────┘          └──────────────────────────────┘
 
 
   $ memoria review
  ‹Review plan: 1 pending document (dependency order)›
  ‹  1. src/auth/README.md  README · input changed: src/auth/login.rs · ready›
+ ‹Next:›memoria review src/auth/README.md
+
+  $ memoria review src/auth/README.md
+ ‹  changed  src/auth/login.rs · scope source›
+ ‹      -pub const SESSION_MINUTES: u32 = 30;›
+ «      +pub const SESSION_MINUTES: u32 = 15;»

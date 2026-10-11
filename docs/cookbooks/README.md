@@ -74,6 +74,7 @@ You draw each diagram as text, and [`scripts/ascii-diagram.py`](../../scripts/as
    | `░░░░` | Outside the document's scope | Light dither |
    | `«text»` | A Memoria state or concept: `pending`, `import`, `section` | Accent text |
    | `‹text›` | A path or a note in the background | Muted text |
+   | `⟨text⟩` | A line that steps back from the drawing, such as a subtitle | Ink at 80% opacity, only in a drawing that uses it |
 
    Three details of the renderer affect the layout:
 

@@ -9,6 +9,7 @@ its grid cell and applies the Memoria diagram style:
   ░ ▒ ▓ █                         ordered-dither fills at 25, 50, 75, 100 percent
   «text»                          accent text (each guillemet renders as a space)
   ‹text›                          muted text (each angle quote renders as a space)
+  ⟨text⟩                          soft text: ink at 80% opacity (each bracket renders as a space)
 
 Every other character is ink text. The SVG follows the reader's light or dark
 color scheme.
@@ -51,13 +52,27 @@ def palette_rules(colors):
     )
 
 
-STYLE = (
-    palette_rules(LIGHT)
-    + "@media (prefers-color-scheme: dark){" + palette_rules(DARK) + "}"
-    + ".line,.line-muted,.line-accent{stroke-width:1.5;fill:none;stroke-linecap:square}"
-    + 'text{font-family:ui-monospace,"SFMono-Regular","JetBrains Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;'
-    + "font-size:15px;white-space:pre}"
-)
+def soft_rules(colors):
+    """Soft text is ink at 80% opacity: a step back from ink, brighter than muted."""
+    return (
+        f".soft{{fill:{colors['ink']};fill-opacity:0.8}}"
+        f".line-soft{{stroke:{colors['ink']};stroke-opacity:0.8}}"
+    )
+
+
+def style(soft):
+    """The stylesheet. Soft rules appear only in a drawing that uses soft text,
+    so every drawing without it renders exactly as before."""
+    extra = soft_rules if soft else (lambda colors: "")
+    return (
+        palette_rules(LIGHT)
+        + extra(LIGHT)
+        + "@media (prefers-color-scheme: dark){" + palette_rules(DARK) + extra(DARK) + "}"
+        + ".line,.line-muted,.line-accent" + (",.line-soft" if soft else "")
+        + "{stroke-width:1.5;fill:none;stroke-linecap:square}"
+        + 'text{font-family:ui-monospace,"SFMono-Regular","JetBrains Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;'
+        + "font-size:15px;white-space:pre}"
+    )
 
 # Directions: N, E, S, W.
 BOX = {
@@ -68,7 +83,7 @@ BOX = {
 }
 ARROWS = {"▶": "E", "◀": "W", "▲": "N", "▼": "S"}
 DITHER = {"░": 1, "▒": 2, "▓": 3, "█": 4}
-MODES = {"«": ("accent", "»"), "‹": ("muted", "›")}
+MODES = {"«": ("accent", "»"), "‹": ("muted", "›"), "⟨": ("soft", "⟩")}
 
 # 2x2 ordered-dither (Bayer) thresholds: pixel (x, y) is lit when level > BAYER[y][x].
 BAYER = [[0, 2], [3, 1]]
@@ -99,9 +114,9 @@ def fmt(value):
     return text or "0"
 
 
-def dither_patterns():
+def dither_patterns(soft=False):
     out = []
-    for mode in ("accent", "muted", "ink"):
+    for mode in ("accent", "muted", "ink") + (("soft",) if soft else ()):
         for level in (1, 2, 3):
             pixels = []
             for y in range(2):
@@ -121,6 +136,7 @@ def dither_patterns():
 
 def render(title, desc, text):
     rows = parse(text)
+    soft = any(mode == "soft" for row in rows for _, mode in row)
     cols = max((len(r) for r in rows), default=0)
     width = (cols + 2 * PAD) * CELL_W
     height = (len(rows) + 2 * PAD) * CELL_H
@@ -195,13 +211,13 @@ def render(title, desc, text):
         f'viewBox="0 0 {fmt(width)} {fmt(height)}" role="img" aria-labelledby="title desc">',
         f'<title id="title">{escape(title)}</title>',
         f'<desc id="desc">{escape(desc)}</desc>',
-        f"<style>{STYLE}</style>",
-        f'<defs>{"".join(dither_patterns())}</defs>',
+        f"<style>{style(soft)}</style>",
+        f'<defs>{"".join(dither_patterns(soft))}</defs>',
         f'<rect class="bg" width="{fmt(width)}" height="{fmt(height)}" rx="8"/>',
     ]
     out.extend(fills)
     for mode, segments in sorted(lines.items()):
-        cls = {"ink": "line", "muted": "line-muted", "accent": "line-accent"}[mode]
+        cls = {"ink": "line", "muted": "line-muted", "accent": "line-accent", "soft": "line-soft"}[mode]
         out.append(f'<path class="{cls}" d="{"".join(segments)}"/>')
     out.extend(arrows)
     for run in texts:
