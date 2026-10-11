@@ -33,6 +33,7 @@
 
 * { box-sizing: border-box; }
 html, body { overscroll-behavior: none; }
+html { overflow-x: clip; }
 @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
 section, .docs { scroll-margin-top: 96px; }
 body { background: var(--paper); color: var(--ink); font: 15px/1.45 var(--mono); margin: 0; overflow-x: clip; }
@@ -48,7 +49,7 @@ code { font: inherit; color: var(--ink); }
 .pitch code, section p code, .sub code, .rules code, .uses code, .says code, .caption code, .note code { padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--ink) 9%, transparent); white-space: nowrap; }
 .pa { fill: var(--accent); } .pm { fill: var(--muted); } .pi { fill: var(--ink); }
 svg.defs { position: absolute; width: 0; height: 0; }
-pre { margin: 0; font: inherit; white-space: pre; overflow-x: auto; }
+pre { margin: 0; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: hidden; }
 
 /* ---------- hero: full bleed, content on the left ---------- */
 .hero { position: relative; overflow: hidden; min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column; }
@@ -73,7 +74,7 @@ h1::before { content: ""; position: absolute; left: -70%; top: -320%; width: 260
 .install { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 56px; max-width: 100%; }
 .install .cmd { max-width: 100%; }
 .cmd { display: flex; align-items: center; gap: 40px; border: 1.5px solid var(--ink); background: var(--paper); padding: 14px 14px 14px 20px; min-width: 0; }
-.cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; }
+.cmd code { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .btn { font: 500 13px var(--mono); color: var(--ink); background: var(--paper); border: 1.5px solid var(--ink); padding: 4px 10px; cursor: pointer; flex-shrink: 0; }
 .btn:hover { color: var(--paper); background: var(--ink); }
 .cmd .btn { font-weight: 400; font-size: 12px; color: var(--muted); border: 0; background: none; padding: 2px 4px; letter-spacing: .03em; }
@@ -124,7 +125,7 @@ section::before { content: ""; position: absolute; left: 50%; top: 0; width: min
 .row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; margin-inline: -8px; padding-inline: 8px; color: var(--muted); transition: color .4s, background .4s, box-shadow .4s; }
 .ln.hot { background: color-mix(in srgb, var(--accent) 11%, transparent); }
 .row.a { color: var(--accent); background: color-mix(in srgb, var(--accent) 11%, transparent); }
-.ln { display: block; margin-inline: -6px; padding-inline: 6px; transition: background .4s, box-shadow .4s; }
+.ln { display: block; margin-inline: 0; padding-inline: 0; transition: background .4s, box-shadow .4s; }
 .ln.hot { color: var(--accent); }
 .row > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row .st { white-space: nowrap; }
@@ -191,7 +192,7 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
 .docs footer a { color: var(--muted); }
 
 /* ---------- side map ---------- */
-.map { position: fixed; left: max(12px, calc((100vw - 980px) / 4 - 150px)); top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 14px; padding-left: 22px; font-size: 12px; line-height: 18px; opacity: 0; pointer-events: none; transition: opacity .35s; z-index: 2; }
+.map { position: fixed; left: max(12px, calc((100vw - 980px) / 4 - 150px)); top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 14px; padding-left: 22px; font-size: 12px; line-height: 18px; opacity: 0; pointer-events: none; transition: opacity .28s; z-index: 2; }
 .map.show { opacity: 1; pointer-events: auto; }
 .map .track { position: absolute; left: 3px; top: 9px; bottom: 9px; width: 2px; background: var(--rule); }
 .map .track i { display: block; width: 100%; height: 0; background: var(--ink); }
@@ -212,7 +213,6 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
 .via .link::before { border-right-color: var(--muted); }
 .guide { display: grid; grid-template-columns: 1.15fr 1fr; gap: 34px 18px; }
 .share pre, .guide pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-.plug pre { white-space: pre; overflow-x: auto; }
 .cmdrow { font-size: 13px; }
 .plug { display: grid; grid-template-columns: 1fr; gap: 34px; }
 .plug .frame { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px 40px; align-items: center; padding-block: 24px 22px; }
@@ -245,12 +245,11 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
 .say .m { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
 .say code { color: var(--ink); }
 .onb-term { font-size: 13.5px; line-height: 1.55; }
-.onb-term pre { overflow-x: auto; }
 .onb-term .p { color: var(--ink); }
 .c-acc { color: var(--ink); font-weight: 600; } .c-mut { color: var(--muted); } .c-att { color: var(--attention); }
 .integ { display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; }
 .irow { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 24px; align-items: baseline; }
-.irow code { font-weight: 600; white-space: nowrap; overflow-x: auto; }
+.irow code { font-weight: 600; overflow-wrap: anywhere; }
 .inote { margin-top: 6px; font-size: 13px; }
 .deeper { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px 18px; }
 .deeper .frame { display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
@@ -278,10 +277,22 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
 footer { color: var(--muted); font-size: 12px; }
 
 @media (max-width: 760px) {
+  .sub, .caption { max-width: 100%; }
+  .steps { grid-template-columns: repeat(6, 1fr) auto; margin-bottom: 28px; }
+  .steps .sl { display: none; }
+  .steps button { text-align: center; padding-inline: 0; }
+  .term { height: 470px; font-size: 12px; }
+  .term pre, .onb-term pre, .cmdrow pre, .share pre, .guide pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .onb-term, .cmdrow { font-size: 11.5px; }
+  .cmd { gap: 16px; padding: 12px 12px 12px 14px; }
+  .install .cmd, .saybox { width: 100%; }
+  .cmd code { white-space: normal; overflow-wrap: anywhere; }
+  .irow code { white-space: normal; overflow-wrap: anywhere; }
+  .annot { font-size: 12px; padding-inline: 12px; }
+  .sheet { padding-inline: 16px; }
   body { font-size: 14px; }
   .sheet { gap: 104px; padding-block: 72px 56px; }
   .lead { padding-block: 24px 64px; }
-  .steps { grid-template-columns: repeat(3, 1fr); }
   .demo { grid-template-columns: 1fr; gap: 0; }
   .demo .link { width: 1.5px; height: 34px; justify-self: center; }
   .demo .link::before { left: -5px; top: -2px; border: 6px solid transparent; border-bottom: 9px solid var(--muted); border-top: 0; }
@@ -297,7 +308,6 @@ footer { color: var(--muted); font-size: 12px; }
   .via .link { display: none; }
   .caption { height: 6em; font-size: 15px; }
   .tag { white-space: normal; min-height: 2.4em; }
-  .term { height: 236px; }
   .uses div { grid-template-columns: 1fr; gap: 4px; }
   .cycle { flex-direction: column; }
   .cycle .ar { transform: rotate(90deg); padding: 0; }
@@ -373,12 +383,12 @@ footer { color: var(--muted); font-size: 12px; }
     </header>
     <div class="player">
       <div class="steps" role="group" aria-label="Steps of one review">
-        <button type="button" data-s="0"><span class="bar"></span>0 · all current</button>
-        <button type="button" data-s="1"><span class="bar"></span>1 · edit</button>
-        <button type="button" data-s="2"><span class="bar"></span>2 · plan</button>
-        <button type="button" data-s="3" aria-pressed="true"><span class="bar"></span>3 · review</button>
-        <button type="button" data-s="4"><span class="bar"></span>4 · fix</button>
-        <button type="button" data-s="5"><span class="bar"></span>5 · ack</button>
+        <button type="button" data-s="0"><span class="bar"></span>0<span class="sl"> · all current</span></button>
+        <button type="button" data-s="1"><span class="bar"></span>1<span class="sl"> · edit</span></button>
+        <button type="button" data-s="2"><span class="bar"></span>2<span class="sl"> · plan</span></button>
+        <button type="button" data-s="3" aria-pressed="true"><span class="bar"></span>3<span class="sl"> · review</span></button>
+        <button type="button" data-s="4"><span class="bar"></span>4<span class="sl"> · fix</span></button>
+        <button type="button" data-s="5"><span class="bar"></span>5<span class="sl"> · ack</span></button>
         <button type="button" class="pp" id="pp" aria-label="Pause">❚❚</button>
       </div>
       <p class="caption" id="caption" aria-live="polite"></p>
