@@ -320,7 +320,7 @@ footer { color: var(--muted); font-size: 12px; }
     <div class="top">
       <span>memoria <span class="m">v<span class="ver">0.9.2</span></span></span>
       <nav>
-        <a class="opt" href="#how">how it works</a>
+        <a class="opt" href="#flow">how it works</a>
         <a class="opt cta-onb" href="#onboard">onboard your agent</a>
         <a href="https://github.com/viktordanov/rs-memoria">github</a>
       </nav>
@@ -331,37 +331,37 @@ footer { color: var(--muted); font-size: 12px; }
       </h1>
       <div class="tag" id="tag">Never ship <span class="a">stale</span> <span id="rot">docs again.</span><span class="cursor"></span></div>
       <div class="pitch">
-        <p><strong>Memoria is CI for your docs.</strong> When the code changes, it tells you which documents need another look and shows you what changed. <code class="a">memoria check</code> fails the build until someone has reviewed them.</p>
-        <p class="m">You and your agents still write and judge every word. Memoria records each review against the exact code the reviewer saw.</p>
+        <p><strong>Memoria is CI for your docs.</strong> When code changes, it tells you which docs now need a look and shows exactly what changed. <code class="a">memoria check</code> keeps the build red until someone has checked them.</p>
+        <p class="m">You and your agents write and judge every word. Memoria keeps the receipts: each review is tied to the exact code the reviewer read.</p>
       </div>
       <div class="install">
         <div class="cmd"><code id="install-cmd"><span class="m">$</span> brew install viktordanov/tap/memoria</code><button class="btn" id="copy-install" type="button">copy</button></div>
         <small>macOS 13 or later · Arch Linux: <code>yay -S memoria-bin</code> · <a href="https://github.com/viktordanov/rs-memoria#install-options">other options</a></small>
       </div>
-      <div class="ctas"><a href="#flow">see one review</a><a class="cta-onb" href="#onboard">onboard your agent</a></div>
+      <div class="ctas"><a href="#flow">watch a review</a><a class="cta-onb" href="#onboard">onboard your agent</a></div>
     </div>
   </div>
   </header>
 
 <nav class="map" id="map" aria-label="On this page">
   <div class="track"><i id="mapfill"></i></div>
-  <a href="#flow">see a review</a>
+  <a href="#flow">see it work</a>
   <a href="#how">what gets flagged</a>
-  <a href="#cycle">how it tracks</a>
-  <a href="#render">reuse text</a>
-  <a href="#guidance">writing guidance</a>
+  <a href="#cycle">markers</a>
+  <a href="#render">shared summaries</a>
+  <a href="#guidance">writing rules</a>
   <a href="#automate">agents and CI</a>
-  <a href="#uses">when to use it</a>
+  <a href="#uses">use cases</a>
   <a href="#never">what it won't do</a>
   <a href="#onboard">onboard your agent</a>
-  <a href="#docs">read the docs</a>
+  <a href="#docs">docs</a>
 </nav>
 
 <main class="sheet">
   <section id="flow" aria-labelledby="h-demo">
     <header class="sh">
-      <h2 class="hd" id="h-demo"><svg aria-hidden="true"><use href="#dl"/></svg>One commit, one stale README<svg aria-hidden="true"><use href="#dr"/></svg></h2>
-      <p class="sub">Edit one file, and Memoria finds the one document that now needs a look, shows what changed, and records the fix.</p>
+      <h2 class="hd" id="h-demo"><svg aria-hidden="true"><use href="#dl"/></svg>A code change flags the doc that explains it<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <p class="sub">Watch one change go through. A commit edits <code>login.rs</code>, and Memoria marks the README that describes it as <b class="a">pending</b>: it needs a look. Then it shows the diff and records the fix.</p>
     </header>
     <div class="player">
       <div class="steps" role="group" aria-label="Steps of one review">
@@ -393,37 +393,37 @@ footer { color: var(--muted); font-size: 12px; }
 
   <section id="how" aria-labelledby="h-how">
     <header class="sh">
-      <h2 class="hd" id="h-how"><svg aria-hidden="true"><use href="#dl"/></svg>Which documents an edit makes pending<svg aria-hidden="true"><use href="#dr"/></svg></h2>
-      <p class="sub">Each README covers its own folder and everything below it. Edit <code>auth/login.rs</code>, and what goes pending depends on what the root README says about <code>auth/</code>.</p>
+      <h2 class="hd" id="h-how"><svg aria-hidden="true"><use href="#dl"/></svg>Your folders decide what gets flagged<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <p class="sub">A README covers its own folder and everything below it. One edit to <code>auth/login.rs</code>, and three ways the root README can treat <code>auth/</code>:</p>
     </header>
     <div class="trees">
       <div class="frame"><span class="ft">1 · says nothing</span>
-        <div class="says">The root still covers auth/, so both are reviewed.</div>
+        <div class="says">The root still covers auth/, so both READMEs are flagged.</div>
 <pre><span class="ln">./</span><span class="ln hot">├─ README.md     <span class="sw" data-o="2" data-idle="current"><span class="a">pending</span></span></span><span class="ln">├─ app.rs</span><span class="ln">└─ auth/</span><span class="ln hot">   ├─ README.md  <span class="sw" data-o="1" data-idle="current"><span class="a">pending</span></span></span><span class="ln hot">   └─ login.rs   <span class="sw" data-o="0" data-idle="">edited</span></span></pre>
       </div>
       <div class="frame"><span class="ft">2 · links auth/</span>
-        <div class="says">The link hands auth/ to its own README.</div>
+        <div class="says">The link hands auth/ to its own README. Only that one is flagged.</div>
 <pre><span class="ln">./</span><span class="ln">├─ README.md     current</span><span class="ln">├─ app.rs</span><span class="ln">└─ auth/</span><span class="ln hot">   ├─ README.md  <span class="sw" data-o="1" data-idle="current"><span class="a">pending</span></span></span><span class="ln hot">   └─ login.rs   <span class="sw" data-o="0" data-idle="">edited</span></span></pre>
       </div>
-      <div class="frame"><span class="ft">3 · imports a summary</span>
-        <div class="says">The root waits for the summary it imports.</div>
+      <div class="frame"><span class="ft">3 · reuses its summary</span>
+        <div class="says">The root reuses the auth/ summary, so it waits for that review.</div>
 <pre><span class="ln">./</span><span class="ln">├─ README.md     <span class="sw" data-o="4" data-idle="current   ">waits  <span class="a">◂─┐</span></span></span><span class="ln">├─ app.rs                 <span class="sw" data-o="3" data-idle=" "><span class="a">│</span></span></span><span class="ln">└─ auth/                  <span class="sw" data-o="2" data-idle=" "><span class="a">│</span></span></span><span class="ln hot">   ├─ README.md  <span class="sw" data-o="1" data-idle="current   "><span class="a">pending ─┘</span></span></span><span class="ln hot">   └─ login.rs   <span class="sw" data-o="0" data-idle="">edited</span></span></pre>
       </div>
     </div>
     <ul class="rules">
-      <li><span><strong>Every README.md is tracked.</strong> <span class="m">Other Markdown files join with a marker: an export, an import, or a section. A link alone never tracks a file.</span></span></li>
-      <li><span><strong>A link is a handoff.</strong> <span class="m">Remove it later, and the root becomes pending again.</span></span></li>
-      <li><span><strong>Imports carry freshness.</strong> <span class="m">They are the only edges between documents, and they set the review order.</span></span></li>
+      <li><span><strong>Every README.md is tracked.</strong> <span class="m">Other Markdown files join when they contain a Memoria comment. A plain link never tracks a file.</span></span></li>
+      <li><span><strong>A link hands a folder over.</strong> <span class="m">Remove the link later, and the root covers that folder again.</span></span></li>
+      <li><span><strong>Reused summaries set the order.</strong> <span class="m">A doc that reuses a summary is reviewed after the doc it comes from.</span></span></li>
     </ul>
   </section>
 
   <section id="cycle" aria-labelledby="h-cycle">
     <header class="sh">
-      <h2 class="hd" id="h-cycle"><svg aria-hidden="true"><use href="#dl"/></svg>How Memoria tracks a document<svg aria-hidden="true"><use href="#dr"/></svg></h2>
-      <p class="sub">Folders decide what a document covers. Markers, plain HTML comments, add the rest. Memoria never needs anything else in your Markdown.</p>
+      <h2 class="hd" id="h-cycle"><svg aria-hidden="true"><use href="#dl"/></svg>A few comments fill in the details<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <p class="sub">Folders do most of the work. Plain HTML comments add the rest: which part of a doc describes which code, and which summary other docs reuse. Nothing else in your Markdown changes.</p>
     </header>
-    <div class="frame annot"><span class="ft">src/auth/README.md</span><div class="ar-row on"><code><span class="vl">1</span># Auth</code><span class="note"><b>tracked</b> · covers src/auth/ and below</span></div><div class="ar-row"><code><span class="vl">2</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">3</span><span class="mk">&lt;!-- memoria:export id="summary" --&gt;</span></code><span class="note"><b>export</b> · a summary others import</span></div><div class="ar-row"><code><span class="vl">4</span>Auth signs users in with a password or a passkey.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">5</span><span class="mk">&lt;!-- /memoria:export --&gt;</span></code><span class="note"></span></div><div class="ar-row"><code><span class="vl">6</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">7</span><span class="mk">&lt;!-- memoria:section id="sessions" files="src/auth/**" --&gt;</span></code><span class="note"><b>section</b> · changes in src/auth/** start here</span></div><div class="ar-row"><code><span class="vl">8</span>## Sessions</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">9</span>A session lasts 15 minutes, then the user signs in again.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">10</span><span class="mk">&lt;!-- /memoria:section --&gt;</span></code><span class="note"></span></div></div>
-    <div class="label loop-label">every change then runs the same loop</div>
+    <div class="frame annot"><span class="ft">src/auth/README.md</span><div class="ar-row on"><code><span class="vl">1</span># Auth</code><span class="note"><b>tracked</b> · covers src/auth/ and below</span></div><div class="ar-row"><code><span class="vl">2</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">3</span><span class="mk">&lt;!-- memoria:export id="summary" --&gt;</span></code><span class="note"><b>export</b> · a summary other docs reuse</span></div><div class="ar-row"><code><span class="vl">4</span>Auth signs users in with a password or a passkey.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">5</span><span class="mk">&lt;!-- /memoria:export --&gt;</span></code><span class="note"></span></div><div class="ar-row"><code><span class="vl">6</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">7</span><span class="mk">&lt;!-- memoria:section id="sessions" files="src/auth/**" --&gt;</span></code><span class="note"><b>section</b> · edits to src/auth/** start here</span></div><div class="ar-row"><code><span class="vl">8</span>## Sessions</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">9</span>A session lasts 15 minutes, then the user signs in again.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">10</span><span class="mk">&lt;!-- /memoria:section --&gt;</span></code><span class="note"></span></div></div>
+    <div class="label loop-label">every change runs the same loop</div>
     <div class="cycle" id="cyc">
       <div class="box">login.rs changes<small>git commit</small></div><span class="ar">─▸</span>
       <div class="box">README pending<small>memoria status</small></div><span class="ar">─▸</span>
@@ -432,32 +432,32 @@ footer { color: var(--muted); font-size: 12px; }
       <div class="box">README current<small>memoria ack</small></div>
       <div class="back">◂──── the next change starts it again ─────</div>
     </div>
-    <p>The ack is bound to one saved snapshot. If anything changed after the review was saved, Memoria rejects the ack instead of approving inputs nobody read. A passing <code>memoria check</code> means every document matches its last review. It does not claim the prose is correct.</p>
+    <p>An ack only counts for the exact files you read. If anything changed after you saved the review, Memoria refuses the ack instead of approving code nobody looked at. A passing <code>memoria check</code> means every doc was checked against its current code. Whether the prose is good is still up to you.</p>
   </section>
 
 <section id="render" aria-labelledby="h-render">
     <header class="sh">
-      <h2 class="hd" id="h-render"><svg aria-hidden="true"><use href="#dl"/></svg>Say it once, reuse it everywhere<svg aria-hidden="true"><use href="#dr"/></svg></h2>
-      <p class="sub">Stop pasting the same paragraph into five files. Export it from one document, import it where it belongs, and <code>memoria render</code> keeps every copy identical.</p>
+      <h2 class="hd" id="h-render"><svg aria-hidden="true"><use href="#dl"/></svg>Write a summary once, keep every copy in sync<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <p class="sub">Mark a summary in one doc and reuse it in others. <code>memoria render</code> copies it into place, so five READMEs never drift apart.</p>
     </header>
     <div class="share">
-      <div class="frame"><span class="ft">auth/README.md · provider</span>
+      <div class="frame"><span class="ft">auth/README.md · the source</span>
 <pre><span class="ln c-mut">&lt;!-- memoria:export id="summary" --&gt;</span><span class="ln hot" id="exp-line">Auth signs users in with a password or a passkey.</span><span class="ln c-mut">&lt;!-- /memoria:export --&gt;</span></pre></div>
       <div class="via"><span class="c-acc">memoria render</span><span class="link" aria-hidden="true"></span></div>
-      <div class="frame"><span class="ft">README.md · consumer</span>
+      <div class="frame"><span class="ft">README.md · reuses it</span>
 <pre><span class="ln c-mut">&lt;!-- memoria:import src="auth/README.md#summary" --&gt;</span><span class="ln hot" id="imp-line" data-text="Auth signs users in with a password or a passkey.">Auth signs users in with a password or a passkey.</span><span class="ln c-mut">&lt;!-- /memoria:import --&gt;</span></pre></div>
     </div>
     <ul class="rules">
-      <li><span><strong>The provider is reviewed first.</strong> <span class="m">The consumer waits, so it never reviews text from an unfinished dependency.</span></span></li>
-      <li><span><strong>Only inside import blocks.</strong> <span class="m">Render refreshes the managed copies and touches nothing else.</span></span></li>
-      <li><span><strong>One edit, every copy.</strong> <span class="m">Change the summary in one place, and each document that imports it is reviewed in order.</span></span></li>
+      <li><span><strong>The source is checked first.</strong> <span class="m">Docs that reuse a summary wait for its review, so nobody checks a half-finished copy.</span></span></li>
+      <li><span><strong>Copies only.</strong> <span class="m">Render rewrites the marked copy and leaves the rest of the file alone.</span></span></li>
+      <li><span><strong>Change it once.</strong> <span class="m">Edit the summary in one place, and every doc that reuses it is queued for review in the right order.</span></span></li>
     </ul>
   </section>
 
   <section id="guidance" aria-labelledby="h-guidance">
     <header class="sh">
-      <h2 class="hd" id="h-guidance"><svg aria-hidden="true"><use href="#dl"/></svg>Tell reviewers what good looks like<svg aria-hidden="true"><use href="#dr"/></svg></h2>
-      <p class="sub">Write your documentation rules once. Every review names them, and <code>memoria guidance</code> prints them for any document.</p>
+      <h2 class="hd" id="h-guidance"><svg aria-hidden="true"><use href="#dl"/></svg>Every review comes with your writing rules<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <p class="sub">Write your documentation rules once in <code>memoria.toml</code>. Every review lists them, and <code>memoria guidance</code> prints them for any doc.</p>
     </header>
     <div class="guide">
       <div class="frame"><span class="ft">memoria.toml · project guidance</span><pre><span class="c-mut">[documentation]</span>
@@ -474,16 +474,16 @@ guidance_files = [<span class="c-acc">"docs/writing-guidance.md"</span>]</pre></
     <div class="frame cmdrow"><span class="ft">terminal</span><pre><span class="p">$ memoria guidance src/README.md</span>   <span class="c-mut"># the rules for one document</span>
 <span class="p">$ memoria guidance --changed</span>       <span class="c-mut"># reviewed documents that saw older wording</span></pre></div>
     <ul class="rules">
-      <li><span><strong>Advisory, never a trigger.</strong> <span class="m">Guidance never selects files and never makes a document pending on its own.</span></span></li>
-      <li><span><strong>A changed rule is reported, not enforced.</strong> <span class="m">The review plan shows one assessment item, and <code>memoria check</code> still passes. You decide what needs fresh eyes.</span></span></li>
-      <li><span><strong>Section guides reach only what names them.</strong> <span class="m">Project guidance still wins a conflict.</span></span></li>
+      <li><span><strong>Advice, not a trigger.</strong> <span class="m">Rules never decide which files a doc covers, and never flag a doc on their own.</span></span></li>
+      <li><span><strong>Changing a rule flags nothing.</strong> <span class="m">The review plan notes the change, <code>memoria check</code> still passes, and you decide which docs deserve a fresh look.</span></span></li>
+      <li><span><strong>Narrow rules stay narrow.</strong> <span class="m">Rules for one kind of section only reach the sections that name them. Project rules win any conflict.</span></span></li>
     </ul>
   </section>
 
   <section id="automate" aria-labelledby="h-automate">
     <header class="sh">
-      <h2 class="hd" id="h-automate"><svg aria-hidden="true"><use href="#dl"/></svg>Plug into your agent and your CI<svg aria-hidden="true"><use href="#dr"/></svg></h2>
-      <p class="sub">Three optional integrations. Each one is local and reversible, and none of them reviews a document for you.</p>
+      <h2 class="hd" id="h-automate"><svg aria-hidden="true"><use href="#dl"/></svg>It fits into your agent and your CI<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <p class="sub">Three optional pieces. Each one can be removed again, and none of them reviews a doc for you.</p>
     </header>
     <div class="plug">
       <div class="frame"><span class="ft">agent skill</span>
@@ -491,53 +491,53 @@ guidance_files = [<span class="c-acc">"docs/writing-guidance.md"</span>]</pre></
 <span class="c-mut">.claude/</span>
 <span class="c-mut">└─</span> skills/
    <span class="c-mut">└─</span> <span class="hl">memoria/</span></pre>
-        <p class="m">The full review procedure, as a skill for Claude Code or Codex.</p></div>
+        <p class="m">Teaches Claude Code or Codex the full review procedure.</p></div>
       <div class="frame"><span class="ft">stop hook</span>
 <pre><span class="c-acc">memoria agent hook install --target claude</span>
 <span class="c-mut">agent stops</span>
 <span class="c-mut">└─</span> <span class="hl">1 document needs review</span>
    <span class="c-mut">→ memoria review</span></pre>
-        <p class="m">Reports pending work when the agent stops. It never continues the turn.</p></div>
+        <p class="m">When the agent stops, it says how many docs need a review. It never keeps the agent going.</p></div>
       <div class="frame"><span class="ft">github check</span>
 <pre><span class="c-acc">memoria integrations github install</span>
 <span class="c-mut">.github/workflows/</span>
 <span class="c-mut">└─</span> <span class="hl">memoria.yml</span>
    <span class="c-mut">runs memoria check</span></pre>
-        <p class="m">Fails the build while a review is pending, with a verified Memoria on the runner.</p></div>
+        <p class="m">Fails the build while any doc is pending. The runner installs a verified Memoria.</p></div>
     </div>
   </section>
 
   <section id="uses" aria-labelledby="h-uses">
     <header class="sh">
-      <h2 class="hd" id="h-uses"><svg aria-hidden="true"><use href="#dl"/></svg>What you can use it for<svg aria-hidden="true"><use href="#dr"/></svg></h2>
-      <p class="sub">Six reasons people reach for it, from one stale file to a gated merge.</p>
+      <h2 class="hd" id="h-uses"><svg aria-hidden="true"><use href="#dl"/></svg>Where it earns its keep<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <p class="sub">Six jobs it does well, from one stale file to a blocked merge.</p>
     </header>
     <div class="uses">
-      <div><span>Find every explanation a feature change touches</span><span class="m">Each document whose scope holds a changed file goes pending, in review order.</span></div>
-      <div><span>Block a merge until the docs are reviewed</span><span class="m"><code>memoria check</code> fails in CI while a review is pending.</span></div>
-      <div><span>Hand an agent one bounded review</span><span class="m">One artifact holds what changed, what to read, and which guidance applies.</span></div>
-      <div><span>Keep AGENTS.md and CLAUDE.md current</span><span class="m">Each file is tracked, and shared writing rules join the review of each section that names them.</span></div>
-      <div><span>Repeat one summary in several docs</span><span class="m"><code>memoria render</code> copies an export into each import, and the provider is reviewed first.</span></div>
-      <div><span>Re-review after a decision, not a diff</span><span class="m"><code>memoria invalidate</code> records a review request with your reason.</span></div>
+      <div><span>Find every doc a feature change touches</span><span class="m">Each doc that covers a changed file is flagged, in the order to review them.</span></div>
+      <div><span>Block a merge until the docs are checked</span><span class="m"><code>memoria check</code> fails in CI while any review is pending.</span></div>
+      <div><span>Give an agent one well-defined review</span><span class="m">One file holds what changed, what to read, and which rules apply.</span></div>
+      <div><span>Keep AGENTS.md and CLAUDE.md honest</span><span class="m">Both are tracked, and shared writing rules apply to each section that names them.</span></div>
+      <div><span>Share one summary across docs</span><span class="m"><code>memoria render</code> copies it into each doc that uses it, after its source is reviewed.</span></div>
+      <div><span>Re-check docs after a decision, not a diff</span><span class="m"><code>memoria invalidate</code> asks for a review and records your reason.</span></div>
     </div>
   </section>
 
   <section id="never" aria-labelledby="h-never">
     <header class="sh">
-      <h2 class="hd" id="h-never"><svg aria-hidden="true"><use href="#dl"/></svg>What Memoria never does<svg aria-hidden="true"><use href="#dr"/></svg></h2>
-      <p class="sub">It proves that a review happened. It never writes the prose or grades it.</p>
+      <h2 class="hd" id="h-never"><svg aria-hidden="true"><use href="#dl"/></svg>Your words stay yours<svg aria-hidden="true"><use href="#dr"/></svg></h2>
+      <p class="sub">Memoria proves that someone checked. It never writes your docs or grades them.</p>
     </header>
     <div class="never">
-      <div class="frame"><span class="ft">writes prose</span><p>Only <code>memoria render</code> changes document text, and only inside import blocks you declare.</p></div>
-      <div class="frame"><span class="ft">judges prose</span><p>Whether an explanation is good or true is for a person or an agent to decide.</p></div>
-      <div class="frame"><span class="ft">picks your topics</span><p>What each document covers is your choice. Memoria works with the one you make.</p></div>
+      <div class="frame"><span class="ft">never writes</span><p>The only text it ever changes is a summary copy you marked, and only when you run <code>memoria render</code>.</p></div>
+      <div class="frame"><span class="ft">never judges</span><p>Whether an explanation is clear or true is for you or your agent to decide.</p></div>
+      <div class="frame"><span class="ft">never decides</span><p>You choose what each doc is about. Memoria works with whatever you choose.</p></div>
     </div>
   </section>
 
   <section id="onboard" aria-labelledby="h-onb">
     <header class="sh">
       <h2 class="hd" id="h-onb"><svg aria-hidden="true"><use href="#dl"/></svg>Onboard your agent<svg aria-hidden="true"><use href="#dr"/></svg></h2>
-      <p class="sub">Tell your agent to run <code>memoria onboard</code>. It explains Memoria, reads where your project stands, and names the next command. Nothing to install.</p>
+      <p class="sub">One command gets an agent started. <code>memoria onboard</code> explains Memoria, reads where your project stands, and names the next step. Nothing to install.</p>
     </header>
     <div class="say">
       <span class="m">tell your agent</span>
@@ -569,9 +569,9 @@ Go deeper
   <span class="c-acc">memoria onboard agent</span>      <span class="c-mut">let an agent keep your docs current</span>
   <span class="c-acc">memoria onboard ci</span>         <span class="c-mut">block merges while docs are pending</span></pre></div>
     <div class="deeper">
-      <div class="frame"><span class="ft">review</span><pre class="cmdl">memoria onboard review</pre><p class="m">The five review steps, from the plan to the ack.</p></div>
-      <div class="frame"><span class="ft">agent</span><pre class="cmdl">memoria onboard agent</pre><p class="m">The review skill for Claude or Codex, and an optional Stop hook.</p></div>
-      <div class="frame"><span class="ft">ci</span><pre class="cmdl">memoria onboard ci</pre><p class="m">A GitHub Actions check that blocks merges while docs are pending.</p></div>
+      <div class="frame"><span class="ft">review</span><pre class="cmdl">memoria onboard review</pre><p class="m">Review a flagged doc in five steps, from the plan to the ack.</p></div>
+      <div class="frame"><span class="ft">agent</span><pre class="cmdl">memoria onboard agent</pre><p class="m">Set up the review skill and the optional Stop hook.</p></div>
+      <div class="frame"><span class="ft">ci</span><pre class="cmdl">memoria onboard ci</pre><p class="m">Add the GitHub check that blocks merges while docs are pending.</p></div>
     </div>
   </section>
 </main>
@@ -580,7 +580,7 @@ Go deeper
     <canvas id="field2" aria-hidden="true"></canvas>
     <div class="docs-in">
       <h2 class="big" id="h-docs">Start with one README.</h2>
-      <p class="sub">Write the root README yourself. Memoria tracks it from the first <code>memoria init --apply</code>, and every README you add after it. It never invents one: the root explanation is the part only you can write.</p>
+      <p class="sub">Write the root README yourself: it is the one explanation only you can give. Run <code>memoria init --apply</code>, and Memoria tracks it and every README you add after it.</p>
       <div class="guides">
         <div><div class="gh">learn</div>
           <a href="https://github.com/viktordanov/rs-memoria/blob/main/docs/concepts.md">Concepts</a><span class="m">scopes, handoffs, imports</span>
@@ -817,16 +817,16 @@ Go deeper
   var E = '';
   var S = [
     { auth: 'current', login: '', on: false,
-      cap: 'Every document matches the code its last reviewer saw.',
+      cap: 'Every doc matches the code its last reviewer saw.',
       cmd: 'memoria check', out: ['<span class="m"># passes: no review is pending</span>'] },
     { auth: 'pending', login: 'edited', on: true,
-      cap: 'A commit edits <b>src/auth/login.rs</b>. The README in that folder covers it, so it goes <b>pending</b>. The other documents stay current.',
+      cap: 'A commit changes <b>src/auth/login.rs</b>. The README in that folder describes it, so it goes <b>pending</b>. The other docs stay current.',
       cmd: 'git diff src/auth/login.rs', out: ['<span class="rm">-pub const SESSION_MINUTES: u32 = 30;</span>', '<span class="ad">+pub const SESSION_MINUTES: u32 = 15;</span>'] },
     { auth: 'pending', login: 'edited', on: true,
-      cap: 'The plan lists what is pending, in dependency order, and the next command to run.',
+      cap: 'The plan lists every pending doc in the order to review them, and the next command to run.',
       cmd: 'memoria review', out: ['<span class="m">Review plan: 1 pending document (dependency order)</span>', '<span class="m">  1. src/auth/README.md  README · input changed: src/auth/login.rs · ready</span>', '<span><span class="m">Next:</span> memoria review src/auth/README.md</span>'] },
     { auth: 'pending', login: 'edited', on: true,
-      cap: 'The review shows exactly what changed, where to start reading, and the writing guidance that applies. The README still says 30 minutes.',
+      cap: 'The review shows what changed, where to start reading, and the writing rules that apply. The README still says 30 minutes.',
       cmd: 'memoria review src/auth/README.md', out: [
         '<span>Review src/auth/README.md <span class="m">— README, pending since revision 1</span></span>',
         '<span class="m">Scope: 1 source in src/auth/ and below</span>',
@@ -839,9 +839,9 @@ Go deeper
         '<span class="m">  Read: src/auth/README.md (whole_document), src/auth/login.rs (changed_source)</span>',
         '<span>  <span class="c-acc">Guidance: memoria guidance src/auth/README.md</span></span>'] },
     { auth: 'pending', login: 'edited', on: true, editor: true,
-      cap: 'You or your agent fix the README, starting at the <b>sessions</b> section the review suggested. The markers are plain HTML comments.' },
+      cap: 'You or your agent fix the README, starting at the <b>sessions</b> section the review pointed to. The markers are plain HTML comments.' },
     { auth: 'current', login: '', on: false,
-      cap: 'The ack records the review against the exact bytes that were read. The document is <b>current</b> again.',
+      cap: 'The <b>ack</b> is your sign-off, tied to the exact files you read. The README is <b>current</b> again.',
       cmd: 'memoria ack src/auth/README.md --packet "$dir"/memoria-manifest-*.json \\\n    --reviewer docs-agent --result updated --note "Sessions last 15 minutes."', out: ['<span><span class="ok">Recorded</span> src/auth/README.md revision 2 (updated) by docs-agent</span>'] }
   ];
   var DUR = [4800, 7000, 7000, 10400, 13600, 7600];
