@@ -191,6 +191,9 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
 .docs footer { margin-top: 280px; color: var(--muted); font-size: 12px; }
 .docs footer a { color: var(--muted); }
 
+/* ---------- phone-only pieces ---------- */
+.ttabs, .back .narrow, .more { display: none; }
+
 /* ---------- side map ---------- */
 .map { position: fixed; left: max(12px, calc((100vw - 980px) / 4 - 150px)); top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 14px; padding-left: 22px; font-size: 12px; line-height: 18px; opacity: 0; pointer-events: none; transition: opacity .28s; z-index: 2; }
 .map.show { opacity: 1; pointer-events: auto; }
@@ -276,43 +279,129 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
 .links { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 24px; font-size: 14px; }
 footer { color: var(--muted); font-size: 12px; }
 
-@media (max-width: 760px) {
-  .sub, .caption { max-width: 100%; }
-  .steps { grid-template-columns: repeat(6, 1fr) auto; margin-bottom: 28px; }
+/* tablets and narrow windows: the phone treatments that a two-column layout still needs */
+@media (max-width: 1024px) {
   .steps .sl { display: none; }
   .steps button { text-align: center; padding-inline: 0; }
-  .term { height: 470px; font-size: 12px; }
-  .term pre, .onb-term pre, .cmdrow pre, .share pre, .guide pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-  .onb-term, .cmdrow { font-size: 11.5px; }
-  .cmd { gap: 16px; padding: 12px 12px 12px 14px; }
-  .install .cmd, .saybox { width: 100%; }
-  .cmd code { white-space: normal; overflow-wrap: anywhere; }
-  .irow code { white-space: normal; overflow-wrap: anywhere; }
-  .annot { font-size: 12px; padding-inline: 12px; }
-  .sheet { padding-inline: 16px; }
+  .ttabs { display: flex; gap: 6px; margin-bottom: -6px; }
+  .ttabs button { flex: 1; font: 12px var(--mono); white-space: nowrap; color: var(--muted); background: none; border: 1px solid var(--rule); padding: 7px 4px; cursor: pointer; }
+  .ttabs button[aria-selected="true"] { color: var(--paper); background: var(--ink); border-color: var(--ink); }
+  .trees { grid-template-columns: 1fr; }
+  .trees .frame { display: none; }
+  .trees[data-t="0"] .frame:nth-child(1), .trees[data-t="1"] .frame:nth-child(2), .trees[data-t="2"] .frame:nth-child(3) { display: block; }
+  .trees .says { min-height: 0; }
+  .cycle { flex-direction: column; align-items: stretch; gap: 4px; counter-reset: step; }
+  .cycle .ar { display: none; }
+  .cycle .box { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; text-align: left; padding: 6px 12px; counter-increment: step; }
+  .cycle .box::before { content: counter(step); color: var(--muted); margin-right: 10px; }
+  .cycle .box small { margin-left: auto; }
+  .back .wide { display: none; }
+  .back .narrow { display: inline; }
+  .onb-term pre { max-height: 260px; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+  .onb-term.open pre { max-height: none; -webkit-mask-image: none; mask-image: none; }
+  .onb-term { display: flex; flex-direction: column; }
+  .more { display: block; margin: 10px auto 0; font: 12px var(--mono); color: var(--ink); background: none; border: 1px solid var(--rule); padding: 6px 12px; cursor: pointer; order: 2; }
+  .onb-term.open .more { display: none; }
+  .inote { display: none; }
+  .ar-row .note { white-space: normal; }
+}
+
+@media (max-width: 760px) {
+  /* rhythm */
   body { font-size: 14px; }
-  .sheet { gap: 104px; padding-block: 72px 56px; }
-  .lead { padding-block: 24px 64px; }
-  .demo { grid-template-columns: 1fr; gap: 0; }
-  .demo .link { width: 1.5px; height: 34px; justify-self: center; }
-  .demo .link::before { left: -5px; top: -2px; border: 6px solid transparent; border-bottom: 9px solid var(--muted); border-top: 0; }
-  .on .link::before { border-bottom-color: var(--accent); border-right-color: transparent; }
-  .demo .link i { display: none; }
-  .demo .frame:first-child { order: 3; }
-  .demo .link { order: 2; }
-  .trees, .never, .onb, .guides, .deeper, .guide, .plug, .plug .frame, .ar-row, .irow { grid-template-columns: 1fr; }
-  .irow { gap: 2px; }
-  .ar-row { gap: 2px; }
-  .ar-row .note:empty { display: none; }
-  .share { grid-template-columns: 1fr; gap: 10px; }
-  .via .link { display: none; }
-  .caption { height: 6em; font-size: 15px; }
-  .tag { white-space: normal; min-height: 2.4em; }
-  .uses div { grid-template-columns: 1fr; gap: 4px; }
-  .cycle { flex-direction: column; }
-  .cycle .ar { transform: rotate(90deg); padding: 0; }
+  .sheet { gap: 72px; padding-block: 48px 48px; padding-inline: 16px; }
+  section { gap: 24px; }
+  .sh { margin-bottom: 12px; }
+  .hd { font-size: 20px; padding-bottom: 10px; }
+  .sub, .caption { max-width: 100%; }
+  .sub { margin-top: 10px; font-size: 13.5px; }
   .top nav .opt { display: none; }
-  .hd { font-size: 21px; }
+
+  /* hero */
+  .lead { gap: 18px; padding-block: 12px 48px; }
+  .word { width: min(250px, 100%); }
+  h1 { margin-bottom: 8px; }
+  .tag { font-size: 19px; white-space: normal; min-height: 2.4em; margin-bottom: 4px; }
+  .pitch { font-size: 13.5px; gap: 12px; }
+  .install { margin-top: 20px; width: 100%; }
+  .install .cmd, .saybox { width: 100%; }
+  .cmd { gap: 12px; padding: 10px 10px 10px 12px; font-size: 12.5px; }
+  .cmd code { white-space: normal; overflow-wrap: anywhere; }
+  .install small { font-size: 12px; }
+  .ctas { font-size: 13px; }
+
+  /* the review flow: documents only, a compact terminal */
+  .steps { grid-template-columns: repeat(6, 1fr) auto; margin-bottom: 16px; }
+  .steps .sl { display: none; }
+  .steps button { text-align: center; padding-inline: 0; }
+  .caption { height: 5.8em; font-size: 14px; margin-bottom: 12px; }
+  .demo { grid-template-columns: 1fr; gap: 0; margin-bottom: 26px; }
+  .demo > .link, .demo > :nth-child(3) { display: none; }
+  .term { height: 370px; font-size: 11px; padding: 22px 14px 16px; }
+  .vstatus { left: 14px; right: 14px; }
+  .term pre, .onb-term pre, .cmdrow pre, .share pre, .guide pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+  /* folder scopes: one tree at a time */
+  .ttabs { display: flex; gap: 6px; margin-bottom: -6px; }
+  .ttabs button { flex: 1; font: 11px var(--mono); white-space: nowrap; color: var(--muted); background: none; border: 1px solid var(--rule); padding: 7px 4px; cursor: pointer; }
+  .ttabs button[aria-selected="true"] { color: var(--paper); background: var(--ink); border-color: var(--ink); }
+  .trees { grid-template-columns: 1fr; }
+  .trees .frame { display: none; }
+  .trees[data-t="0"] .frame:nth-child(1), .trees[data-t="1"] .frame:nth-child(2), .trees[data-t="2"] .frame:nth-child(3) { display: block; }
+  .trees .says { min-height: 0; }
+
+  /* markers and the loop: a compact numbered list */
+  .annot { font-size: 11.5px; padding: 20px 12px 14px; }
+  .ar-row.blank { display: none; }
+  .ar-row { grid-template-columns: 1fr; gap: 0; }
+  .ar-row .note:empty { display: none; }
+  .ar-row .note { font-size: 11.5px; margin-bottom: 4px; }
+  .loop-label { margin-bottom: -8px; }
+  .cycle { flex-direction: column; align-items: stretch; gap: 4px; counter-reset: step; }
+  .cycle .ar { display: none; }
+  .cycle .box { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; text-align: left; padding: 5px 10px; font-size: 12.5px; counter-increment: step; }
+  #cycle > p { font-size: 13px; }
+  #cycle { gap: 16px; }
+  .cycle .back { margin-top: 2px; font-size: 12px; }
+  .cycle .box::before { content: counter(step); color: var(--muted); margin-right: 10px; }
+  .cycle .box small { margin-left: auto; }
+  .back .wide { display: none; }
+  .back .narrow { display: inline; }
+
+  /* exports */
+  .share { grid-template-columns: 1fr; gap: 8px; }
+  .via { flex-direction: row; justify-content: center; }
+  .via .link { display: none; }
+  .via span::before { content: "↓ "; }
+
+  /* guidance: the section-guide example is described by the rule below it */
+  .guide { grid-template-columns: 1fr; }
+  .guide > .frame:nth-child(2) { display: none; }
+  .cmdrow { font-size: 11px; }
+
+  /* use cases and principles */
+  .uses div { grid-template-columns: 1fr; gap: 4px; padding-block: 14px; }
+  .never { grid-template-columns: 1fr; gap: 18px; }
+
+  /* onboarding: the terminal starts short */
+  .onb-term { font-size: 11px; }
+  .onb-term pre { max-height: 180px; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+  .onb-term.open pre { max-height: none; -webkit-mask-image: none; mask-image: none; }
+  .more { display: block; margin: 10px auto 0; font: 12px var(--mono); color: var(--ink); background: none; border: 1px solid var(--rule); padding: 6px 12px; cursor: pointer; order: 2; }
+  .onb-term { display: flex; flex-direction: column; }
+  .onb-term.open .more { display: none; }
+  .irow { grid-template-columns: 1fr; gap: 2px; }
+  .inote { display: none; }
+  .integ { font-size: 12.5px; }
+  .irow code { white-space: normal; overflow-wrap: anywhere; }
+
+  /* closing section */
+  .docs-in { padding-bottom: 40px; gap: 16px; }
+  .docs { min-height: 0; }
+  .docs .big { font-size: 26px; }
+  .guides { grid-template-columns: 1fr 1fr; gap: 26px 20px; margin-top: 24px; font-size: 13px; }
+  .guides .m { font-size: 11.5px; }
+  .docs footer { margin-top: 96px; }
   .scroll { display: none; }
 }
 </style>
@@ -415,7 +504,12 @@ footer { color: var(--muted); font-size: 12px; }
       <h2 class="hd" id="h-how">Folder scopes</h2>
       <p class="sub">A README covers its own folder and everything below it. One edit to <code>auth/login.rs</code>, and three ways the root README can treat <code>auth/</code>:</p>
     </header>
-    <div class="trees">
+    <div class="ttabs" role="tablist" aria-label="Root README variants">
+      <button type="button" role="tab" aria-selected="true" data-t="0">1 · says nothing</button>
+      <button type="button" role="tab" aria-selected="false" data-t="1">2 · links</button>
+      <button type="button" role="tab" aria-selected="false" data-t="2">3 · reuses</button>
+    </div>
+    <div class="trees" data-t="0">
       <div class="frame"><span class="ft">1 · says nothing</span>
         <div class="says">The root still covers auth/, so both READMEs are flagged.</div>
 <pre><span class="ln">./</span><span class="ln hot">├─ README.md     <span class="sw" data-o="2" data-idle="current"><span class="a">pending</span></span></span><span class="ln">├─ app.rs</span><span class="ln">└─ auth/</span><span class="ln hot">   ├─ README.md  <span class="sw" data-o="1" data-idle="current"><span class="a">pending</span></span></span><span class="ln hot">   └─ login.rs   <span class="sw" data-o="0" data-idle="">edited</span></span></pre>
@@ -442,7 +536,7 @@ footer { color: var(--muted); font-size: 12px; }
       <h2 class="hd" id="h-cycle">Document markers</h2>
       <p class="sub">Folders do most of the work. Plain HTML comments add the rest: which part of a doc describes which code, and which summary other docs reuse. Nothing else in your Markdown changes.</p>
     </header>
-    <div class="frame annot"><span class="ft">src/auth/README.md</span><div class="ar-row on"><code><span class="vl">1</span># Auth</code><span class="note"><b>tracked</b> · covers src/auth/ and below</span></div><div class="ar-row"><code><span class="vl">2</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">3</span><span class="mk">&lt;!-- memoria:export id="summary" --&gt;</span></code><span class="note"><b>export</b> · a summary other docs reuse</span></div><div class="ar-row"><code><span class="vl">4</span>Auth signs users in with a password or a passkey.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">5</span><span class="mk">&lt;!-- /memoria:export --&gt;</span></code><span class="note"></span></div><div class="ar-row"><code><span class="vl">6</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">7</span><span class="mk">&lt;!-- memoria:section id="sessions" files="src/auth/**" --&gt;</span></code><span class="note"><b>section</b> · maps src/auth/**</span></div><div class="ar-row"><code><span class="vl">8</span>## Sessions</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">9</span>A session lasts 15 minutes, then the user signs in again.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">10</span><span class="mk">&lt;!-- /memoria:section --&gt;</span></code><span class="note"></span></div></div>
+    <div class="frame annot"><span class="ft">src/auth/README.md</span><div class="ar-row on"><code><span class="vl">1</span># Auth</code><span class="note"><b>tracked</b> · covers src/auth/ and below</span></div><div class="ar-row blank"><code><span class="vl">2</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">3</span><span class="mk">&lt;!-- memoria:export id="summary" --&gt;</span></code><span class="note"><b>export</b> · a summary other docs reuse</span></div><div class="ar-row"><code><span class="vl">4</span>Auth signs users in with a password or a passkey.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">5</span><span class="mk">&lt;!-- /memoria:export --&gt;</span></code><span class="note"></span></div><div class="ar-row blank"><code><span class="vl">6</span></code><span class="note"></span></div><div class="ar-row on"><code><span class="vl">7</span><span class="mk">&lt;!-- memoria:section id="sessions" files="src/auth/**" --&gt;</span></code><span class="note"><b>section</b> · maps src/auth/**</span></div><div class="ar-row"><code><span class="vl">8</span>## Sessions</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">9</span>A session lasts 15 minutes, then the user signs in again.</code><span class="note"></span></div><div class="ar-row"><code><span class="vl">10</span><span class="mk">&lt;!-- /memoria:section --&gt;</span></code><span class="note"></span></div></div>
     <div class="label loop-label">every change runs the same loop</div>
     <div class="cycle" id="cyc">
       <div class="box">login.rs changes<small>git commit</small></div><span class="ar">─▸</span>
@@ -450,7 +544,7 @@ footer { color: var(--muted); font-size: 12px; }
       <div class="box">read the diff<small>memoria review</small></div><span class="ar">─▸</span>
       <div class="box">fix the README<small>you or your agent</small></div><span class="ar">─▸</span>
       <div class="box">README current<small>memoria ack</small></div>
-      <div class="back">◂──── the next change starts it again ─────</div>
+      <div class="back"><span class="wide">◂──── the next change starts it again ─────</span><span class="narrow">↺ the next change starts it again</span></div>
     </div>
     <p>An ack only counts for the exact files you read. If anything changed after you saved the review, Memoria refuses the ack instead of approving code nobody looked at. A passing <code>memoria check</code> means every doc was checked against its current code. Whether the prose is good is still up to you.</p>
   </section>
@@ -535,7 +629,7 @@ guidance_files = [<span class="c-acc">"docs/writing-guidance.md"</span>]</pre></
       <span class="m">tell your agent</span>
       <div class="cmd saybox"><code id="say-text">Run `memoria onboard` (the Memoria CLI) and follow the next step it gives.</code><button class="btn hot" id="copy-say" type="button">copy</button></div>
     </div>
-    <div class="frame onb-term" id="onb-term"><span class="ft">terminal</span><pre><span class="p">$ memoria onboard</span>
+    <div class="frame onb-term" id="onb-term"><button type="button" class="more" id="onb-more">show full output</button><span class="ft">terminal</span><pre><span class="p">$ memoria onboard</span>
 <span class="c-acc">Memoria 0.9.2</span> — CI for your docs
 
 When code changes, Memoria marks the documents that explain it as pending and
@@ -759,6 +853,13 @@ Go deeper
   onView(document.getElementById('onb-term'), function () {
     tls.forEach(function (l, k) { if (k) otm.later(function () { l.classList.remove('off'); }, 500 + k * 75); });
   }, onbIdle);
+
+  var tabs = document.querySelectorAll('.ttabs button'), treesEl = document.querySelector('.trees');
+  tabs.forEach(function (b) { b.addEventListener('click', function () {
+    treesEl.dataset.t = b.dataset.t;
+    tabs.forEach(function (o) { o.setAttribute('aria-selected', String(o === b)); });
+  }); });
+  document.getElementById('onb-more').addEventListener('click', function () { document.getElementById('onb-term').classList.add('open'); });
 
   var boxes = document.querySelectorAll('#cyc .box'), bi = -1, ct = new Timers();
   onView(document.getElementById('cyc'), function () {
