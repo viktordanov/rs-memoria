@@ -92,8 +92,6 @@ flowchart TD
     root["README.md covers app.rs"] -- "link or import: hands off auth/" --> auth["auth/README.md covers auth/login.rs"]
 ```
 
-A nested README alone removes nothing: until the root links to it or imports from it, both documents cover `auth/`, and both are reviewed. The link is the handoff. It moves `auth/` out of the root's scope and binds that decision into the root's review, so removing the link later makes the root pending again.
-
 Memoria never edits your prose, except inside import blocks that you declare, and only when you run `memoria render`. The [concept guide](docs/concepts.md) explains each idea with an example and its limits.
 
 ## The CLI at a glance
@@ -423,7 +421,7 @@ memoria --version
 Each [GitHub release](https://github.com/viktordanov/rs-memoria/releases/latest) carries archives for Linux (x86_64 and ARM64, glibc) and macOS (Apple Silicon and Intel), each with a `.sha256` checksum file. For example, on x86_64 Linux:
 
 ```sh
-version=0.8.0
+version=0.9.0
 archive=memoria-$version-x86_64-unknown-linux-gnu.tar.gz
 gh release download "v$version" -R viktordanov/rs-memoria -p "$archive*"
 sha256sum -c "$archive.sha256"
@@ -443,7 +441,7 @@ cd rs-memoria
 cargo install --locked --path .
 ```
 
-To build one release instead of the current `main`, check out its tag first, for example `git checkout v0.8.0`. An older tag pins its own toolchain: 0.8.0 builds with Rust 1.96. The executable is called `memoria`, and Cargo installs it in `~/.cargo/bin`.
+To build one release instead of the current `main`, check out its tag first, for example `git checkout v0.9.0`. An older tag pins its own toolchain: 0.8.0 builds with Rust 1.96. The executable is called `memoria`, and Cargo installs it in `~/.cargo/bin`.
 
 ## Find the right guide
 

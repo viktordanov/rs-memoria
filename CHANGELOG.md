@@ -4,7 +4,7 @@ This file records user-visible changes in Memoria. The project maintainer owns r
 
 Contents:
 
-- [0.9.0](#090---unreleased)
+- [0.9.0](#090---2026-10-11)
 - [Migration to 0.9.0](#migration-to-090)
 - [0.8.0](#080---2026-10-04)
 - [Migration to 0.8.0](#migration-to-080)
@@ -18,7 +18,7 @@ Contents:
 - [0.3.0](#030---2026-09-09)
 - [0.2.0](#020).
 
-## 0.9.0 - unreleased
+## 0.9.0 - 2026-10-11
 
 CAUTION: Update every Memoria executable, including setup-action `version:` pins, before a project adds `section_guidance_files`. Memoria 0.8 refuses the key and names it. Then follow [Migration to 0.9.0](#migration-to-090).
 
