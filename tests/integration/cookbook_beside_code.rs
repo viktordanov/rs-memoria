@@ -370,9 +370,39 @@ fn the_beside_code_cookbook_matches_a_real_run() {
         for key in ["plan-tax", "review-design-tax", "ack-design"] {
             let (_, text) = captured.iter().find(|(k, _)| *k == key).unwrap();
             assert!(
-                readme.contains(text.as_str()),
+                readme.contains(&with_hunks_as_diff(text)),
                 "README.md does not show the current {key} output"
             );
         }
     }
+}
+
+/// The README renders each review hunk in its own `diff` fence between two
+/// `text` fences, without the six-space indent that the CLI prints. Every
+/// other line stays exactly as the CLI printed it.
+fn with_hunks_as_diff(text: &str) -> String {
+    const INDENT: &str = "      ";
+    let mut out = String::new();
+    let mut in_hunk = false;
+    for line in text.split_inclusive('\n') {
+        let hunk_line = if in_hunk {
+            line.starts_with(INDENT) || line.trim_end_matches('\n').is_empty()
+        } else {
+            line.starts_with("      @@ ")
+        };
+        if hunk_line != in_hunk {
+            out.push_str(if hunk_line {
+                "```\n\n```diff\n"
+            } else {
+                "```\n\n```text\n"
+            });
+            in_hunk = hunk_line;
+        }
+        out.push_str(if in_hunk {
+            line.strip_prefix(INDENT).unwrap_or(line)
+        } else {
+            line
+        });
+    }
+    out
 }

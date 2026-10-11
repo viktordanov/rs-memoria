@@ -104,7 +104,7 @@ An invalidation requests a review with an explicit reason, even without a file c
 | [edges.rs](integration/edges.rs) | Discovery, paths, configuration, and corrupt state |
 | [portability.rs](integration/portability.rs) | Host rules against repository policy, and clean clones |
 | [guidance.rs](integration/guidance.rs) | Setup preview, guidance visibility, advisory behavior, section guide layers, and the agent-instructions cookbook run |
-| `cookbook_readme_tree.rs`, `cookbook_beside_code.rs`, `cookbook_central_docs.rs` | One real run of each cookbook fixture, compared block by block with its page. The beside-code run also checks the root README's "CLI at a glance" output |
+| `cookbook_readme_tree.rs`, `cookbook_beside_code.rs`, `cookbook_central_docs.rs` | One real run of each cookbook fixture, compared block by block with its page. The beside-code run also checks the root README's "CLI at a glance" output, where each review hunk is a `diff` block without the CLI's indent |
 | [usability.rs](integration/usability.rs) | Completions, reviewer identity, freshness explanations, state comparisons, and human guidance cues |
 | [state_format.rs](integration/state_format.rs) | Frozen lock vectors, corruption, limits, and inspection |
 | [agent.rs](integration/agent.rs) | Skill scopes, status, upgrade, backups, and removal |

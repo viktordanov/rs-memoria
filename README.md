@@ -96,18 +96,7 @@ Memoria never edits your prose, except inside import blocks that you declare, an
 
 ## The CLI at a glance
 
-Here is one change, seen from the command line. In the [documents beside the code cookbook](docs/cookbooks/beside-code/README.md), a teammate changes how `billing/tax.rs` rounds VAT. The VAT now rounds to the nearest cent, and a half cent rounds up:
-
-```diff
--/// The VAT on a subtotal, rounded down to a whole cent.
-+/// The VAT on a subtotal, rounded to the nearest cent. A half cent rounds up.
- pub fn vat(subtotal_cents: u64) -> u64 {
--    subtotal_cents * VAT_BASIS_POINTS / 10_000
-+    (subtotal_cents * VAT_BASIS_POINTS + 5_000) / 10_000
- }
-```
-
-Three documents cover `billing/`, so all three become pending, in review order:
+Here is one change, seen from the command line. In the [documents beside the code cookbook](docs/cookbooks/beside-code/README.md), a teammate changes how `billing/tax.rs` rounds VAT. Three documents cover `billing/`, so all three become pending, in review order:
 
 ```console
 $ memoria review
@@ -120,23 +109,29 @@ Next: memoria review billing/README.md
 
 The review of one document starts with what changed, as a verified hunk, and then says what to read. Here a section marker in `billing/design.md` maps `tax.rs`, so the review can suggest the part to start from:
 
-```console
+```text
 $ memoria review billing/design.md
 Review billing/design.md — opted-in document, pending since revision 2
 Scope: 2 sources in billing/ and below
 Baseline: revision 2 by fixture (no-update)
 What changed since that review:
   changed  billing/tax.rs · scope source · section "tax" describes it · also covered by 2 other documents
-      @@ -1,7 +1,7 @@
-       /// The VAT rate in basis points: 2000 is 20%.
-       pub const VAT_BASIS_POINTS: u64 = 2000;
+```
 
-      -/// The VAT on a subtotal, rounded down to a whole cent.
-      +/// The VAT on a subtotal, rounded to the nearest cent. A half cent rounds up.
-       pub fn vat(subtotal_cents: u64) -> u64 {
-      -    subtotal_cents * VAT_BASIS_POINTS / 10_000
-      +    (subtotal_cents * VAT_BASIS_POINTS + 5_000) / 10_000
-       }
+```diff
+@@ -1,7 +1,7 @@
+ /// The VAT rate in basis points: 2000 is 20%.
+ pub const VAT_BASIS_POINTS: u64 = 2000;
+
+-/// The VAT on a subtotal, rounded down to a whole cent.
++/// The VAT on a subtotal, rounded to the nearest cent. A half cent rounds up.
+ pub fn vat(subtotal_cents: u64) -> u64 {
+-    subtotal_cents * VAT_BASIS_POINTS / 10_000
++    (subtotal_cents * VAT_BASIS_POINTS + 5_000) / 10_000
+ }
+```
+
+```text
 Also pending for the same changes:
   billing/README.md (covers the same folder; pending)
   billing/notes.md (covers the same folder; pending)
@@ -153,6 +148,8 @@ Next:
   2. After any edit, save a fresh artifact: dir=$(mktemp -d); memoria review billing/design.md --save "$dir"
   3. Record the result: memoria ack billing/design.md --packet <saved file> --reviewer <you> --result <updated|no-update> --note "<why>"
 ```
+
+This page shows the hunk as a diff. The CLI prints the same lines indented under the change that they belong to.
 
 After the reviewer fixes the tax section, a fresh artifact records the result against the exact bytes that they read:
 
