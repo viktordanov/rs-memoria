@@ -46,8 +46,7 @@ p { margin: 0; max-width: 70ch; }
 .a { color: var(--accent); }
 code { font: inherit; color: var(--ink); }
 .pitch code, section p code, .sub code, .rules code, .uses code, .says code, .caption code, .note code { padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--ink) 9%, transparent); white-space: nowrap; }
-.pa { fill: var(--accent); } .pm { fill: var(--muted); }
-.mw { color: var(--accent); } .pi { fill: var(--ink); }
+.pa { fill: var(--accent); } .pm { fill: var(--muted); } .pi { fill: var(--ink); }
 svg.defs { position: absolute; width: 0; height: 0; }
 pre { margin: 0; font: inherit; white-space: pre; overflow-x: auto; }
 
@@ -87,13 +86,13 @@ h1::before { content: ""; position: absolute; left: -70%; top: -320%; width: 260
 .unused-scroll { position: absolute; left: clamp(20px, 5vw, 64px); bottom: 22px; font-size: 12px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
 
 /* ---------- section headers, like the art ---------- */
-.hd { margin: 0; font-size: 26px; line-height: 1.2; font-weight: 600; letter-spacing: -.01em; color: var(--ink); text-wrap: pretty; padding-bottom: 14px; border-bottom: 1px solid var(--rule); }
-.sh .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.hd { margin: 0; font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -.01em; color: var(--ink); text-wrap: pretty; padding-bottom: 12px; border-bottom: 1px solid var(--rule); }
+.sh .k { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
 section { display: flex; flex-direction: column; gap: 44px; position: relative; }
 section > p { align-self: flex-start; }
 section::before { content: ""; position: absolute; left: 50%; top: 0; width: min(1600px, 170%); height: min(150%, 1200px); transform: translate(-50%, -18%); background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 3.25%, transparent), transparent); pointer-events: none; z-index: -1; }
-.sh { display: flex; flex-direction: column; align-items: stretch; gap: 12px; margin-bottom: 8px; text-align: left; }
-.sub { color: var(--muted); text-align: left; max-width: 62ch; text-wrap: pretty; margin: 0; line-height: 1.5; }
+.sh { display: flex; flex-direction: column; align-items: stretch; gap: 0; margin-bottom: 4px; text-align: left; }
+.sub { color: var(--muted); text-align: left; max-width: none; text-wrap: pretty; margin: 12px 0 0; line-height: 1.5; }
 .tag { white-space: nowrap; margin-bottom: 12px; }
 .tag .cursor { width: .55em; height: .9em; margin-left: 6px; vertical-align: -.08em; }
 
@@ -591,19 +590,6 @@ Go deeper
 (function () {
   var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  /* in the onboarding section, `memoria <subcommand>` shows its first word in amber, as the CLI does */
-  var MW = /(^|[\s`$(>])memoria(?= (?:check|review|ack|init|onboard|status|render|guidance|agent|integrations|invalidate|lint|graph|explain|state|packet)\b)/g;
-  function mw(html) { return html.replace(MW, '$1<span class="mw">memoria</span>'); }
-  (function () {
-    var w = document.createTreeWalker(document.getElementById('onboard'), NodeFilter.SHOW_TEXT, { acceptNode: function (n) {
-      return n.parentNode.closest('script, style, svg, .mw') || !/memoria /.test(n.nodeValue) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT; } });
-    var nodes = []; while (w.nextNode()) nodes.push(w.currentNode);
-    nodes.forEach(function (n) {
-      var esc = n.nodeValue.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'), out = mw(esc);
-      if (out === esc) return;
-      var t = document.createElement('template'); t.innerHTML = out; n.parentNode.replaceChild(t.content, n);
-    });
-  })();
 
   /* ---------- wordmark: 5x5 glyphs, rows fade solid -> dither ---------- */
   var G = {
