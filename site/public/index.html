@@ -50,7 +50,7 @@ svg.defs { position: absolute; width: 0; height: 0; }
 pre { margin: 0; font: inherit; white-space: pre; overflow-x: auto; }
 
 /* ---------- hero: full bleed, content on the left ---------- */
-.hero { position: relative; overflow: hidden; min-height: min(94vh, 920px); display: flex; flex-direction: column; }
+.hero { position: relative; overflow: hidden; min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column; }
 .hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .hero-in { position: relative; width: 100%; max-width: 1240px; margin-inline: auto; padding-inline: clamp(20px, 5vw, 64px); display: flex; flex-direction: column; flex: 1; }
 .top { display: flex; justify-content: space-between; gap: 16px; padding-block: 22px; font-size: 13px; }
@@ -274,7 +274,6 @@ footer { color: var(--muted); font-size: 12px; }
 @media (max-width: 760px) {
   body { font-size: 14px; }
   .sheet { gap: 104px; padding-block: 72px 56px; }
-  .hero { min-height: 0; }
   .lead { padding-block: 24px 64px; }
   .steps { grid-template-columns: repeat(3, 1fr); }
   .demo { grid-template-columns: 1fr; gap: 0; }
@@ -713,15 +712,13 @@ Go deeper
   if (!reduce) { backs.forEach(function (f) { f.watch(); }); requestAnimationFrame(loop); }
 
   /* ---------- light-ups: files turn orange and stay, as in the review above ---------- */
-  // play when the element comes into view; reset once it has left, so it replays next time
-  function onView(el, play, reset) {
+  // play once, the first time the element is mostly in view; the result then stays
+  function onView(el, play) {
     if (reduce || !('IntersectionObserver' in window)) return;
-    var on = false;
-    new IntersectionObserver(function (es) {
-      var e = es[0];
-      if (e.isIntersecting && e.intersectionRatio >= 0.45 && !on) { on = true; play(); }
-      else if (!e.isIntersecting && on) { on = false; reset(); }
-    }, { threshold: [0, 0.45] }).observe(el);
+    var io = new IntersectionObserver(function (es) {
+      if (es[0].isIntersecting) { io.disconnect(); play(); }
+    }, { threshold: 0.45 });
+    io.observe(el);
   }
   function flash(el) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
   function Timers() { var ids = []; this.later = function (f, ms) { ids.push(setTimeout(f, ms)); }; this.clear = function () { ids.forEach(clearTimeout); ids = []; }; }
@@ -773,10 +770,10 @@ Go deeper
   onView(document.getElementById('cyc'), function () {
     bi = -1;
     (function stepBox() {
-      bi = (bi + 1) % boxes.length;
+      bi++;
       boxes.forEach(function (b, k) { b.classList.toggle('lit', k === bi); });
       flash(boxes[bi]);
-      ct.later(stepBox, bi === boxes.length - 1 ? 3000 : 1900);
+      if (bi < boxes.length - 1) ct.later(stepBox, 1500);
     })();
   }, function () { ct.clear(); boxes.forEach(function (b) { b.classList.remove('lit'); }); });
 
