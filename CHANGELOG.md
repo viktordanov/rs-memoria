@@ -48,7 +48,7 @@ Human output is now colored when it goes to a terminal. Memoria commands use an 
 
 ### Documentation
 
-- The root README has a new [Features at a glance](README.md#features-at-a-glance) table: every feature with the command or setting that uses it, including render, exports and imports, guidance, committed state, and onboarding.
+- The root README has a new [What Memoria does](README.md#what-memoria-does) section: the review loop, the three markers, guidance, render, and the integrations, each with one example or command.
 - Every diagram uses the new palette: the amber accent, warm-white ink, and a near-black dark background. The README title art has a compact wordmark whose rows touch.
 - `scripts/ascii-diagram.py` accepts an optional `blocks: full` header line that draws dither blocks at the full cell height.
 
