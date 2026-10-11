@@ -4,7 +4,7 @@ This file records user-visible changes in Memoria. The project maintainer owns r
 
 Contents:
 
-- [Unreleased](#unreleased)
+- [0.9.1](#091---2026-10-11)
 - [0.9.0](#090---2026-10-11)
 - [Migration to 0.9.0](#migration-to-090)
 - [0.8.0](#080---2026-10-04)
@@ -19,7 +19,9 @@ Contents:
 - [0.3.0](#030---2026-09-09)
 - [0.2.0](#020).
 
-## Unreleased
+## 0.9.1 - 2026-10-11
+
+No state, configuration, token, or saved-artifact format changes from 0.9.0. Manifests stay `manifest_version` 3, full exports `packet_version` 5, and `packet view` `view_version` 3. Replace the executable everywhere you run it. The text of the agent skill does not change, but 0.9.1 reports a skill installed by 0.9.0 as `outdated` because the install record names the version. Run `memoria agent upgrade` for each installed skill. An installed `Stop` hook keeps working when the executable is replaced at the same path.
 
 ### Fewer Git processes
 
@@ -55,6 +57,12 @@ A document whose scope holds more inputs than one history search can read, for e
 ### Fixes
 
 - The agent `Stop` hook said that Memoria "did not finish its documentation inspection in time" when the status summary was larger than its 16 KiB output limit, even when the summary arrived in well under a second. It now names the 16 KiB limit. A real timeout keeps its message.
+
+### Development
+
+- The root integration tests are one test binary, `tests/integration/`. Run one suite with `cargo nextest run --test integration <suite>::`.
+- CI runs the tests with `cargo nextest run --workspace --locked --no-fail-fast`, installed by `taiki-e/install-action` pinned by commit, and runs doc tests with `cargo test --workspace --locked --doc`.
+- `MEMORIA_TEST_MAX_RECORDS` lowers the 100,000-record output cap for tests. Only debug builds read it, and it can only lower the cap.
 
 ## 0.9.0 - 2026-10-11
 

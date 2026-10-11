@@ -421,7 +421,7 @@ memoria --version
 Each [GitHub release](https://github.com/viktordanov/rs-memoria/releases/latest) carries archives for Linux (x86_64 and ARM64, glibc) and macOS (Apple Silicon and Intel), each with a `.sha256` checksum file. For example, on x86_64 Linux:
 
 ```sh
-version=0.9.0
+version=0.9.1
 archive=memoria-$version-x86_64-unknown-linux-gnu.tar.gz
 gh release download "v$version" -R viktordanov/rs-memoria -p "$archive*"
 sha256sum -c "$archive.sha256"
@@ -441,7 +441,7 @@ cd rs-memoria
 cargo install --locked --path .
 ```
 
-To build one release instead of the current `main`, check out its tag first, for example `git checkout v0.9.0`. An older tag pins its own toolchain: 0.8.0 builds with Rust 1.96. The executable is called `memoria`, and Cargo installs it in `~/.cargo/bin`.
+To build one release instead of the current `main`, check out its tag first, for example `git checkout v0.9.1`. An older tag pins its own toolchain: 0.8.0 builds with Rust 1.96. The executable is called `memoria`, and Cargo installs it in `~/.cargo/bin`.
 
 ## Find the right guide
 
