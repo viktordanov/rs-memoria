@@ -225,14 +225,14 @@ section p, .rules li, .says, .caption, .uses span, .docs .big { text-wrap: prett
 .copies { display: flex; flex-direction: column; gap: 30px; }
 .srcnote { font-size: 12px; margin-top: 14px; }
 .vianote { font-size: 11px; text-align: center; }
-.share .via .c-acc { white-space: nowrap; font-size: 11px; }
+.share .via .c-acc { white-space: nowrap; font-size: 11px; color: var(--accent); }
 .ln.copy { color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
 .guide .frame, .plug .frame { font-size: 13px; }
 .via { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 12px; }
-.via .link { width: 72%; transform: scaleX(-1); background: var(--muted); }
-.via .link::before { border-right-color: var(--muted); }
-.guide { display: grid; grid-template-columns: 1fr 1fr; gap: 34px 18px; }
-.guide .frame { font-size: 11.5px; }
+.via .link { width: 72%; transform: scaleX(-1); background: var(--accent); }
+.via .link::before { border-right-color: var(--accent); }
+.guide { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 34px 18px; }
+.guide .frame { font-size: 12px; }
 .share pre, .guide pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .cmdrow { font-size: 13px; }
 .plug { display: grid; grid-template-columns: 1fr; gap: 34px; }
