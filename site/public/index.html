@@ -33,7 +33,7 @@
 
 * { box-sizing: border-box; }
 html, body { overscroll-behavior: none; }
-html { overflow-x: clip; }
+html { overflow-x: clip; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
 section, .docs { scroll-margin-top: 96px; }
 body { background: var(--paper); color: var(--ink); font: 15px/1.45 var(--mono); margin: 0; overflow-x: clip; }
@@ -145,7 +145,10 @@ section::before { content: ""; position: absolute; left: 50%; top: 0; width: min
 .vbar { color: var(--muted); }
 .vstatus { position: absolute; left: 22px; right: 22px; bottom: 14px; color: var(--muted); white-space: pre; overflow: hidden; text-overflow: ellipsis; }
 .vstatus .err { color: var(--removed); }
-.eline { display: inline-block; width: calc(100% + 12px); margin-inline: -6px; padding-inline: 6px; background: color-mix(in srgb, var(--accent) 11%, transparent); color: var(--accent); }
+.erow { display: block; padding-left: 4.5ch; text-indent: -4.5ch; }
+.erow .vl { text-indent: 0; }
+.erow.vbar { padding-left: 0; text-indent: 0; }
+.eline { background: color-mix(in srgb, var(--accent) 11%, transparent); color: var(--accent); }
 .ins { background: color-mix(in srgb, var(--accent) 11%, transparent); }
 .term pre { height: 100%; }
 .term pre .p { color: var(--ink); }
@@ -990,12 +993,12 @@ Go deeper
   function editor(val, mode, caret) {
     var rows = DOC.map(function (l, k) {
       var body;
-      if (l === '@@') return '<span class="eline"><span class="vl">' + (k + 1) + '</span>A session lasts ' + val + (caret ? '<span class="cursor"></span>' : '') + ' minutes, then the user signs in again.</span>';
+      if (l === '@@') return '<span class="erow eline"><span class="vl">' + (k + 1) + '</span>A session lasts ' + val + (caret ? '<span class="cursor"></span>' : '') + ' minutes, then the user signs in again.</span>';
       if (l.indexOf('<!--') === 0) body = '<span class="c-mut">' + l.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>';
       else body = l;
-      return '<span class="vl">' + (k + 1) + '</span>' + body;
+      return '<span class="erow"><span class="vl">' + (k + 1) + '</span>' + (body || ' ') + '</span>';
     });
-    return '<span class="vbar">src/auth/README.md</span>\n' + rows.join('\n') + '<span class="vstatus">' + mode + '</span>';
+    return '<span class="erow vbar">src/auth/README.md</span>' + rows.join('') + '<span class="vstatus">' + mode + '</span>';
   }
   var fixRuns = 0;
   function playEditor() {
